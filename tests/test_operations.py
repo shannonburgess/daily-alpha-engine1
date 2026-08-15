@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 
-
 import pytest
 
 from daily_alpha.operations import (
