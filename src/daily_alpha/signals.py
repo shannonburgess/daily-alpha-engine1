@@ -105,7 +105,7 @@ def _timestamp(value: Any) -> datetime:
     if not value:
         raise SignalError("bar_time is required")
     try:
-        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value).strip())
     except ValueError as exc:
         raise SignalError("bar_time must be an ISO-8601 timestamp") from exc
     return _aware(parsed)
