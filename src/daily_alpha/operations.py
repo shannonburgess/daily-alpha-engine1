@@ -145,7 +145,7 @@ class ChangeLedger:
     @classmethod
     def compare(
         cls, *, as_of: str, previous: tuple[str, ...], current: tuple[str, ...]
-    ) -> "ChangeLedger":
+    ) -> ChangeLedger:
         datetime.fromisoformat(as_of)
         before, after = set(previous), set(current)
         return cls(
