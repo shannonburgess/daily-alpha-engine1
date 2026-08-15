@@ -97,22 +97,39 @@ def load_ovtlyr_csv(path: str | Path) -> list[OvtlyrRecord]:
             records.append(
                 OvtlyrRecord(
                     symbol=symbol,
-                    signal=_value(row, columns, "signal", "status", "rating").upper(),
+                    signal=_value(
+                        row,
+                        columns,
+                        "signal",
+                        "status",
+                        "rating",
+                        "current_signal_status",
+                    ).upper(),
                     signal_date=_value(
                         row,
                         columns,
                         "signal_date",
                         "date",
+                        "signal_start_date",
                         "overlay_start_date",
                     ),
-                    sector=_value(row, columns, "sector") or "Unknown",
+                    sector=_value(row, columns, "sector", "sector_index")
+                    or "Unknown",
                     industry=_value(row, columns, "industry"),
-                    trend=_value(row, columns, "trend", "trend_direction").upper(),
+                    trend=_value(
+                        row,
+                        columns,
+                        "trend",
+                        "trend_direction",
+                        "overlay",
+                    ).upper(),
                     momentum=_value(
                         row,
                         columns,
                         "momentum",
                         "momentum_direction",
+                        "fear_and_greed_heatmap_direction",
+                        "fear_greed_heatmap_direction",
                     ).upper(),
                     setup=_value(row, columns, "setup", "setup_type").upper(),
                     entry_watch=_boolean(
@@ -233,12 +250,19 @@ def _classify(
 
     momentum = new.momentum
     trend_up = new.trend in {"UP", "UPTREND", "BULLISH", "RISING"}
-    accelerating = momentum in {"ACCELERATING", "STRONG", "RISING", "POSITIVE"}
+    accelerating = momentum in {
+        "ACCELERATING",
+        "STRONG",
+        "RISING",
+        "POSITIVE",
+        "MOVING UP",
+    }
     deteriorating = momentum in {
         "DETERIORATING",
         "WEAKENING",
         "DECLINING",
         "NEGATIVE",
+        "MOVING DOWN",
     }
 
     if was_buy and is_buy and deteriorating:
@@ -259,7 +283,14 @@ def _classify(
 
 
 def _normalize(value: str) -> str:
-    return value.strip().lower().replace(" ", "_").replace("-", "_")
+    return (
+        value.strip()
+        .lower()
+        .replace("&", "and")
+        .replace("/", "_")
+        .replace(" ", "_")
+        .replace("-", "_")
+    )
 
 
 def _value(

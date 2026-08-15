@@ -1,0 +1,31 @@
+{
+  "artifacts": [
+    "comparison.csv",
+    "comparison.json",
+    "sector_rotation.json"
+  ],
+  "created_at": "2026-08-15T20:54:42.761567+00:00",
+  "engine_version": "0.1.0",
+  "optionability": {
+    "non_optionable": 0,
+    "optionable": 0,
+    "unknown": 2953
+  },
+  "record_count": 2953,
+  "run_date": "2026-08-14",
+  "source": {
+    "archived_filename": "universe.csv",
+    "original_filename": "OVTLYR_2026-08-14.csv",
+    "sha256": "96c787b3fe3ad0188d47ced33d7b1bfb48d1963cc572d8d0c30b330c9a6038cb",
+    "size_bytes": 667449
+  },
+  "status_counts": {
+    "ACTIVE_BUY": 39,
+    "DETERIORATING": 115,
+    "EMERGING": 74,
+    "LEADER": 956,
+    "NEW_BUY": 9,
+    "REMOVED": 65,
+    "UNCHANGED": 1695
+  }
+}

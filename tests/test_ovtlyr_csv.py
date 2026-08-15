@@ -29,3 +29,22 @@ def test_csv_aliases_and_output_files(tmp_path):
     assert {item["symbol"] for item in data} == {"AAA", "BBB"}
     assert next(item for item in data if item["symbol"] == "BBB")["optionable"] is False
     assert outputs["comparison_csv"].exists()
+
+
+def test_loads_real_ovtlyr_export_headers(tmp_path):
+    source = tmp_path / "ovtlyr.csv"
+    source.write_text(
+        "Symbol,Sector/Index,Current Signal Status,Signal Start Date,Overlay,"
+        "Fear & Greed Heatmap Direction\n"
+        "AAA,Technology,Buy,Aug 14 2026,Uptrend,Moving Up\n",
+        encoding="utf-8",
+    )
+
+    record = load_ovtlyr_csv(source)[0]
+
+    assert record.symbol == "AAA"
+    assert record.signal == "BUY"
+    assert record.signal_date == "Aug 14 2026"
+    assert record.sector == "Technology"
+    assert record.trend == "UPTREND"
+    assert record.momentum == "MOVING UP"
