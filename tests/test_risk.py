@@ -36,7 +36,7 @@ def test_approves_trade_at_exact_position_limit():
     assert decision.approved is True
     assert decision.reasons == (RiskReason.APPROVED,)
     assert decision.planned_loss_nav == 0.005
-    assert decision.policy_version == "2026-08-15-v1"
+    assert decision.policy_version == "2026-08-15-v2"
 
 
 def test_rejects_trade_over_position_loss_limit():
