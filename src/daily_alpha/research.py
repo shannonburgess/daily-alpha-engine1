@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+import json
+import random
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import date
 from enum import StrEnum
 from hashlib import sha256
-import json
 from math import sqrt
-import random
 from statistics import fmean, stdev
 
 
