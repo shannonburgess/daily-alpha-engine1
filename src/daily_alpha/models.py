@@ -31,6 +31,7 @@ class OptionCandidate:
     ask: float
     open_interest: int
     volume: int
+    delta: float | None = None
 
     @property
     def midpoint(self) -> float:
@@ -40,6 +41,10 @@ class OptionCandidate:
     def spread_pct(self) -> float:
         midpoint = self.midpoint
         return float("inf") if midpoint <= 0 else (self.ask - self.bid) / midpoint
+
+    @property
+    def volume_to_open_interest(self) -> float:
+        return 0.0 if self.open_interest <= 0 else self.volume / self.open_interest
 
 
 @dataclass(frozen=True)

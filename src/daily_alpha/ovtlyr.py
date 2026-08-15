@@ -46,6 +46,9 @@ class OvtlyrRecord:
     setup: str = ""
     entry_watch: bool = False
     optionable: bool | None = None
+    price: float = 0.0
+    average_volume: float = 0.0
+    partial_data: bool = False
 
 
 @dataclass(frozen=True)
@@ -151,6 +154,16 @@ def load_ovtlyr_csv(path: str | Path) -> list[OvtlyrRecord]:
                             "has_options",
                         )
                     ),
+                    price=_float(
+                        _value(row, columns, "last_close_price_($)", "last_close_price")
+                    ),
+                    average_volume=_float(
+                        _value(row, columns, "30_day_avg_volume", "average_volume")
+                    ),
+                    partial_data=_boolean(
+                        _value(row, columns, "partial_data_stocks", "partial_data")
+                    )
+                    is True,
                 )
             )
     if not records:
@@ -312,3 +325,12 @@ def _boolean(value: str) -> bool | None:
     if normalized in {"no", "false", "0", "n", "not_optionable"}:
         return False
     return None
+
+
+def _float(value: str) -> float:
+    if not value:
+        return 0.0
+    try:
+        return float(value.replace(",", "").replace("$", ""))
+    except ValueError:
+        return 0.0
