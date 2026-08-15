@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -74,12 +74,12 @@ class Decision:
         instrument_selected: InstrumentSelected,
         fallback_reason: str,
         selected_contract: OptionCandidate | None = None,
-    ) -> "Decision":
+    ) -> Decision:
         return cls(
             symbol=symbol,
             status=status,
             instrument_selected=instrument_selected,
             fallback_reason=fallback_reason,
             selected_contract=selected_contract,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
         )
