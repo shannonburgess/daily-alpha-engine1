@@ -1,16 +1,10 @@
 from datetime import UTC, datetime
 
 from daily_alpha.ledger import PaperLedger, TradeState
-from daily_alpha.models import (
-    Decision,
-    DecisionStatus,
-    InstrumentSelected,
-    OptionCandidate,
-)
+from daily_alpha.models import Decision, DecisionStatus, InstrumentSelected, OptionCandidate
 from daily_alpha.pipeline import EntryPricing, PaperTradingPipeline
 from daily_alpha.signals import SignalAction, parse_pine_signal
 from daily_alpha.sizing import PortfolioLimits
-
 
 NOW = datetime(2026, 8, 15, 16, 5, tzinfo=UTC)
 
