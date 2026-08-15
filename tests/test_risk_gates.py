@@ -1,11 +1,19 @@
 import pytest
 
-from daily_alpha.portfolio import PortfolioSnapshot
+from daily_alpha.portfolio import AssetType, PortfolioSnapshot, Position
 from daily_alpha.risk import PortfolioRiskEngine, PortfolioRiskState, ProposedTradeRisk, RiskReason
 
 
 def snap():
-    return PortfolioSnapshot("snap-1", 100_000)
+    return PortfolioSnapshot.create(
+        snapshot_id="snap-1",
+        account_id="paper-1",
+        source="TEST",
+        as_of="2026-08-15T12:00:00+00:00",
+        cash=100_000,
+        buying_power=80_000,
+        positions=(Position("SPY", AssetType.STOCK, 0, 500, 500),),
+    )
 
 
 def trade(**overrides):
