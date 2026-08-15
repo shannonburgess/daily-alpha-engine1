@@ -3,7 +3,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from daily_alpha.portfolio import Greeks, PortfolioDataStatus
-from daily_alpha.portfolio_ingest import DuplicateSnapshotError, PortfolioSnapshotIngestor
+from daily_alpha.portfolio_ingest import (
+    DuplicateSnapshotError,
+    PortfolioSnapshotIngestor,
+)
 
 
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
