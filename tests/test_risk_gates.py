@@ -17,8 +17,13 @@ def snap():
 
 
 def trade(**overrides):
-    values = dict(decision_id="d-1", symbol="AAPL", planned_loss=500,
-                  cluster_id="TECH", sector="Technology")
+    values = {
+        "decision_id": "d-1",
+        "symbol": "AAPL",
+        "planned_loss": 500,
+        "cluster_id": "TECH",
+        "sector": "Technology",
+    }
     values.update(overrides)
     return ProposedTradeRisk(**values)
 
