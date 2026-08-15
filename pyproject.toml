@@ -15,6 +15,7 @@ dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]
 daily-alpha = "daily_alpha.cli:main"
+daily-alpha-compare = "daily_alpha.ovtlyr_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
