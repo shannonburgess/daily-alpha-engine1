@@ -55,7 +55,7 @@ class PortfolioSnapshotIngestor:
 
         raw_positions = payload.get("positions")
         if not isinstance(raw_positions, list):
-            raise ValueError("positions must be a list")
+            raise TypeError("positions must be a list")
         positions = tuple(self._parse_position(raw) for raw in raw_positions)
         self._reconcile(payload, positions, errors)
         if errors and status == PortfolioDataStatus.AVAILABLE:
@@ -105,7 +105,7 @@ class PortfolioSnapshotIngestor:
     @classmethod
     def _parse_position(cls, raw: Any) -> Position:
         if not isinstance(raw, dict):
-            raise ValueError("each position must be an object")
+            raise TypeError("each position must be an object")
         try:
             asset_type = AssetType(cls._required_text(raw, "asset_type"))
         except ValueError as exc:
@@ -170,6 +170,5 @@ class PortfolioSnapshotIngestor:
     def _number(payload: dict[str, Any], key: str) -> float:
         value = payload.get(key)
         if isinstance(value, bool) or not isinstance(value, int | float):
-            raise ValueError(f"{key} must be numeric")
+            raise TypeError(f"{key} must be numeric")
         return float(value)
-
