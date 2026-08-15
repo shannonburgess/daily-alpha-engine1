@@ -3,15 +3,14 @@ from datetime import UTC, datetime
 import pytest
 
 from daily_alpha.operations import (
-    missed_pull_alerts,
     ChangeLedger,
     ImmutableRunManifest,
     PullReceipt,
     PullWindow,
     RecoveryStatus,
     RetryPolicy,
+    missed_pull_alerts,
 )
-
 
 HASH_A = "a" * 64
 HASH_B = "b" * 64
