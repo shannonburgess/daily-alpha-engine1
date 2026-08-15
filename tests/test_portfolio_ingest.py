@@ -8,7 +8,6 @@ from daily_alpha.portfolio_ingest import (
     PortfolioSnapshotIngestor,
 )
 
-
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
 
 
