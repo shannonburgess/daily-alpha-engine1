@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.env
+data/incoming/*
+!data/incoming/.gitkeep
+data/output/*
+!data/output/.gitkeep
