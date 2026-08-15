@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Iterable
+from typing import Any
 
 
 class PortfolioDataStatus(StrEnum):
@@ -27,7 +28,7 @@ class Greeks:
     theta: float = 0.0
     vega: float = 0.0
 
-    def scaled(self, quantity: float, multiplier: int) -> "Greeks":
+    def scaled(self, quantity: float, multiplier: int) -> Greeks:
         scale = quantity * multiplier
         return Greeks(
             delta=self.delta * scale,
@@ -98,10 +99,10 @@ class PortfolioSnapshot:
         positions: Iterable[Position],
         data_status: PortfolioDataStatus = PortfolioDataStatus.AVAILABLE,
         reconciliation_errors: Iterable[str] = (),
-    ) -> "PortfolioSnapshot":
+    ) -> PortfolioSnapshot:
         if not snapshot_id or not account_id or not source:
             raise ValueError("snapshot_id, account_id, and source are required")
-        datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        datetime.fromisoformat(as_of)
         errors = tuple(reconciliation_errors)
         if errors and data_status == PortfolioDataStatus.AVAILABLE:
             data_status = PortfolioDataStatus.PARTIAL
@@ -164,4 +165,3 @@ class PortfolioSnapshot:
         for position in payload["positions"]:
             position["asset_type"] = position["asset_type"].value
         return payload
-
