@@ -8,7 +8,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import StrEnum
 
-
 RESEARCH_DISCLAIMER = (
     "Research and paper-trading output only; not investment advice. "
     "Paper and hypothetical results are not live performance."
@@ -88,9 +87,11 @@ class RecommendationRecord:
                 raise ValueError("ENTER requires an instrument, entry, and invalidation")
             if not self.targets:
                 raise ValueError("ENTER requires at least one target")
-        if self.action in {RecommendationAction.CANCEL, RecommendationAction.REJECT}:
-            if self.instrument != "NO_TRADE":
-                raise ValueError("cancelled or rejected records must use NO_TRADE")
+        if (
+            self.action in {RecommendationAction.CANCEL, RecommendationAction.REJECT}
+            and self.instrument != "NO_TRADE"
+        ):
+            raise ValueError("cancelled or rejected records must use NO_TRADE")
 
     @property
     def net_pnl(self) -> float | None:
