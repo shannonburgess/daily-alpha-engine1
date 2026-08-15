@@ -1,5 +1,4 @@
 import pytest
-from daily_alpha.models import InstrumentSelected
 
 from daily_alpha.lifecycle import (
     ExitReason,
@@ -9,6 +8,7 @@ from daily_alpha.lifecycle import (
     TradePlan,
     TradeState,
 )
+from daily_alpha.models import InstrumentSelected
 
 
 def plan(instrument=InstrumentSelected.OPTION) -> TradePlan:
