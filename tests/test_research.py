@@ -18,7 +18,6 @@ from daily_alpha.research import (
     summarize_research,
 )
 
-
 THRESHOLDS = ResearchThresholds(4, 0.1, 1.1, 0.20, 0.75)
 
 
@@ -124,15 +123,15 @@ def test_parameter_instability_and_drawdown_block_headline_return_promotion():
 
 
 def test_model_change_requires_version_bump_and_review():
-    common = dict(
-        model_id="daily-alpha",
-        strategy_version="v3",
-        feature_version="f1",
-        data_version="d1",
-        config_version="c1",
-        experiment_id="exp-1",
-        reviewed_by="Shannon",
-    )
+    common = {
+        "model_id": "daily-alpha",
+        "strategy_version": "v3",
+        "feature_version": "f1",
+        "data_version": "d1",
+        "config_version": "c1",
+        "experiment_id": "exp-1",
+        "reviewed_by": "Shannon",
+    }
     previous = ModelRegistryEntry(model_version="3.0.0", **common)
     with pytest.raises(ValueError, match="version bump"):
         require_version_bump_and_review(
