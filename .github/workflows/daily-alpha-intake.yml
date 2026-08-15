@@ -1,0 +1,76 @@
+name: Daily Alpha intake
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Covers PST and PDT. The gate step permits only 05:30 and 14:30 America/Los_Angeles.
+    - cron: "30 12,13,21,22 * * 1-5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-alpha-intake
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Enforce Pacific schedule
+        id: gate
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            python - <<'PY' >> "$GITHUB_OUTPUT"
+          from datetime import UTC, datetime
+          from pathlib import Path
+          import sys
+
+          sys.path.insert(0, str(Path("src").resolve()))
+          from daily_alpha.schedule import is_scheduled_run_time
+
+          print(f"run={'true' if is_scheduled_run_time(datetime.now(UTC)) else 'false'}")
+          PY
+          fi
+
+      - name: Install intake tools
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          python -m pip install --disable-pip-version-check . gdown==5.2.0
+
+      - name: Download public OVTLYR folder
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir -p data/incoming
+          gdown --folder --remaining-ok "$OVTLYR_FOLDER_URL" -O data/incoming
+
+      - name: Validate newest OVTLYR CSV
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          python - <<'PY'
+          from daily_alpha.sources import OvtlyrInbox
+
+          selected = OvtlyrInbox("data/incoming").latest()
+          print(f"Selected {selected.path.name} ({selected.size_bytes} bytes)")
+          PY
+
+      - name: Upload validated intake
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovtlyr-intake-${{ github.run_id }}
+          path: data/incoming/*.csv
+          if-no-files-found: error
+          retention-days: 30
