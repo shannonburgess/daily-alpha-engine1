@@ -35,8 +35,9 @@ def test_loads_real_ovtlyr_export_headers(tmp_path):
     source = tmp_path / "ovtlyr.csv"
     source.write_text(
         "Symbol,Sector/Index,Current Signal Status,Signal Start Date,Overlay,"
-        "Fear & Greed Heatmap Direction\n"
-        "AAA,Technology,Buy,Aug 14 2026,Uptrend,Moving Up\n",
+        "Fear & Greed Heatmap Direction,Last Close Price ($),30-Day Avg Volume,"
+        "Partial Data Stocks\n"
+        "AAA,Technology,Buy,Aug 14 2026,Uptrend,Moving Up,125.50,1000000,false\n",
         encoding="utf-8",
     )
 
@@ -48,3 +49,6 @@ def test_loads_real_ovtlyr_export_headers(tmp_path):
     assert record.sector == "Technology"
     assert record.trend == "UPTREND"
     assert record.momentum == "MOVING UP"
+    assert record.price == 125.50
+    assert record.average_volume == 1_000_000
+    assert record.partial_data is False

@@ -164,6 +164,7 @@ class OratsClient:
                         ask=ask,
                         open_interest=int(_number(row.get(f"{prefix}OpenInterest"))),
                         volume=int(_number(row.get(f"{prefix}Volume"))),
+                        delta=_optional_number(row.get(f"{prefix}Delta")),
                     )
                 )
         return candidates
@@ -200,3 +201,9 @@ def _number(value: Any) -> float:
         return float(value)
     except (TypeError, ValueError) as exc:
         raise OratsDataError(f"Invalid numeric ORATS value: {value!r}") from exc
+
+
+def _optional_number(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    return _number(value)

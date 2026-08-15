@@ -11,6 +11,8 @@ class OptionQualityRules:
     min_open_interest: int = 100
     min_volume: int = 10
     min_bid: float = 0.05
+    min_abs_delta: float = 0.35
+    max_abs_delta: float = 0.70
 
 
 @dataclass(frozen=True)

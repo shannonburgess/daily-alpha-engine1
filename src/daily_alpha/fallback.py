@@ -94,6 +94,10 @@ class InstrumentFallbackEngine:
             and option.spread_pct <= rules.max_spread_pct
             and option.open_interest >= rules.min_open_interest
             and option.volume >= rules.min_volume
+            and (
+                option.delta is None
+                or rules.min_abs_delta <= abs(option.delta) <= rules.max_abs_delta
+            )
         )
 
     def _stock_passes(self, stock: StockCandidate) -> bool:
