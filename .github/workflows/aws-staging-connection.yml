@@ -15,6 +15,18 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Display exact GitHub OIDC claims
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+            const payload = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString('utf8')
+            );
+            core.notice(`OIDC issuer: ${payload.iss}`);
+            core.notice(`OIDC audience: ${payload.aud}`);
+            core.notice(`OIDC subject: ${payload.sub}`);
+
       - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
