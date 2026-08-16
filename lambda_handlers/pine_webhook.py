@@ -16,12 +16,17 @@ from daily_alpha.signals import SignalError
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Validate a Pine alert and enqueue it; never evaluate or execute a trade."""
-    expected_secret = os.environ.get("PINE_WEBHOOK_SECRET", "")
+    secret_id = os.environ.get("PINE_WEBHOOK_SECRET_ID", "")
     queue_url = os.environ.get("PINE_INGRESS_QUEUE_URL", "")
     request_id = getattr(context, "aws_request_id", None)
 
-    if not expected_secret:
-        return _response(503, "INGRESS_NOT_CONFIGURED", request_id=request_id)
+    if not secret_id:
+        return _response(503, "INGRESS_SECRET_NOT_CONFIGURED", request_id=request_id)
+
+    try:
+        expected_secret = _load_webhook_secret(secret_id)
+    except Exception:  # noqa: BLE001 - public ingress must fail closed on secret retrieval failure
+        return _response(503, "INGRESS_SECRET_ERROR", request_id=request_id)
 
     try:
         record = build_pine_ingress_record(event, expected_secret=expected_secret)
@@ -67,6 +72,28 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         action=record.action,
         request_id=request_id,
     )
+
+
+def _load_webhook_secret(secret_id: str) -> str:
+    """Retrieve the shared secret from Secrets Manager without logging its value."""
+    import boto3
+
+    response = boto3.client("secretsmanager").get_secret_value(SecretId=secret_id)
+    secret_string = response.get("SecretString")
+    if not isinstance(secret_string, str) or not secret_string:
+        raise ValueError("PINE_WEBHOOK_SECRET_VALUE_MISSING")
+
+    try:
+        payload = json.loads(secret_string)
+    except json.JSONDecodeError as exc:
+        raise ValueError("PINE_WEBHOOK_SECRET_JSON_INVALID") from exc
+    if not isinstance(payload, dict):
+        raise TypeError("PINE_WEBHOOK_SECRET_JSON_INVALID")
+
+    value = payload.get("webhook_secret")
+    if not isinstance(value, str) or not value:
+        raise ValueError("PINE_WEBHOOK_SECRET_KEY_MISSING")
+    return value
 
 
 def _response(status_code: int, status: str, **fields: Any) -> dict[str, Any]:
