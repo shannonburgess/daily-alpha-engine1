@@ -1,0 +1,82 @@
+name: Smoke test Daily Alpha staging Lambdas
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  smoke-test:
+    name: Invoke and validate staging Lambdas
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-staging-smoke-test
+          aws-region: us-east-2
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Invoke engine
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-engine \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"smoke_test":true}' \
+            /tmp/engine.json
+          cat /tmp/engine.json
+
+      - name: Invoke report service
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-report \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"smoke_test":true}' \
+            /tmp/report.json
+          cat /tmp/report.json
+
+      - name: Invoke paper trader
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-paper-trader \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"smoke_test":true}' \
+            /tmp/paper_trader.json
+          cat /tmp/paper_trader.json
+
+      - name: Validate fail-closed responses
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          engine = json.loads(Path('/tmp/engine.json').read_text())
+          report = json.loads(Path('/tmp/report.json').read_text())
+          paper = json.loads(Path('/tmp/paper_trader.json').read_text())
+
+          assert engine['ok'] is True
+          assert engine['service'] == 'daily-alpha-engine'
+          assert engine['mode'] == 'PAPER'
+          assert engine['live_trading_enabled'] is False
+          assert engine['event_received'] is True
+
+          assert report['ok'] is True
+          assert report['service'] == 'daily-alpha-report'
+          assert report['publish_enabled'] is False
+          assert report['event_received'] is True
+
+          assert paper['ok'] is True
+          assert paper['service'] == 'daily-alpha-paper-trader'
+          assert paper['paper_trading'] is True
+          assert paper['live_trading_enabled'] is False
+          assert paper['event_received'] is True
+
+          print('All three staging Lambda smoke tests passed safely.')
