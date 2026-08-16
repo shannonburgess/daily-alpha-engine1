@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Any
 
 from .models import InstrumentSelected
+from .smart_money import SmartMoneySnapshot
 
 
 class ResearchDisposition(StrEnum):
@@ -72,12 +73,15 @@ class DailyResearchPacket:
         "Research and paper-trading output only; not investment advice.",
         "No live order execution is authorized.",
     )
+    smart_money: SmartMoneySnapshot | None = None
 
     def __post_init__(self) -> None:
         if not all((self.report_date, self.run_id, self.methodology_version, self.generated_at)):
             raise ValueError("packet identity and version fields are required")
         if len({candidate.symbol for candidate in self.candidates}) != len(self.candidates):
             raise ValueError("candidate symbols must be unique within a daily packet")
+        if self.smart_money is not None and self.smart_money.trading_authorized:
+            raise ValueError("smart-money snapshot cannot authorize trading")
 
     @property
     def counts(self) -> dict[str, int]:
@@ -98,6 +102,7 @@ class DailyResearchPacket:
             "counts": self.counts,
             "candidates": [candidate.to_dict() for candidate in self.candidates],
             "disclosures": list(self.disclosures),
+            "smart_money": self.smart_money.to_dict() if self.smart_money else None,
         }
 
 
