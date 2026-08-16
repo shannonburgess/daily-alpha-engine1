@@ -40,7 +40,7 @@ jobs:
           pip install . --target build --no-deps
           cp -R lambda_handlers build/lambda_handlers
           (cd build && zip -qr ../deployment.zip .)
-          unzip -l deployment.zip | grep -E "lambda_handlers/(engine|report|paper_trader|pine_webhook)\.py"
+          unzip -l deployment.zip | grep -E "lambda_handlers/(engine|report|paper_trader|pine_webhook|pine_processor)\.py"
 
       - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
@@ -100,6 +100,18 @@ jobs:
             --handler lambda_handlers.pine_webhook.lambda_handler
           aws lambda wait function-updated --function-name daily-alpha-pine-ingress
 
+      - name: Deploy Pine processor
+        run: |
+          aws lambda update-function-code \
+            --function-name daily-alpha-pine-processor \
+            --zip-file fileb://deployment.zip \
+            --publish
+          aws lambda wait function-updated --function-name daily-alpha-pine-processor
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --handler lambda_handlers.pine_processor.lambda_handler
+          aws lambda wait function-updated --function-name daily-alpha-pine-processor
+
       - name: Verify deployed configuration
         run: |
           aws lambda get-function-configuration --function-name daily-alpha-engine \
@@ -109,4 +121,6 @@ jobs:
           aws lambda get-function-configuration --function-name daily-alpha-paper-trader \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
           aws lambda get-function-configuration --function-name daily-alpha-pine-ingress \
+            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
+          aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
