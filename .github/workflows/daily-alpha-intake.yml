@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: daily-alpha-intake
@@ -15,11 +16,13 @@ concurrency:
 
 jobs:
   intake:
+    environment: staging
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
       ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
     steps:
       - uses: actions/checkout@v4
 
@@ -69,15 +72,32 @@ jobs:
           mkdir -p data/incoming
           gdown --folder --remaining-ok "$OVTLYR_FOLDER_URL" -O data/incoming
 
-      - name: Validate newest OVTLYR CSV
+      - name: Validate and normalize newest OVTLYR CSV
         if: steps.gate.outputs.run == 'true'
+        id: ovtlyr
+        shell: python
         run: |
-          python - <<'PY'
+          import os
+          from pathlib import Path
+
           from daily_alpha.sources import OvtlyrInbox
+          from daily_alpha.staging_snapshot import write_ovtlyr_snapshot
 
           selected = OvtlyrInbox("data/incoming").latest()
-          print(f"Selected {selected.path.name} ({selected.size_bytes} bytes)")
-          PY
+          destination = Path("data/staging/ovtlyr-latest.json")
+          snapshot = write_ovtlyr_snapshot(
+              selected.path,
+              destination,
+              observed_at=selected.observed_at,
+          )
+          print(
+              f"Selected {selected.path.name} ({selected.size_bytes} bytes); "
+              f"normalized {snapshot['record_count']} symbols and "
+              f"{snapshot['buy_count']} BUY signals"
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"source_path={selected.path}\n")
+              handle.write(f"snapshot_path={destination}\n")
 
       - name: Verify ORATS connectivity and freshness
         if: steps.gate.outputs.run == 'true' && steps.gate.outputs.session != 'MORNING'
@@ -92,11 +112,36 @@ jobs:
           )
           PY
 
+      - name: Configure short-lived AWS credentials
+        if: steps.gate.outputs.run == 'true'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-intake-publish
+          aws-region: us-east-2
+
+      - name: Publish validated OVTLYR snapshot to AWS staging
+        if: steps.gate.outputs.run == 'true'
+        shell: bash
+        run: |
+          SOURCE="${{ steps.ovtlyr.outputs.source_path }}"
+          SNAPSHOT="${{ steps.ovtlyr.outputs.snapshot_path }}"
+          PREFIX="s3://${STAGING_BUCKET}/ovtlyr"
+          HISTORY="${PREFIX}/history/${GITHUB_RUN_ID}"
+
+          aws s3 cp "$SOURCE" "${PREFIX}/latest.csv" --only-show-errors
+          aws s3 cp "$SNAPSHOT" "${PREFIX}/latest.json" --only-show-errors
+          aws s3 cp "$SOURCE" "${HISTORY}/source.csv" --only-show-errors
+          aws s3 cp "$SNAPSHOT" "${HISTORY}/snapshot.json" --only-show-errors
+          echo "Published validated OVTLYR snapshot to ${PREFIX}/latest.json"
+
       - name: Upload validated intake
         if: steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ovtlyr-intake-${{ github.run_id }}
-          path: data/incoming/*.csv
+          path: |
+            data/incoming/*.csv
+            data/staging/ovtlyr-latest.json
           if-no-files-found: error
           retention-days: 30
