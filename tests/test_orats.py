@@ -55,7 +55,8 @@ def test_delayed_chain_uses_standard_strikes_and_is_normalized():
     assert chain.ticker == "AAPL"
     assert len(chain.candidates) == 2
     assert {item.option_type for item in chain.candidates} == {"CALL", "PUT"}
-    assert {item.delta for item in chain.candidates} == {0.55, -0.45}
+    deltas = sorted(item.delta for item in chain.candidates if item.delta is not None)
+    assert deltas == pytest.approx([-0.45, 0.55])
     assert "/datav2/strikes?" in seen_urls[0]
     assert "one-minute" not in seen_urls[0]
     assert "dte=45%2C75" in seen_urls[0]
