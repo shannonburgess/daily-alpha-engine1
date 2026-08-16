@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from .signals import PineSignal, SignalError, parse_pine_signal
+from .signals import PineSignal, parse_pine_signal
 
 
 class PineIngressError(ValueError):
@@ -65,15 +65,11 @@ def build_pine_ingress_record(
         raise PineIngressAuthError("WEBHOOK_AUTH_FAILED")
 
     now = received_at or datetime.now(UTC)
-    try:
-        signal = parse_pine_signal(
-            payload,
-            received_at=now,
-            max_age_minutes=max_age_minutes,
-        )
-    except SignalError:
-        raise
-
+    signal = parse_pine_signal(
+        payload,
+        received_at=now,
+        max_age_minutes=max_age_minutes,
+    )
     return _record_from_signal(signal)
 
 
