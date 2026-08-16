@@ -25,6 +25,11 @@ from .ovtlyr import (
     load_ovtlyr_csv,
     summarize_sector_rotation,
 )
+from .smart_money import (
+    CongressionalAccumulation,
+    InstitutionalAccumulation,
+    smart_money_bonus,
+)
 from .sources import OratsBatchSource
 
 ACTIONABLE_STATUSES = {
@@ -66,6 +71,9 @@ class ResearchShortlistItem:
     selected_open_interest: int = 0
     selected_volume: int = 0
     unusual_options_activity: bool = False
+    smart_money_bonus: float = 0.0
+    congressional_rank: int | None = None
+    institutional_rank: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -80,6 +88,8 @@ class ResearchShortlistResult:
     classifications: tuple[ClassifiedRecord, ...]
     sector_rotation: tuple[SectorRotation, ...]
     summary: dict[str, Any]
+    congressional: tuple[CongressionalAccumulation, ...] = ()
+    institutional: tuple[InstitutionalAccumulation, ...] = ()
 
 
 def discover_daily_pair(root: str | Path) -> tuple[Path, Path]:
@@ -104,8 +114,15 @@ def build_research_shortlist(
     orats_source: OratsBatchSource,
     request_limit: int = 20,
     option_rules: OptionQualityRules | None = None,
+    congressional: tuple[CongressionalAccumulation, ...] = (),
+    institutional: tuple[InstitutionalAccumulation, ...] = (),
 ) -> ResearchShortlistResult:
-    """Rank day-over-day OVTLYR changes, then enrich only the best candidates."""
+    """Rank OVTLYR changes, apply smart-money confirmation, then enrich with ORATS.
+
+    Smart-money inputs are bounded research-ranking factors only. They can change
+    which candidates receive scarce ORATS research requests, but they never
+    authorize a trade or bypass Pine, ORATS freshness, or portfolio risk gates.
+    """
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
     if request_limit <= 0:
@@ -117,10 +134,15 @@ def build_research_shortlist(
     classifications = compare_universes(previous, current)
     rotations = summarize_sector_rotation(classifications)
     sector_scores = {item.sector: item.net_score for item in rotations}
+    congressional_ranks = {item.symbol.upper(): item.rank for item in congressional}
+    institutional_ranks = {item.symbol.upper(): item.rank for item in institutional if item.symbol}
 
-    staged: list[tuple[ClassifiedRecord, OvtlyrRecord, float]] = []
+    staged: list[
+        tuple[ClassifiedRecord, OvtlyrRecord, float, float, int | None, int | None]
+    ] = []
     excluded_not_optionable = 0
     excluded_partial = 0
+    smart_money_matched = 0
     for classified in classifications:
         source = current_by_symbol.get(classified.symbol)
         if source is None or source.signal != "BUY" or classified.status not in ACTIONABLE_STATUSES:
@@ -131,8 +153,22 @@ def build_research_shortlist(
         if source.optionable is False:
             excluded_not_optionable += 1
             continue
-        score = _base_score(classified, source, sector_scores.get(source.sector, 0))
-        staged.append((classified, source, score))
+        base_score = _base_score(classified, source, sector_scores.get(source.sector, 0))
+        bonus = smart_money_bonus(source.symbol, congressional, institutional)
+        congress_rank = congressional_ranks.get(source.symbol.upper())
+        institution_rank = institutional_ranks.get(source.symbol.upper())
+        if bonus > 0:
+            smart_money_matched += 1
+        staged.append(
+            (
+                classified,
+                source,
+                base_score + bonus,
+                bonus,
+                congress_rank,
+                institution_rank,
+            )
+        )
 
     staged.sort(key=lambda row: (-row[2], row[1].symbol))
     requested = tuple(row[1].symbol for row in staged[:request_limit])
@@ -146,10 +182,10 @@ def build_research_shortlist(
     qualified_count = 0
     data_error_count = 0
     excluded_orats_no_dte = 0
-    for classified, source, base_score in staged:
+    for classified, source, ranked_score, bonus, congress_rank, institution_rank in staged:
         symbol = source.symbol
         selected: OptionCandidate | None = None
-        score = base_score
+        score = ranked_score
         if symbol not in requested_set:
             orats_status = "NOT_REQUESTED"
             orats_reason = "API_LIMIT_REACHED"
@@ -215,6 +251,9 @@ def build_research_shortlist(
                 unusual_options_activity=(
                     selected is not None and selected.volume_to_open_interest >= 1.0
                 ),
+                smart_money_bonus=bonus,
+                congressional_rank=congress_rank,
+                institutional_rank=institution_rank,
             )
         )
 
@@ -238,6 +277,11 @@ def build_research_shortlist(
         "qualified_option_count": qualified_count,
         "orats_data_error_count": data_error_count,
         "optionability_authority": "ORATS_FOR_ENRICHED_SYMBOLS",
+        "smart_money_congressional_count": len(congressional),
+        "smart_money_institutional_count": len(institutional),
+        "smart_money_matched_candidates": smart_money_matched,
+        "smart_money_max_bonus": 15.0,
+        "smart_money_research_ranking_only": True,
         "classification_counts": status_counts,
         "trading_authorized": False,
         "paper_execution_triggered": False,
@@ -251,6 +295,8 @@ def build_research_shortlist(
         classifications=tuple(classifications),
         sector_rotation=tuple(rotations),
         summary=summary,
+        congressional=congressional,
+        institutional=institutional,
     )
 
 
@@ -264,6 +310,7 @@ def write_research_shortlist_outputs(
     shortlist_csv = destination / "shortlist.csv"
     classifications_json = destination / "classifications.json"
     sector_json = destination / "sector_rotation.json"
+    smart_money_json = destination / "smart_money.json"
     summary_json = destination / "summary.json"
 
     rows = []
@@ -297,6 +344,25 @@ def write_research_shortlist_outputs(
         + "\n",
         encoding="utf-8",
     )
+    smart_money_json.write_text(
+        json.dumps(
+            {
+                "congressional": [item.to_dict() for item in result.congressional],
+                "institutional": [item.to_dict() for item in result.institutional],
+                "weights": {
+                    "congressional_max": 5.0,
+                    "institutional_max": 10.0,
+                    "combined_max": 15.0,
+                },
+                "research_ranking_only": True,
+                "trading_authorized": False,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     summary_json.write_text(
         json.dumps(result.summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -306,6 +372,7 @@ def write_research_shortlist_outputs(
         "shortlist_csv": shortlist_csv,
         "classifications_json": classifications_json,
         "sector_rotation_json": sector_json,
+        "smart_money_json": smart_money_json,
         "summary_json": summary_json,
     }
 
