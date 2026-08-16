@@ -50,11 +50,9 @@ def test_written_snapshot_round_trips(tmp_path):
 
 
 def test_snapshot_requires_timezone_aware_observation(tmp_path):
+    naive = datetime(2026, 8, 16, 6, 30, tzinfo=UTC).replace(tzinfo=None)
     with pytest.raises(ValueError, match="timezone-aware"):
-        build_ovtlyr_snapshot(
-            _csv(tmp_path),
-            observed_at=datetime(2026, 8, 16, 6, 30),
-        )
+        build_ovtlyr_snapshot(_csv(tmp_path), observed_at=naive)
 
 
 def test_snapshot_rejects_record_count_mismatch(tmp_path):
