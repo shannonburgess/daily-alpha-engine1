@@ -61,7 +61,7 @@ def load_ovtlyr_snapshot(value: str | bytes | dict[str, Any]) -> dict[str, Any]:
         value = value.decode("utf-8")
     payload = json.loads(value) if isinstance(value, str) else value
     if not isinstance(payload, dict):
-        raise ValueError("OVTLYR snapshot must be a JSON object")
+        raise TypeError("OVTLYR snapshot must be a JSON object")
     if payload.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported OVTLYR snapshot schema")
     symbols = payload.get("symbols")
