@@ -31,6 +31,10 @@ class OratsDataError(OratsError):
     """Raised when ORATS data is empty, malformed, or stale."""
 
 
+class OratsNoOptionsError(OratsDataError):
+    """Raised when ORATS has no 45-75 DTE strike rows for the requested symbol."""
+
+
 @dataclass(frozen=True)
 class OratsChain:
     ticker: str
@@ -95,7 +99,9 @@ class OratsClient:
         payload = self._transport(f"{self.BASE_URL}/{path}?{query}", self.timeout_seconds)
         rows = self._extract_rows(payload)
         if not rows:
-            raise OratsDataError(f"ORATS returned no option rows for {symbol}")
+            raise OratsNoOptionsError(
+                f"ORATS returned no 45-75 DTE option rows for {symbol}"
+            )
 
         observed_at = self._latest_observation(rows)
         reference = as_of or datetime.now(UTC)

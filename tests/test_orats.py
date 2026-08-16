@@ -6,6 +6,7 @@ from daily_alpha.orats import (
     OratsClient,
     OratsConfigurationError,
     OratsDataError,
+    OratsNoOptionsError,
 )
 
 
@@ -62,6 +63,16 @@ def test_delayed_chain_uses_standard_strikes_and_is_normalized():
     assert "dte=45%2C75" in seen_urls[0]
     assert "secret" in seen_urls[0]
     assert "AAPL" in seen_urls[0]
+
+
+def test_empty_45_75_chain_is_explicit_no_options_error():
+    client = OratsClient(token="secret", transport=lambda url, timeout: {"data": []})
+
+    with pytest.raises(OratsNoOptionsError, match="45-75 DTE"):
+        client.fetch_chain(
+            "AAPL",
+            as_of=datetime(2026, 8, 15, 17, 30, tzinfo=UTC),
+        )
 
 
 def test_delayed_chain_allows_post_market_research_window():

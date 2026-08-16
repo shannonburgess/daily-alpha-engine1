@@ -40,16 +40,30 @@ def chain(symbol, *, oi=1000, volume=1200, delta=0.55):
 
 
 class FakeSource:
-    def __init__(self, *, failed=()):
+    def __init__(self, *, failed=(), no_options=()):
         self.failed = set(failed)
+        self.no_options = set(no_options)
         self.requested = ()
 
     def fetch(self, symbols, *, as_of):
         assert as_of == NOW
         self.requested = symbols
         return OratsBatchResult(
-            tuple(chain(symbol) for symbol in symbols if symbol not in self.failed),
-            tuple((symbol, "ORATS_DATA_ERROR") for symbol in symbols if symbol in self.failed),
+            tuple(
+                chain(symbol)
+                for symbol in symbols
+                if symbol not in self.failed and symbol not in self.no_options
+            ),
+            tuple(
+                (symbol, "ORATS_NO_45_75_DTE_OPTIONS")
+                for symbol in symbols
+                if symbol in self.no_options
+            )
+            + tuple(
+                (symbol, "ORATS_DATA_ERROR")
+                for symbol in symbols
+                if symbol in self.failed
+            ),
         )
 
 
@@ -95,10 +109,31 @@ def test_ranked_shortlist_enriches_best_and_excludes_non_optionable(tmp_path):
     assert source.requested == ("AAA",)
     assert [item.symbol for item in result.items] == ["AAA", "BBB"]
     assert result.items[0].orats_reason == "QUALIFIED_OPTION_FOUND"
+    assert result.items[0].optionable is True
     assert result.items[0].unusual_options_activity is True
     assert result.items[1].orats_reason == "API_LIMIT_REACHED"
     assert result.summary["excluded_not_optionable"] == 1
     assert result.summary["trading_authorized"] is False
+
+
+def test_orats_no_dte_chain_is_filtered_from_shortlist(tmp_path):
+    previous = write_csv(
+        tmp_path / "OVTLYR_2026-08-13.csv",
+        ["AAA,Hold,2026-08-13,Technology,Software,Up,Rising,,100,1000000"],
+    )
+    current = write_csv(
+        tmp_path / "OVTLYR_2026-08-14.csv",
+        ["AAA,Buy,2026-08-14,Technology,Software,Up,Accelerating,,101,1000000"],
+    )
+    result = build_research_shortlist(
+        previous,
+        current,
+        as_of=NOW,
+        orats_source=FakeSource(no_options=("AAA",)),
+    )
+    assert result.items == ()
+    assert result.summary["excluded_orats_no_45_75_dte_options"] == 1
+    assert result.summary["optionability_authority"] == "ORATS_FOR_ENRICHED_SYMBOLS"
 
 
 def test_orats_error_never_creates_stock_fallback(tmp_path):

@@ -51,7 +51,6 @@ jobs:
         run: |
           import os
           from datetime import UTC, datetime
-          from pathlib import Path
 
           from daily_alpha.orats import OratsClient
           from daily_alpha.research_shortlist import (
@@ -81,9 +80,10 @@ jobs:
           print(
               f"Compared {result.previous_file} -> {result.current_file}; "
               f"ranked {summary['actionable_ranked_count']} actionable candidates, "
-              f"excluded {summary['excluded_not_optionable']} non-optionable symbols, "
-              f"requested {summary['orats_requests']} ORATS chains, and found "
-              f"{summary['qualified_option_count']} qualified option setups."
+              f"excluded {summary['excluded_not_optionable']} OVTLYR non-optionable symbols, "
+              f"excluded {summary['excluded_orats_no_45_75_dte_options']} ORATS symbols "
+              f"without a 45-75 DTE chain, requested {summary['orats_requests']} ORATS chains, "
+              f"and found {summary['qualified_option_count']} qualified option setups."
           )
           print("Top ranked candidates:")
           for rank, item in enumerate(result.items[:10], start=1):
@@ -96,6 +96,10 @@ jobs:
               handle.write(f"current_file={result.current_file}\n")
               handle.write(f"ranked_count={summary['actionable_ranked_count']}\n")
               handle.write(f"qualified_count={summary['qualified_option_count']}\n")
+              handle.write(
+                  "orats_no_dte_count="
+                  f"{summary['excluded_orats_no_45_75_dte_options']}\n"
+              )
           assert all(path.exists() for path in outputs.values())
 
       - name: Configure short-lived AWS credentials
@@ -133,6 +137,7 @@ jobs:
             echo "- Previous OVTLYR: ${{ steps.shortlist.outputs.previous_file }}"
             echo "- Current OVTLYR: ${{ steps.shortlist.outputs.current_file }}"
             echo "- Actionable ranked candidates: ${{ steps.shortlist.outputs.ranked_count }}"
+            echo "- ORATS exclusions with no 45-75 DTE chain: ${{ steps.shortlist.outputs.orats_no_dte_count }}"
             echo "- Qualified 45-75 DTE option setups in ORATS-enriched top 20: ${{ steps.shortlist.outputs.qualified_count }}"
             echo "- Research only: no paper or live trade was authorized by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"
