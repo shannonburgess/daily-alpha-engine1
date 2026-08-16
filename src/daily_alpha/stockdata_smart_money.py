@@ -36,6 +36,7 @@ class InstitutionalCoverage:
 
 class StockDataSmartMoneyClient:
     BASE_URL = "https://api.stockdata.dev/v1"
+    USER_AGENT = "DailyAlphaResearch/0.1 (+https://github.com/shannonburgess/daily-alpha-engine1)"
 
     def __init__(
         self,
@@ -109,7 +110,11 @@ class StockDataSmartMoneyClient:
         as_of: date,
         institution_limit: int = 25,
         portfolio_limit: int = 500,
-    ) -> tuple[tuple[InstitutionalHolding, ...], tuple[InstitutionalHolding, ...], InstitutionalCoverage]:
+    ) -> tuple[
+        tuple[InstitutionalHolding, ...],
+        tuple[InstitutionalHolding, ...],
+        InstitutionalCoverage,
+    ]:
         if institution_limit <= 0 or institution_limit > 200:
             raise ValueError("institution_limit must be between 1 and 200")
         if portfolio_limit <= 0 or portfolio_limit > 500:
@@ -165,8 +170,14 @@ class StockDataSmartMoneyClient:
         url = f"{self.BASE_URL}/{path}"
         if query:
             url = f"{url}?{query}"
+        headers = {
+            "X-API-Key": self._api_key,
+            "Accept": "application/json",
+            "User-Agent": self.USER_AGENT,
+            "Connection": "close",
+        }
         try:
-            return self._transport(url, {"X-API-Key": self._api_key, "Accept": "application/json"})
+            return self._transport(url, headers)
         except SmartMoneySourceError:
             raise
         except Exception as exc:
@@ -186,16 +197,27 @@ class StockDataSmartMoneyClient:
 
     @staticmethod
     def _request_json(url: str, headers: Mapping[str, str]) -> Any:
-        request = Request(url, headers=dict(headers))
-        try:
-            with urlopen(request, timeout=30) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            raise SmartMoneySourceError(f"STOCKDATA_HTTP_{exc.code}") from exc
-        except URLError as exc:
-            raise SmartMoneySourceError("STOCKDATA_NETWORK_ERROR") from exc
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise SmartMoneySourceError("STOCKDATA_INVALID_JSON") from exc
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            request = Request(url, headers=dict(headers))
+            try:
+                with urlopen(request, timeout=20) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                if exc.code not in {429, 500, 502, 503, 504}:
+                    raise SmartMoneySourceError(f"STOCKDATA_HTTP_{exc.code}") from exc
+                last_error = exc
+            except URLError as exc:
+                last_error = exc
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise SmartMoneySourceError("STOCKDATA_INVALID_JSON") from exc
+
+            if attempt < 3:
+                time.sleep(float(attempt * 2))
+
+        if isinstance(last_error, HTTPError):
+            raise SmartMoneySourceError(f"STOCKDATA_HTTP_{last_error.code}") from last_error
+        raise SmartMoneySourceError("STOCKDATA_NETWORK_ERROR") from last_error
 
 
 def _portfolio_holdings(
