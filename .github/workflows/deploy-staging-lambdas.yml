@@ -40,7 +40,7 @@ jobs:
           pip install . --target build --no-deps
           cp -R lambda_handlers build/lambda_handlers
           (cd build && zip -qr ../deployment.zip .)
-          unzip -l deployment.zip | grep -E "lambda_handlers/(engine|report|paper_trader)\.py"
+          unzip -l deployment.zip | grep -E "lambda_handlers/(engine|report|paper_trader|pine_webhook)\.py"
 
       - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
@@ -88,6 +88,18 @@ jobs:
             --handler lambda_handlers.paper_trader.lambda_handler
           aws lambda wait function-updated --function-name daily-alpha-paper-trader
 
+      - name: Deploy Pine ingress
+        run: |
+          aws lambda update-function-code \
+            --function-name daily-alpha-pine-ingress \
+            --zip-file fileb://deployment.zip \
+            --publish
+          aws lambda wait function-updated --function-name daily-alpha-pine-ingress
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-pine-ingress \
+            --handler lambda_handlers.pine_webhook.lambda_handler
+          aws lambda wait function-updated --function-name daily-alpha-pine-ingress
+
       - name: Verify deployed configuration
         run: |
           aws lambda get-function-configuration --function-name daily-alpha-engine \
@@ -95,4 +107,6 @@ jobs:
           aws lambda get-function-configuration --function-name daily-alpha-report \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
           aws lambda get-function-configuration --function-name daily-alpha-paper-trader \
+            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
+          aws lambda get-function-configuration --function-name daily-alpha-pine-ingress \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
