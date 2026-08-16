@@ -11,6 +11,7 @@ from .orats import (
     OratsClient,
     OratsConfigurationError,
     OratsDataError,
+    OratsNoOptionsError,
     OratsRequestError,
 )
 
@@ -92,6 +93,8 @@ class OratsBatchSource:
                 errors.append((symbol, "ORATS_CONFIGURATION_ERROR"))
             except OratsRequestError:
                 errors.append((symbol, "ORATS_REQUEST_ERROR"))
+            except OratsNoOptionsError:
+                errors.append((symbol, "ORATS_NO_45_75_DTE_OPTIONS"))
             except OratsDataError:
                 errors.append((symbol, "ORATS_DATA_ERROR"))
         return OratsBatchResult(tuple(chains), tuple(errors))
