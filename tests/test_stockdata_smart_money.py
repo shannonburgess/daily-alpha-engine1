@@ -3,6 +3,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from daily_alpha.smart_money_sources import SmartMoneySourceError
 from daily_alpha.stockdata_smart_money import StockDataSmartMoneyClient
 
 
@@ -103,6 +104,47 @@ def test_institutional_pair_uses_latest_reportable_quarters():
     assert current[0].shares == 150
     assert previous[0].shares == 100
     assert len(calls) == 3
+
+
+def test_missing_prior_institution_quarter_is_empty_not_fatal():
+    def transport(url, headers):
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        if parsed.path.endswith("/institutions"):
+            return {
+                "institutions": [
+                    {
+                        "institution": "New Fund",
+                        "institution_cik": "0002",
+                    }
+                ]
+            }
+        if parsed.path.endswith("/institutions/portfolio/0002"):
+            if params["period"] == ["2026-Q2"]:
+                return {
+                    "holdings": [
+                        {
+                            "institution": "New Fund",
+                            "ticker": "NVDA",
+                            "report_date": "2026-06-30",
+                            "shares": 500,
+                            "value": 100000,
+                        }
+                    ]
+                }
+            raise SmartMoneySourceError("STOCKDATA_HTTP_404")
+        raise AssertionError(url)
+
+    client = StockDataSmartMoneyClient(
+        api_key="secret", transport=transport, min_request_interval_seconds=0
+    )
+    current, previous, coverage = client.fetch_institutional_holdings_pair(
+        as_of=date(2026, 8, 16), institution_limit=1
+    )
+    assert len(current) == 1
+    assert current[0].symbol == "NVDA"
+    assert previous == ()
+    assert coverage.previous_rows == 0
 
 
 def test_missing_api_key_fails_closed(monkeypatch):
