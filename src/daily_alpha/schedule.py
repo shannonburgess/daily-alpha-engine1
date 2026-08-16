@@ -15,3 +15,11 @@ def is_scheduled_run_time(moment: datetime) -> bool:
         raise ValueError("schedule moment must be timezone-aware")
     local = moment.astimezone(PACIFIC)
     return local.weekday() < 5 and (local.hour, local.minute) in RUN_TIMES
+
+
+def scheduled_session(moment: datetime) -> str | None:
+    """Return the approved session label for a scheduled UTC instant."""
+    if not is_scheduled_run_time(moment):
+        return None
+    local = moment.astimezone(PACIFIC)
+    return "MORNING" if (local.hour, local.minute) == (5, 30) else "AFTERNOON"
