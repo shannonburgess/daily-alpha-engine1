@@ -1,0 +1,215 @@
+name: Functional test Daily Alpha staging paper ledger
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  functional-test:
+    name: Validate durable staging paper ledger
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-paper-ledger-functional-test
+          aws-region: us-east-2
+
+      - name: Build qualified engine payload
+        shell: python
+        run: |
+          import json
+          import os
+          from datetime import UTC, datetime, timedelta
+          from pathlib import Path
+
+          now = datetime.now(UTC)
+          symbol = f"DA{os.environ['GITHUB_RUN_ID'][-8:]}"
+          payload = {
+              "operation": "EVALUATE_ENTRY",
+              "signal": {
+                  "signal_id": f"paper-ledger-{os.environ['GITHUB_RUN_ID']}",
+                  "symbol": symbol,
+                  "action": "ENTRY_LONG",
+                  "strategy": "DAILY_ALPHA_PINE",
+                  "strategy_version": "staging-v1",
+                  "timeframe": "1D",
+                  "price": 220.0,
+                  "bar_time": (now - timedelta(minutes=1)).isoformat(),
+              },
+              "portfolio": {
+                  "snapshot_id": f"paper-ledger-{os.environ['GITHUB_RUN_ID']}",
+                  "account_id": "paper-staging",
+                  "source": "GITHUB_ACTIONS_PAPER_LEDGER_TEST",
+                  "as_of": now.isoformat(),
+                  "cash": 1000000.0,
+                  "buying_power": 1000000.0,
+                  "positions": [],
+                  "data_status": "AVAILABLE",
+              },
+              "risk_state": {},
+              "proposed_trade": {
+                  "planned_loss": 3000.0,
+                  "cluster_id": "FUNCTIONAL_TEST",
+                  "sector": "TECHNOLOGY",
+                  "liquidity_score": 0.95,
+              },
+              "market": {
+                  "option_data_available": True,
+                  "option_data_observed_at": (now - timedelta(minutes=5)).isoformat(),
+                  "orats_mode": "delayed",
+                  "options": [{
+                      "expiration": "2026-10-16",
+                      "strike": 220.0,
+                      "option_type": "CALL",
+                      "dte": 60,
+                      "bid": 5.0,
+                      "ask": 5.2,
+                      "open_interest": 1000,
+                      "volume": 200,
+                      "delta": 0.50,
+                  }],
+                  "stock": {
+                      "price": 220.0,
+                      "average_daily_dollar_volume": 5000000000.0,
+                      "eligible": True,
+                  },
+              },
+          }
+          Path("/tmp/engine-payload.json").write_text(json.dumps(payload))
+          Path("/tmp/symbol.txt").write_text(symbol)
+
+      - name: Invoke staging decision engine
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-engine \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/engine-payload.json \
+            /tmp/engine-response.json
+          cat /tmp/engine-response.json
+
+      - name: Build paper ledger payloads
+        shell: python
+        run: |
+          import json
+          from datetime import UTC, datetime, timedelta
+          from pathlib import Path
+
+          engine = json.loads(Path("/tmp/engine-response.json").read_text())
+          symbol = Path("/tmp/symbol.txt").read_text().strip()
+          Path("/tmp/open.json").write_text(json.dumps({
+              "operation": "OPEN_FROM_DECISION",
+              "engine_result": engine,
+          }))
+          Path("/tmp/get-open.json").write_text(json.dumps({
+              "operation": "GET_OPEN",
+              "symbol": symbol,
+          }))
+          now = datetime.now(UTC)
+          Path("/tmp/close.json").write_text(json.dumps({
+              "operation": "CLOSE_FROM_SIGNAL",
+              "signal": {
+                  "signal_id": f"{engine['signal']['signal_id']}-exit",
+                  "symbol": symbol,
+                  "action": "EXIT",
+                  "strategy": engine["signal"]["strategy"],
+                  "strategy_version": engine["signal"]["strategy_version"],
+                  "timeframe": engine["signal"]["timeframe"],
+                  "price": 225.0,
+                  "bar_time": (now - timedelta(seconds=5)).isoformat(),
+              },
+              "pricing": {"option_exit_price": 5.7},
+          }))
+
+      - name: Open durable paper position
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-paper-trader \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/open.json \
+            /tmp/open-response.json
+          cat /tmp/open-response.json
+
+      - name: Retry identical open for idempotency
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-paper-trader \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/open.json \
+            /tmp/retry-response.json
+          cat /tmp/retry-response.json
+
+      - name: Read durable open position
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-paper-trader \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/get-open.json \
+            /tmp/get-response.json
+          cat /tmp/get-response.json
+
+      - name: Close with approved exit signal
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-paper-trader \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/close.json \
+            /tmp/close-response.json
+          cat /tmp/close-response.json
+
+      - name: Confirm no open position remains
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-paper-trader \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/get-open.json \
+            /tmp/after-response.json
+          cat /tmp/after-response.json
+
+      - name: Validate durable paper-ledger behavior
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          engine = json.loads(Path("/tmp/engine-response.json").read_text())
+          opened = json.loads(Path("/tmp/open-response.json").read_text())
+          retried = json.loads(Path("/tmp/retry-response.json").read_text())
+          current = json.loads(Path("/tmp/get-response.json").read_text())
+          closed = json.loads(Path("/tmp/close-response.json").read_text())
+          after = json.loads(Path("/tmp/after-response.json").read_text())
+
+          assert engine["decision"]["instrument_selected"] == "OPTION"
+          assert opened["ok"] is True
+          assert opened["trade"]["instrument"] == "OPTION"
+          assert opened["trade"]["entry_price"] == 5.2
+          assert opened["paper_trade_written"] is True
+          assert opened["live_trading_enabled"] is False
+
+          assert retried["ok"] is True
+          assert retried["idempotent"] is True
+          assert retried["paper_trade_written"] is False
+          assert retried["trade"]["trade_id"] == opened["trade"]["trade_id"]
+
+          assert current["ok"] is True
+          assert current["count"] == 1
+          assert current["trades"][0]["trade_id"] == opened["trade"]["trade_id"]
+
+          assert closed["ok"] is True
+          assert closed["status"] == "CLOSED"
+          assert closed["closed_trades"][0]["state"] == "CLOSED"
+          assert closed["closed_trades"][0]["realized_pnl"] > 0
+          assert closed["live_trading_enabled"] is False
+
+          assert after["ok"] is True
+          assert after["count"] == 0
+          assert after["status"] == "NO_OPEN_POSITION"
+
+          print("Durable staging paper ledger passed open/idempotency/read/exit checks.")
