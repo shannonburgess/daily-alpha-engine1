@@ -69,6 +69,8 @@ jobs:
           )
           from daily_alpha.sources import OratsBatchSource
           from daily_alpha.stockdata_smart_money import StockDataSmartMoneyClient
+          from daily_alpha.trump_policy import rank_trump_policy_companies
+          from daily_alpha.white_house_policy import fetch_white_house_investments
 
           previous, current = discover_daily_pair("data/incoming")
           now = datetime.now(UTC)
@@ -94,6 +96,11 @@ jobs:
               limit=5,
           )
 
+          policy_watch = rank_trump_policy_companies(
+              fetch_white_house_investments(limit=50),
+              limit=10,
+          )
+
           # Research data may legitimately be Friday's close during a weekend or
           # Monday premarket. Execution remains governed by runtime.py's strict
           # 25-minute delayed-data gate before any paper trade can be authorized.
@@ -108,6 +115,7 @@ jobs:
               request_limit=20,
               congressional=congressional,
               institutional=institutional,
+              trump_policy=policy_watch,
           )
           outputs = write_research_shortlist_outputs("data/shortlist", result)
           summary = result.summary
@@ -117,8 +125,9 @@ jobs:
               f"excluded {summary['excluded_not_optionable']} OVTLYR non-optionable symbols, "
               f"excluded {summary['excluded_orats_no_45_75_dte_options']} ORATS symbols "
               f"without a 45-75 DTE chain, requested {summary['orats_requests']} ORATS chains, "
-              f"found {summary['qualified_option_count']} qualified option setups, and "
-              f"matched {summary['smart_money_matched_candidates']} candidates to smart-money leaders."
+              f"found {summary['qualified_option_count']} qualified option setups, matched "
+              f"{summary['smart_money_matched_candidates']} smart-money candidates and "
+              f"{summary['trump_policy_matched_candidates']} policy-watch candidates."
           )
           print(
               "Smart-money leaders: Congress="
@@ -126,16 +135,21 @@ jobs:
               + " | Institutions="
               + ", ".join(item.symbol or item.cusip for item in institutional)
           )
+          print(
+              "Trump Administration Company & Policy Watch="
+              + ", ".join(item.symbol for item in policy_watch)
+          )
           print("Top ranked candidates:")
           for rank, item in enumerate(result.items[:10], start=1):
-              smart = (
-                  f" smart_money=+{item.smart_money_bonus:.1f}"
-                  if item.smart_money_bonus > 0
-                  else ""
-              )
+              extras = []
+              if item.smart_money_bonus > 0:
+                  extras.append(f"smart_money=+{item.smart_money_bonus:.1f}")
+              if item.trump_policy_bonus > 0:
+                  extras.append(f"policy=+{item.trump_policy_bonus:.1f}")
+              confirmation = " " + " ".join(extras) if extras else ""
               print(
                   f"{rank:02d} {item.symbol} {item.display_label} "
-                  f"score={item.score:.2f}{smart} ORATS={item.orats_reason}"
+                  f"score={item.score:.2f}{confirmation} ORATS={item.orats_reason}"
               )
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"previous_file={result.previous_file}\n")
@@ -150,11 +164,19 @@ jobs:
                   f"smart_money_matches={summary['smart_money_matched_candidates']}\n"
               )
               handle.write(
+                  f"trump_policy_matches={summary['trump_policy_matched_candidates']}\n"
+              )
+              handle.write(
                   "congress_top=" + ", ".join(item.symbol for item in congressional) + "\n"
               )
               handle.write(
                   "institution_top="
                   + ", ".join(item.symbol or item.cusip for item in institutional)
+                  + "\n"
+              )
+              handle.write(
+                  "trump_policy_top="
+                  + ", ".join(item.symbol for item in policy_watch[:5])
                   + "\n"
               )
               handle.write(
@@ -201,11 +223,14 @@ jobs:
             echo "- Current OVTLYR: ${{ steps.shortlist.outputs.current_file }}"
             echo "- Actionable ranked candidates: ${{ steps.shortlist.outputs.ranked_count }}"
             echo "- Smart-money matches in actionable universe: ${{ steps.shortlist.outputs.smart_money_matches }}"
+            echo "- Trump policy-watch matches in actionable universe: ${{ steps.shortlist.outputs.trump_policy_matches }}"
             echo "- Congressional Top 5: ${{ steps.shortlist.outputs.congress_top }}"
             echo "- Institutional Top 5: ${{ steps.shortlist.outputs.institution_top }}"
+            echo "- Trump Administration Policy Watch Top 5: ${{ steps.shortlist.outputs.trump_policy_top }}"
             echo "- 13F comparison: ${{ steps.shortlist.outputs.previous_13f_period }} -> ${{ steps.shortlist.outputs.current_13f_period }}"
             echo "- ORATS exclusions with no 45-75 DTE chain: ${{ steps.shortlist.outputs.orats_no_dte_count }}"
             echo "- Qualified 45-75 DTE option setups in ORATS-enriched top 20: ${{ steps.shortlist.outputs.qualified_count }}"
-            echo "- Smart-money weights are confirmation only: Congress max +5, institutions max +10."
+            echo "- Confirmation weights: Congress max +5, institutions max +10, Trump policy watch max +5."
+            echo "- Policy-watch rows are not presented as President Trump stock recommendations."
             echo "- Research only: no paper or live trade was authorized by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"

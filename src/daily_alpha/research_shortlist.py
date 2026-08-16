@@ -31,6 +31,7 @@ from .smart_money import (
     smart_money_bonus,
 )
 from .sources import OratsBatchSource
+from .trump_policy import TrumpPolicyCompany, trump_policy_bonus
 
 ACTIONABLE_STATUSES = {
     OvtlyrStatus.NEW_BUY,
@@ -74,6 +75,8 @@ class ResearchShortlistItem:
     smart_money_bonus: float = 0.0
     congressional_rank: int | None = None
     institutional_rank: int | None = None
+    trump_policy_bonus: float = 0.0
+    trump_policy_rank: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -90,6 +93,7 @@ class ResearchShortlistResult:
     summary: dict[str, Any]
     congressional: tuple[CongressionalAccumulation, ...] = ()
     institutional: tuple[InstitutionalAccumulation, ...] = ()
+    trump_policy: tuple[TrumpPolicyCompany, ...] = ()
 
 
 def discover_daily_pair(root: str | Path) -> tuple[Path, Path]:
@@ -116,12 +120,14 @@ def build_research_shortlist(
     option_rules: OptionQualityRules | None = None,
     congressional: tuple[CongressionalAccumulation, ...] = (),
     institutional: tuple[InstitutionalAccumulation, ...] = (),
+    trump_policy: tuple[TrumpPolicyCompany, ...] = (),
 ) -> ResearchShortlistResult:
-    """Rank OVTLYR changes, apply smart-money confirmation, then enrich with ORATS.
+    """Rank OVTLYR changes, apply research confirmation, then enrich with ORATS.
 
-    Smart-money inputs are bounded research-ranking factors only. They can change
-    which candidates receive scarce ORATS research requests, but they never
-    authorize a trade or bypass Pine, ORATS freshness, or portfolio risk gates.
+    Smart-money and Trump-administration policy inputs are bounded research-ranking
+    factors only. They can change which candidates receive scarce ORATS research
+    requests, but they never authorize a trade or bypass Pine, ORATS freshness,
+    or portfolio risk gates.
     """
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
@@ -135,17 +141,34 @@ def build_research_shortlist(
     rotations = summarize_sector_rotation(classifications)
     sector_scores = {item.sector: item.net_score for item in rotations}
     congressional_ranks = {item.symbol.upper(): item.rank for item in congressional}
-    institutional_ranks = {item.symbol.upper(): item.rank for item in institutional if item.symbol}
+    institutional_ranks = {
+        item.symbol.upper(): item.rank for item in institutional if item.symbol
+    }
+    trump_policy_ranks = {item.symbol.upper(): item.rank for item in trump_policy}
 
     staged: list[
-        tuple[ClassifiedRecord, OvtlyrRecord, float, float, int | None, int | None]
+        tuple[
+            ClassifiedRecord,
+            OvtlyrRecord,
+            float,
+            float,
+            int | None,
+            int | None,
+            float,
+            int | None,
+        ]
     ] = []
     excluded_not_optionable = 0
     excluded_partial = 0
     smart_money_matched = 0
+    trump_policy_matched = 0
     for classified in classifications:
         source = current_by_symbol.get(classified.symbol)
-        if source is None or source.signal != "BUY" or classified.status not in ACTIONABLE_STATUSES:
+        if (
+            source is None
+            or source.signal != "BUY"
+            or classified.status not in ACTIONABLE_STATUSES
+        ):
             continue
         if source.partial_data:
             excluded_partial += 1
@@ -153,20 +176,28 @@ def build_research_shortlist(
         if source.optionable is False:
             excluded_not_optionable += 1
             continue
-        base_score = _base_score(classified, source, sector_scores.get(source.sector, 0))
-        bonus = smart_money_bonus(source.symbol, congressional, institutional)
+        base_score = _base_score(
+            classified, source, sector_scores.get(source.sector, 0)
+        )
+        smart_bonus = smart_money_bonus(source.symbol, congressional, institutional)
+        policy_bonus = trump_policy_bonus(source.symbol, trump_policy)
         congress_rank = congressional_ranks.get(source.symbol.upper())
         institution_rank = institutional_ranks.get(source.symbol.upper())
-        if bonus > 0:
+        policy_rank = trump_policy_ranks.get(source.symbol.upper())
+        if smart_bonus > 0:
             smart_money_matched += 1
+        if policy_bonus > 0:
+            trump_policy_matched += 1
         staged.append(
             (
                 classified,
                 source,
-                base_score + bonus,
-                bonus,
+                base_score + smart_bonus + policy_bonus,
+                smart_bonus,
                 congress_rank,
                 institution_rank,
+                policy_bonus,
+                policy_rank,
             )
         )
 
@@ -182,7 +213,16 @@ def build_research_shortlist(
     qualified_count = 0
     data_error_count = 0
     excluded_orats_no_dte = 0
-    for classified, source, ranked_score, bonus, congress_rank, institution_rank in staged:
+    for (
+        classified,
+        source,
+        ranked_score,
+        smart_bonus,
+        congress_rank,
+        institution_rank,
+        policy_bonus,
+        policy_rank,
+    ) in staged:
         symbol = source.symbol
         selected: OptionCandidate | None = None
         score = ranked_score
@@ -207,8 +247,6 @@ def build_research_shortlist(
                 orats_reason = "ORATS_CHAIN_MISSING"
                 optionable = source.optionable
             else:
-                # A returned ORATS 45-75 DTE chain is the authoritative
-                # optionability signal for the enriched research shortlist.
                 optionable = True
                 selected = _best_qualified_option(chain.candidates, rules)
                 if selected is None:
@@ -245,15 +283,19 @@ def build_research_shortlist(
                 selected_delta=selected.delta if selected else None,
                 selected_bid=selected.bid if selected else 0.0,
                 selected_ask=selected.ask if selected else 0.0,
-                selected_spread_pct=(round(selected.spread_pct, 6) if selected else None),
+                selected_spread_pct=(
+                    round(selected.spread_pct, 6) if selected else None
+                ),
                 selected_open_interest=selected.open_interest if selected else 0,
                 selected_volume=selected.volume if selected else 0,
                 unusual_options_activity=(
                     selected is not None and selected.volume_to_open_interest >= 1.0
                 ),
-                smart_money_bonus=bonus,
+                smart_money_bonus=smart_bonus,
                 congressional_rank=congress_rank,
                 institutional_rank=institution_rank,
+                trump_policy_bonus=policy_bonus,
+                trump_policy_rank=policy_rank,
             )
         )
 
@@ -282,6 +324,11 @@ def build_research_shortlist(
         "smart_money_matched_candidates": smart_money_matched,
         "smart_money_max_bonus": 15.0,
         "smart_money_research_ranking_only": True,
+        "trump_policy_company_count": len(trump_policy),
+        "trump_policy_matched_candidates": trump_policy_matched,
+        "trump_policy_max_bonus": 5.0,
+        "trump_policy_research_ranking_only": True,
+        "external_confirmation_max_bonus": 20.0,
         "classification_counts": status_counts,
         "trading_authorized": False,
         "paper_execution_triggered": False,
@@ -297,6 +344,7 @@ def build_research_shortlist(
         summary=summary,
         congressional=congressional,
         institutional=institutional,
+        trump_policy=trump_policy,
     )
 
 
@@ -311,6 +359,7 @@ def write_research_shortlist_outputs(
     classifications_json = destination / "classifications.json"
     sector_json = destination / "sector_rotation.json"
     smart_money_json = destination / "smart_money.json"
+    trump_policy_json = destination / "trump_policy.json"
     summary_json = destination / "summary.json"
 
     rows = []
@@ -363,6 +412,22 @@ def write_research_shortlist_outputs(
         + "\n",
         encoding="utf-8",
     )
+    trump_policy_json.write_text(
+        json.dumps(
+            {
+                "companies": [item.to_dict() for item in result.trump_policy],
+                "max_bonus": 5.0,
+                "label": "Trump Administration Company & Policy Watch",
+                "not_presidential_stock_recommendations": True,
+                "research_ranking_only": True,
+                "trading_authorized": False,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     summary_json.write_text(
         json.dumps(result.summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -373,6 +438,7 @@ def write_research_shortlist_outputs(
         "classifications_json": classifications_json,
         "sector_rotation_json": sector_json,
         "smart_money_json": smart_money_json,
+        "trump_policy_json": trump_policy_json,
         "summary_json": summary_json,
     }
 
@@ -392,7 +458,13 @@ def _base_score(
     points = float(status_points)
     if source.trend in {"UP", "UPTREND", "BULLISH", "RISING"}:
         points += 10
-    if source.momentum in {"ACCELERATING", "STRONG", "RISING", "POSITIVE", "MOVING UP"}:
+    if source.momentum in {
+        "ACCELERATING",
+        "STRONG",
+        "RISING",
+        "POSITIVE",
+        "MOVING UP",
+    }:
         points += 10
     points += max(-10.0, min(15.0, sector_net_score / 10))
     if source.optionable is True:
