@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from daily_alpha.orats import OratsDataError
+from daily_alpha.orats import OratsDataError, OratsNoOptionsError
 from daily_alpha.sources import OratsBatchSource, OvtlyrInbox, SourceError
 
 NOW = datetime(2026, 8, 15, 13, 0, tzinfo=UTC)
@@ -41,15 +41,22 @@ def test_missing_and_stale_inbox_fail_closed(tmp_path):
 
 class FakeClient:
     def fetch_chain(self, symbol, *, as_of):
+        if symbol == "NOOPT":
+            raise OratsNoOptionsError("no rows")
         if symbol == "BAD":
             raise OratsDataError("sensitive upstream detail")
         return (symbol, as_of)
 
 
 def test_orats_batch_deduplicates_symbols_and_returns_safe_error_codes():
-    result = OratsBatchSource(FakeClient()).fetch(("aapl", "AAPL", "BAD"), as_of=NOW)
+    result = OratsBatchSource(FakeClient()).fetch(
+        ("aapl", "AAPL", "NOOPT", "BAD"), as_of=NOW
+    )
     assert len(result.chains) == 1
-    assert result.errors == (("BAD", "ORATS_DATA_ERROR"),)
+    assert result.errors == (
+        ("NOOPT", "ORATS_NO_45_75_DTE_OPTIONS"),
+        ("BAD", "ORATS_DATA_ERROR"),
+    )
     assert result.complete is False
     assert "sensitive" not in repr(result)
 
