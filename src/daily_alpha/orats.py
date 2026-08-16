@@ -43,7 +43,11 @@ Transport = Callable[[str, float], Any]
 
 
 class OratsClient:
-    """Retrieve and normalize ORATS one-minute option-chain data.
+    """Retrieve and normalize ORATS option-chain data.
+
+    ``delayed`` uses the standard delayed Data API ``/strikes`` endpoint, which
+    is separate from the premium one-minute intraday API. ``live`` uses the
+    standard live ``/live/strikes`` endpoint.
 
     The token is read from ORATS_TOKEN and is never accepted in logs or
     serialized objects. A custom transport can be injected for unit tests.
@@ -69,7 +73,11 @@ class OratsClient:
             raise OratsConfigurationError("ORATS mode must be 'delayed' or 'live'")
         self.mode = mode
         self.timeout_seconds = timeout_seconds
-        self.max_age_minutes = max_age_minutes or (25 if mode == "delayed" else 5)
+        # The delayed Data API is suitable for scheduled research and the
+        # post-market 14:30 Pacific intake, so allow up to two hours here.
+        # The decision runtime still applies its own stricter execution-time
+        # freshness gate before any paper trade can be authorized.
+        self.max_age_minutes = max_age_minutes or (120 if mode == "delayed" else 5)
         self._transport = transport or self._request_json
 
     def fetch_chain(
@@ -82,12 +90,8 @@ class OratsClient:
         if not symbol or not symbol.replace(".", "").replace("-", "").isalnum():
             raise OratsConfigurationError(f"Invalid ticker: {ticker!r}")
 
-        path = (
-            "live/one-minute/strikes/chain"
-            if self.mode == "live"
-            else "one-minute/strikes/chain"
-        )
-        query = urlencode({"token": self._token, "ticker": symbol})
+        path = "live/strikes" if self.mode == "live" else "strikes"
+        query = urlencode({"token": self._token, "ticker": symbol, "dte": "45,75"})
         payload = self._transport(f"{self.BASE_URL}/{path}?{query}", self.timeout_seconds)
         rows = self._extract_rows(payload)
         if not rows:
@@ -151,7 +155,17 @@ class OratsClient:
                 "strike": _number(row.get("strike")),
                 "dte": int(_number(row.get("dte"))),
             }
-            for option_type, prefix in (("CALL", "call"), ("PUT", "put")):
+            call_delta = _optional_number(row.get("callDelta"))
+            if call_delta is None:
+                call_delta = _optional_number(row.get("delta"))
+            put_delta = _optional_number(row.get("putDelta"))
+            if put_delta is None and call_delta is not None:
+                put_delta = call_delta - 1.0
+
+            for option_type, prefix, delta in (
+                ("CALL", "call", call_delta),
+                ("PUT", "put", put_delta),
+            ):
                 bid = _number(row.get(f"{prefix}BidPrice"))
                 ask = _number(row.get(f"{prefix}AskPrice"))
                 if bid < 0 or ask <= 0:
@@ -164,7 +178,7 @@ class OratsClient:
                         ask=ask,
                         open_interest=int(_number(row.get(f"{prefix}OpenInterest"))),
                         volume=int(_number(row.get(f"{prefix}Volume"))),
-                        delta=_optional_number(row.get(f"{prefix}Delta")),
+                        delta=delta,
                     )
                 )
         return candidates
