@@ -50,7 +50,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             QueueUrl=queue_url,
             MessageBody=json.dumps(record.to_dict(), separators=(",", ":"), sort_keys=True),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - public ingress must fail closed on any queue failure
         # Do not echo provider errors or request contents to the public webhook caller.
         return _response(
             503,
