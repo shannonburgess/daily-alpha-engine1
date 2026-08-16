@@ -11,9 +11,10 @@ from __future__ import annotations
 import csv
 import json
 import re
-from datetime import date, datetime
+from collections.abc import Iterable, Mapping
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -247,7 +248,7 @@ def _request_json(
     try:
         with urlopen(request, timeout=30) as response:
             return json.loads(response.read().decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001 - upstream failures are normalized here
+    except Exception as exc:
         raise SmartMoneySourceError(f"PUBLIC_DATA_REQUEST_FAILED:{type(exc).__name__}") from exc
 
 
@@ -271,9 +272,15 @@ def _find_table(root: Path, stem: str) -> Path:
 
 def _sec_date(value: str) -> date | None:
     text = value.strip()
-    for fmt in ("%d-%b-%Y", "%d-%B-%Y", "%Y-%m-%d", "%m/%d/%Y"):
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    for fmt in ("%d-%b-%Y", "%d-%B-%Y", "%m/%d/%Y"):
         try:
-            return datetime.strptime(text, fmt).date()
+            return datetime.strptime(text, fmt).replace(tzinfo=UTC).date()
         except ValueError:
             continue
     return None
@@ -283,13 +290,17 @@ def _date(value: str) -> date | None:
     text = value.strip()
     if not text:
         return None
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"):
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        pass
+    for fmt in ("%m/%d/%Y", "%m-%d-%Y"):
         try:
-            return datetime.strptime(text[:10], fmt).date()
+            return datetime.strptime(text[:10], fmt).replace(tzinfo=UTC).date()
         except ValueError:
             continue
     try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+        return datetime.fromisoformat(text).date()
     except ValueError:
         return None
 
