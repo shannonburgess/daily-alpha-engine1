@@ -13,8 +13,7 @@ concurrency:
 
 env:
   STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
-  SEC_CURRENT_URL: https://www.sec.gov/files/structureddata/data/form-13f-data-sets/01mar2026-31may2026_form13f.zip
-  SEC_PREVIOUS_URL: https://www.sec.gov/files/structureddata/data/form-13f-data-sets/01dec2025-28feb2026_form13f.zip
+  STOCKDATA_API_KEY: ${{ secrets.STOCKDATA_API_KEY }}
 
 jobs:
   smart-money:
@@ -29,42 +28,23 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Daily Alpha
-        run: python -m pip install --disable-pip-version-check .
-
-      - name: Download official SEC 13F bulk data
-        id: sec_download
-        continue-on-error: true
+      - name: Require Smart Money API secret
         shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p data/smart-money/sec-current data/smart-money/sec-previous
-          UA="DailyAlphaResearch/0.1 shannonburgess@users.noreply.github.com"
-          download_sec() {
-            local url="$1"
-            local output="$2"
-            curl --fail --show-error --silent --location --http1.1 --compressed \
-              --retry 3 --retry-all-errors --retry-delay 2 \
-              --user-agent "$UA" \
-              --header "Accept-Encoding: gzip, deflate" \
-              --header "Host: www.sec.gov" \
-              "$url" -o "$output"
-            unzip -tq "$output" >/dev/null
-          }
-          download_sec "$SEC_CURRENT_URL" /tmp/sec-current.zip
-          download_sec "$SEC_PREVIOUS_URL" /tmp/sec-previous.zip
-          unzip -q /tmp/sec-current.zip -d data/smart-money/sec-current
-          unzip -q /tmp/sec-previous.zip -d data/smart-money/sec-previous
-          echo "Official SEC 13F bulk files downloaded and validated."
+          if [[ -z "$STOCKDATA_API_KEY" ]]; then
+            echo "STOCKDATA_API_KEY GitHub secret is missing" >&2
+            exit 1
+          fi
+
+      - name: Install Daily Alpha
+        run: python -m pip install --disable-pip-version-check .
 
       - name: Build Top 5 congressional and institutional accumulation
         id: smart_money
         shell: python
-        env:
-          SEC_DOWNLOAD_STATUS: ${{ steps.sec_download.outcome }}
         run: |
           import os
-          from datetime import UTC, datetime, timedelta
+          from datetime import UTC, datetime
 
           from daily_alpha.smart_money import (
               build_smart_money_snapshot,
@@ -72,76 +52,53 @@ jobs:
               rank_institutional_acquisitions,
               write_smart_money_outputs,
           )
-          from daily_alpha.smart_money_sources import (
-              SmartMoneySourceError,
-              fetch_bargo_congress_trades,
-              load_sec_13f_directory,
-              map_cusips_openfigi,
-          )
+          from daily_alpha.stockdata_smart_money import StockDataSmartMoneyClient
 
           now = datetime.now(UTC)
           today = now.date()
+          client = StockDataSmartMoneyClient()
+
+          congress_trades = client.fetch_congressional_purchases(days=90, limit=500)
+          congressional = rank_congressional_acquisitions(
+              congress_trades,
+              as_of=today,
+              lookback_days=90,
+              limit=5,
+          )
+          current, previous, institutional_coverage = client.fetch_institutional_holdings_pair(
+              as_of=today,
+              institution_limit=25,
+              portfolio_limit=500,
+          )
+          institutional = rank_institutional_acquisitions(
+              current,
+              previous,
+              limit=5,
+          )
+
           coverage = {
-              "congress_source": "BARGO_NORMALIZED_HOUSE_AND_SENATE_STOCK_ACT",
+              "provider": "STOCKDATA_DEV_AUTHENTICATED",
+              "congress_source": "HOUSE_AND_SENATE_STOCK_ACT_DISCLOSURES",
               "congress_lookback_days": 90,
-              "institutional_source": "SEC_FORM_13F_BULK_INITIAL_13F_HR",
-              "institutional_ticker_mapping": "OPENFIGI_PUBLIC_CUSIP_MAPPING",
-              "sec_bulk_download_status": os.environ.get("SEC_DOWNLOAD_STATUS", "unknown").upper(),
+              "congress_trade_rows": len(congress_trades),
+              "congress_status": "AVAILABLE",
+              "institutional_source": "SEC_FORM_13F_NORMALIZED_BY_STOCKDATA_DEV",
+              "institutional_scope": "TOP_25_INSTITUTIONS_BY_PORTFOLIO_VALUE",
+              "institutional_current_period": institutional_coverage.current_period,
+              "institutional_previous_period": institutional_coverage.previous_period,
+              "institutional_managers_requested": institutional_coverage.institutions_requested,
+              "institutional_current_rows": institutional_coverage.current_rows,
+              "institutional_previous_rows": institutional_coverage.previous_rows,
+              "institutional_portfolio_limit_per_manager": institutional_coverage.portfolio_limit,
+              "institutional_status": "AVAILABLE",
           }
 
-          try:
-              congress_trades = fetch_bargo_congress_trades(
-                  from_date=today - timedelta(days=90),
-                  to_date=today,
-                  max_pages=20,
-              )
-              congressional = rank_congressional_acquisitions(
-                  congress_trades,
-                  as_of=today,
-                  lookback_days=90,
-                  limit=5,
-              )
-              coverage["congress_status"] = "AVAILABLE"
-              coverage["congress_trade_rows"] = len(congress_trades)
-          except SmartMoneySourceError as exc:
-              print(f"::warning::Congressional source unavailable: {exc}")
-              congressional = ()
-              coverage["congress_status"] = "DATA_ERROR"
-              coverage["congress_trade_rows"] = 0
-
-          try:
-              current_all = load_sec_13f_directory("data/smart-money/sec-current")
-              previous_all = load_sec_13f_directory("data/smart-money/sec-previous")
-              current_period = max(item.period_of_report for item in current_all)
-              previous_period = max(item.period_of_report for item in previous_all)
-              current = tuple(item for item in current_all if item.period_of_report == current_period)
-              previous = tuple(item for item in previous_all if item.period_of_report == previous_period)
-              preliminary = rank_institutional_acquisitions(current, previous, limit=25)
-              try:
-                  ticker_map = map_cusips_openfigi(item.cusip for item in preliminary)
-                  coverage["openfigi_status"] = "AVAILABLE"
-              except SmartMoneySourceError as exc:
-                  print(f"::warning::OpenFIGI mapping unavailable: {exc}")
-                  ticker_map = {}
-                  coverage["openfigi_status"] = "DATA_ERROR"
-              institutional = rank_institutional_acquisitions(
-                  current,
-                  previous,
-                  limit=5,
-                  symbol_map=ticker_map,
-              )
-              coverage["institutional_status"] = "AVAILABLE"
-              coverage["institutional_current_period"] = current_period.isoformat()
-              coverage["institutional_previous_period"] = previous_period.isoformat()
-              coverage["institutional_current_rows"] = len(current)
-              coverage["institutional_previous_rows"] = len(previous)
-          except SmartMoneySourceError as exc:
-              print(f"::warning::Institutional source unavailable: {exc}")
-              institutional = ()
-              coverage["institutional_status"] = "DATA_ERROR"
-
+          if not congressional:
+              coverage["congress_status"] = "NO_QUALIFIED_PURCHASES"
+          if not institutional:
+              coverage["institutional_status"] = "NO_POSITIVE_QOQ_ACCUMULATION"
           if not congressional and not institutional:
-              raise SystemExit("Both smart-money sources are unavailable; refusing an empty success")
+              raise SystemExit("Both smart-money rankings are empty; refusing an empty success")
 
           snapshot = build_smart_money_snapshot(
               generated_at=now,
@@ -160,9 +117,8 @@ jobs:
               )
           print("Top institutional accumulation:")
           for item in institutional:
-              label = item.symbol or item.cusip
               print(
-                  f"{item.rank}. {label} {item.issuer} score={item.score:.2f} "
+                  f"{item.rank}. {item.symbol} {item.issuer} score={item.score:.2f} "
                   f"managers_increasing={item.managers_increasing} new={item.new_manager_positions}"
               )
 
@@ -173,12 +129,13 @@ jobs:
                   "congress_top=" + ", ".join(item.symbol for item in congressional) + "\n"
               )
               handle.write(
-                  "institution_top="
-                  + ", ".join(item.symbol or item.cusip for item in institutional)
-                  + "\n"
+                  "institution_top=" + ", ".join(item.symbol for item in institutional) + "\n"
               )
               handle.write(
-                  "sec_download_status=" + coverage["sec_bulk_download_status"] + "\n"
+                  "current_13f_period=" + institutional_coverage.current_period + "\n"
+              )
+              handle.write(
+                  "previous_13f_period=" + institutional_coverage.previous_period + "\n"
               )
 
       - name: Configure short-lived AWS credentials
@@ -213,10 +170,12 @@ jobs:
         run: |
           {
             echo "## Daily Alpha Smart Money"
-            echo "- SEC bulk download: ${{ steps.smart_money.outputs.sec_download_status }}"
+            echo "- Provider: authenticated normalized public-disclosure data"
             echo "- Congressional Top 5 rows: ${{ steps.smart_money.outputs.congress_count }}"
             echo "- Congressional leaders: ${{ steps.smart_money.outputs.congress_top }}"
             echo "- Institutional Top 5 rows: ${{ steps.smart_money.outputs.institution_count }}"
             echo "- Institutional leaders: ${{ steps.smart_money.outputs.institution_top }}"
+            echo "- 13F comparison: ${{ steps.smart_money.outputs.previous_13f_period }} -> ${{ steps.smart_money.outputs.current_13f_period }}"
+            echo "- Institutional scope: top 25 major 13F managers, up to 500 reported holdings each."
             echo "- Research confirmation only; no paper or live trade was authorized."
           } >> "$GITHUB_STEP_SUMMARY"
