@@ -1,0 +1,80 @@
+name: Diagnose ORATS API access
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose ORATS token and endpoint access
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+
+    steps:
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS_TOKEN GitHub secret is missing" >&2
+            exit 1
+          fi
+
+      - name: Test base and delayed intraday access without exposing token
+        shell: python
+        run: |
+          import os
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          token = os.environ["ORATS_TOKEN"]
+          base = "https://api.orats.io/datav2"
+
+          def probe(name, path, ticker="AAPL"):
+              query = urlencode({"token": token, "ticker": ticker})
+              request = Request(f"{base}/{path}?{query}", headers={"Accept": "*/*"})
+              try:
+                  with urlopen(request, timeout=20) as response:
+                      body = response.read(600).decode("utf-8", errors="replace")
+                      status = int(response.status)
+              except HTTPError as exc:
+                  status = int(exc.code)
+                  body = exc.read(600).decode("utf-8", errors="replace")
+              except URLError as exc:
+                  print(f"{name}: NETWORK_ERROR {type(exc.reason).__name__}")
+                  return None
+
+              safe_body = body.replace(token, "***").replace("\n", " ").strip()[:300]
+              print(f"{name}: HTTP {status}")
+              if safe_body:
+                  print(f"{name}_BODY: {safe_body}")
+              return status
+
+          core_status = probe("CORE_DATA_API", "cores")
+          intraday_status = probe("DELAYED_INTRADAY_API", "one-minute/strikes/chain")
+
+          print("--- DIAGNOSIS ---")
+          if core_status is not None and 200 <= core_status < 300:
+              if intraday_status is not None and 200 <= intraday_status < 300:
+                  print("ORATS_ACCESS=BASE_AND_DELAYED_INTRADAY_OK")
+              elif intraday_status == 403:
+                  print("ORATS_ACCESS=TOKEN_VALID_INTRADAY_FORBIDDEN")
+                  print("NEXT_ACTION=CHECK_ORATS_INTRADAY_ENTITLEMENT")
+              else:
+                  print("ORATS_ACCESS=TOKEN_VALID_INTRADAY_OTHER_ERROR")
+          elif core_status == 403:
+              print("ORATS_ACCESS=BASE_API_FORBIDDEN")
+              print("NEXT_ACTION=VERIFY_TOKEN_OR_ACCOUNT_API_ACCESS")
+          elif core_status in {401, 404}:
+              print("ORATS_ACCESS=BASE_API_AUTH_OR_ENDPOINT_ERROR")
+              print("NEXT_ACTION=VERIFY_TOKEN")
+          else:
+              print("ORATS_ACCESS=INCONCLUSIVE")
+
+          # Diagnostic classification only: a blocked endpoint must not fail the
+          # workflow or authorize any trading decision.
