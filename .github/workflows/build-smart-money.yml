@@ -33,18 +33,35 @@ jobs:
         run: python -m pip install --disable-pip-version-check .
 
       - name: Download official SEC 13F bulk data
+        id: sec_download
+        continue-on-error: true
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p data/smart-money/sec-current data/smart-money/sec-previous
-          UA="DailyAlphaResearch/0.1 public-disclosure-analysis"
-          curl --fail --retry 3 --location --user-agent "$UA" "$SEC_CURRENT_URL" -o /tmp/sec-current.zip
-          curl --fail --retry 3 --location --user-agent "$UA" "$SEC_PREVIOUS_URL" -o /tmp/sec-previous.zip
+          UA="DailyAlphaResearch/0.1 shannonburgess@users.noreply.github.com"
+          download_sec() {
+            local url="$1"
+            local output="$2"
+            curl --fail --show-error --silent --location --http1.1 --compressed \
+              --retry 3 --retry-all-errors --retry-delay 2 \
+              --user-agent "$UA" \
+              --header "Accept-Encoding: gzip, deflate" \
+              --header "Host: www.sec.gov" \
+              "$url" -o "$output"
+            unzip -tq "$output" >/dev/null
+          }
+          download_sec "$SEC_CURRENT_URL" /tmp/sec-current.zip
+          download_sec "$SEC_PREVIOUS_URL" /tmp/sec-previous.zip
           unzip -q /tmp/sec-current.zip -d data/smart-money/sec-current
           unzip -q /tmp/sec-previous.zip -d data/smart-money/sec-previous
+          echo "Official SEC 13F bulk files downloaded and validated."
 
       - name: Build Top 5 congressional and institutional accumulation
         id: smart_money
         shell: python
+        env:
+          SEC_DOWNLOAD_STATUS: ${{ steps.sec_download.outcome }}
         run: |
           import os
           from datetime import UTC, datetime, timedelta
@@ -69,6 +86,7 @@ jobs:
               "congress_lookback_days": 90,
               "institutional_source": "SEC_FORM_13F_BULK_INITIAL_13F_HR",
               "institutional_ticker_mapping": "OPENFIGI_PUBLIC_CUSIP_MAPPING",
+              "sec_bulk_download_status": os.environ.get("SEC_DOWNLOAD_STATUS", "unknown").upper(),
           }
 
           try:
@@ -159,6 +177,9 @@ jobs:
                   + ", ".join(item.symbol or item.cusip for item in institutional)
                   + "\n"
               )
+              handle.write(
+                  "sec_download_status=" + coverage["sec_bulk_download_status"] + "\n"
+              )
 
       - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
@@ -192,6 +213,7 @@ jobs:
         run: |
           {
             echo "## Daily Alpha Smart Money"
+            echo "- SEC bulk download: ${{ steps.smart_money.outputs.sec_download_status }}"
             echo "- Congressional Top 5 rows: ${{ steps.smart_money.outputs.congress_count }}"
             echo "- Congressional leaders: ${{ steps.smart_money.outputs.congress_top }}"
             echo "- Institutional Top 5 rows: ${{ steps.smart_money.outputs.institution_count }}"
