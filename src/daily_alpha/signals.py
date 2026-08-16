@@ -16,6 +16,8 @@ class SignalError(ValueError):
 
 class SignalAction(StrEnum):
     ENTRY_LONG = "ENTRY_LONG"
+    ADD = "ADD"
+    PARTIAL = "PARTIAL"
     EXIT = "EXIT"
 
 
@@ -30,10 +32,20 @@ class PineSignal:
     price: float
     bar_time: datetime
     received_at: datetime
+    position_fraction: float | None = None
+    runner_stage: str | None = None
 
     @property
     def is_entry(self) -> bool:
         return self.action == SignalAction.ENTRY_LONG
+
+    @property
+    def is_add(self) -> bool:
+        return self.action == SignalAction.ADD
+
+    @property
+    def is_partial(self) -> bool:
+        return self.action == SignalAction.PARTIAL
 
     @property
     def is_exit(self) -> bool:
@@ -57,7 +69,7 @@ def parse_pine_signal(
     try:
         action = SignalAction(str(data.get("action", "")).strip().upper())
     except ValueError as exc:
-        raise SignalError("action must be ENTRY_LONG or EXIT") from exc
+        raise SignalError("action must be ENTRY_LONG, ADD, PARTIAL, or EXIT") from exc
 
     strategy = str(data.get("strategy", "")).strip()
     strategy_version = str(data.get("strategy_version", "")).strip()
@@ -75,6 +87,12 @@ def parse_pine_signal(
             f"Signal is stale: {age_minutes:.1f} minutes old (limit {max_age_minutes})"
         )
 
+    position_fraction = None
+    runner_stage = None
+    if action in (SignalAction.ADD, SignalAction.PARTIAL):
+        position_fraction = _fraction(data.get("position_fraction"), "position_fraction")
+        runner_stage = _runner_stage(data.get("runner_stage"))
+
     signal_id = str(data.get("signal_id", "")).strip() or str(uuid4())
     return PineSignal(
         signal_id=signal_id,
@@ -86,6 +104,8 @@ def parse_pine_signal(
         price=price,
         bar_time=bar_time,
         received_at=now,
+        position_fraction=position_fraction,
+        runner_stage=runner_stage,
     )
 
 
@@ -125,3 +145,22 @@ def _positive_float(value: Any, name: str) -> float:
     if number <= 0:
         raise SignalError(f"{name} must be positive")
     return number
+
+
+def _fraction(value: Any, name: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise SignalError(f"{name} must be numeric") from exc
+    if number <= 0 or number > 1:
+        raise SignalError(f"{name} must be greater than 0 and at most 1")
+    return number
+
+
+def _runner_stage(value: Any) -> str:
+    stage = str(value or "").strip().upper()
+    if not stage:
+        raise SignalError("runner_stage is required for ADD and PARTIAL")
+    if not stage.replace("_", "").replace("-", "").isalnum():
+        raise SignalError("runner_stage contains invalid characters")
+    return stage
