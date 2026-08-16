@@ -88,7 +88,7 @@ def _load_webhook_secret(secret_id: str) -> str:
     except json.JSONDecodeError as exc:
         raise ValueError("PINE_WEBHOOK_SECRET_JSON_INVALID") from exc
     if not isinstance(payload, dict):
-        raise ValueError("PINE_WEBHOOK_SECRET_JSON_INVALID")
+        raise TypeError("PINE_WEBHOOK_SECRET_JSON_INVALID")
 
     value = payload.get("webhook_secret")
     if not isinstance(value, str) or not value:
