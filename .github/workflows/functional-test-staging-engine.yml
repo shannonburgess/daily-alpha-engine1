@@ -1,0 +1,136 @@
+name: Functional test Daily Alpha staging engine
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  functional-test:
+    name: Validate staging entry decision runtime
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-staging-functional-test
+          aws-region: us-east-2
+
+      - name: Build safe functional payloads
+        shell: python
+        run: |
+          import json
+          from datetime import UTC, datetime, timedelta
+          from pathlib import Path
+
+          now = datetime.now(UTC)
+          base = {
+              "operation": "EVALUATE_ENTRY",
+              "signal": {
+                  "signal_id": "functional-aapl-entry",
+                  "symbol": "AAPL",
+                  "action": "ENTRY_LONG",
+                  "strategy": "DAILY_ALPHA_PINE",
+                  "strategy_version": "staging-v1",
+                  "timeframe": "1D",
+                  "price": 220.0,
+                  "bar_time": (now - timedelta(minutes=1)).isoformat(),
+              },
+              "portfolio": {
+                  "snapshot_id": "functional-portfolio",
+                  "account_id": "paper-staging",
+                  "source": "GITHUB_ACTIONS_FUNCTIONAL_TEST",
+                  "as_of": now.isoformat(),
+                  "cash": 1000000.0,
+                  "buying_power": 1000000.0,
+                  "positions": [],
+                  "data_status": "AVAILABLE",
+              },
+              "risk_state": {},
+              "proposed_trade": {
+                  "planned_loss": 3000.0,
+                  "cluster_id": "MEGA_CAP_TECH",
+                  "sector": "TECHNOLOGY",
+                  "liquidity_score": 0.95,
+              },
+              "market": {
+                  "option_data_available": True,
+                  "option_data_observed_at": (now - timedelta(minutes=5)).isoformat(),
+                  "orats_mode": "delayed",
+                  "options": [{
+                      "expiration": "2026-10-16",
+                      "strike": 220.0,
+                      "option_type": "CALL",
+                      "dte": 60,
+                      "bid": 5.0,
+                      "ask": 5.2,
+                      "open_interest": 1000,
+                      "volume": 200,
+                      "delta": 0.50,
+                  }],
+                  "stock": {
+                      "price": 220.0,
+                      "average_daily_dollar_volume": 5000000000.0,
+                      "eligible": True,
+                  },
+              },
+          }
+          Path("/tmp/qualified.json").write_text(json.dumps(base))
+
+          stale = json.loads(json.dumps(base))
+          stale["signal"]["signal_id"] = "functional-aapl-stale"
+          stale["market"]["option_data_observed_at"] = (
+              now - timedelta(hours=1)
+          ).isoformat()
+          Path("/tmp/stale.json").write_text(json.dumps(stale))
+
+      - name: Invoke qualified-option decision
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-engine \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/qualified.json \
+            /tmp/qualified-response.json
+          cat /tmp/qualified-response.json
+
+      - name: Invoke stale-data decision
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-engine \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/stale.json \
+            /tmp/stale-response.json
+          cat /tmp/stale-response.json
+
+      - name: Validate production safety behavior
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          qualified = json.loads(Path("/tmp/qualified-response.json").read_text())
+          stale = json.loads(Path("/tmp/stale-response.json").read_text())
+
+          assert qualified["ok"] is True
+          assert qualified["mode"] == "PAPER"
+          assert qualified["live_trading_enabled"] is False
+          assert qualified["risk"]["status"] == "APPROVED"
+          assert qualified["decision"]["status"] == "SELECTED"
+          assert qualified["decision"]["instrument_selected"] == "OPTION"
+          assert qualified["paper_trade_written"] is False
+
+          assert stale["ok"] is True
+          assert stale["live_trading_enabled"] is False
+          assert stale["decision"]["status"] == "DATA_ERROR"
+          assert stale["decision"]["instrument_selected"] == "NONE"
+          assert stale["decision"]["fallback_reason"] == (
+              "ORATS_DATA_UNAVAILABLE_OR_STALE"
+          )
+
+          print("Staging decision runtime passed OPTION selection and fail-closed tests.")
