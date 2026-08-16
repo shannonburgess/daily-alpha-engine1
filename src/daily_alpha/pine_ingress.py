@@ -38,6 +38,8 @@ class PineIngressRecord:
     price: float
     bar_time: str
     received_at: str
+    position_fraction: float | None = None
+    runner_stage: str | None = None
     trading_authorized: bool = False
     paper_execution_triggered: bool = False
     live_trading_enabled: bool = False
@@ -102,7 +104,7 @@ def _decode_event_body(event: dict[str, Any]) -> dict[str, Any]:
 
 def _record_from_signal(signal: PineSignal) -> PineIngressRecord:
     return PineIngressRecord(
-        schema_version="2026-08-16-v1",
+        schema_version="2026-08-16-v2",
         source="TRADINGVIEW_PINE",
         signal_id=signal.signal_id,
         symbol=signal.symbol,
@@ -113,4 +115,6 @@ def _record_from_signal(signal: PineSignal) -> PineIngressRecord:
         price=signal.price,
         bar_time=signal.bar_time.isoformat(),
         received_at=signal.received_at.isoformat(),
+        position_fraction=signal.position_fraction,
+        runner_stage=signal.runner_stage,
     )
