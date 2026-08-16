@@ -24,7 +24,7 @@ jobs:
             exit 1
           fi
 
-      - name: Test base and delayed intraday access without exposing token
+      - name: Test delayed strikes and intraday access without exposing token
         shell: python
         run: |
           import os
@@ -35,8 +35,11 @@ jobs:
           token = os.environ["ORATS_TOKEN"]
           base = "https://api.orats.io/datav2"
 
-          def probe(name, path, ticker="AAPL"):
-              query = urlencode({"token": token, "ticker": ticker})
+          def probe(name, path, ticker="AAPL", extra=None):
+              params = {"token": token, "ticker": ticker}
+              if extra:
+                  params.update(extra)
+              query = urlencode(params)
               request = Request(f"{base}/{path}?{query}", headers={"Accept": "*/*"})
               try:
                   with urlopen(request, timeout=20) as response:
@@ -56,17 +59,22 @@ jobs:
               return status
 
           core_status = probe("CORE_DATA_API", "cores")
+          strikes_status = probe("DELAYED_STRIKES_API", "strikes", extra={"dte": "45,75"})
           intraday_status = probe("DELAYED_INTRADAY_API", "one-minute/strikes/chain")
 
           print("--- DIAGNOSIS ---")
-          if core_status is not None and 200 <= core_status < 300:
-              if intraday_status is not None and 200 <= intraday_status < 300:
-                  print("ORATS_ACCESS=BASE_AND_DELAYED_INTRADAY_OK")
-              elif intraday_status == 403:
-                  print("ORATS_ACCESS=TOKEN_VALID_INTRADAY_FORBIDDEN")
-                  print("NEXT_ACTION=CHECK_ORATS_INTRADAY_ENTITLEMENT")
-              else:
-                  print("ORATS_ACCESS=TOKEN_VALID_INTRADAY_OTHER_ERROR")
+          base_ok = core_status is not None and 200 <= core_status < 300
+          strikes_ok = strikes_status is not None and 200 <= strikes_status < 300
+          intraday_ok = intraday_status is not None and 200 <= intraday_status < 300
+
+          if base_ok and strikes_ok and intraday_ok:
+              print("ORATS_ACCESS=STANDARD_AND_INTRADAY_OK")
+          elif base_ok and strikes_ok and intraday_status == 403:
+              print("ORATS_ACCESS=STANDARD_STRIKES_OK_INTRADAY_FORBIDDEN")
+              print("NEXT_ACTION=USE_STANDARD_STRIKES_FOR_DAILY_ALPHA")
+          elif base_ok and not strikes_ok:
+              print("ORATS_ACCESS=BASE_OK_STANDARD_STRIKES_BLOCKED")
+              print("NEXT_ACTION=CHECK_ORATS_DATA_API_ENTITLEMENT")
           elif core_status == 403:
               print("ORATS_ACCESS=BASE_API_FORBIDDEN")
               print("NEXT_ACTION=VERIFY_TOKEN_OR_ACCOUNT_API_ACCESS")
