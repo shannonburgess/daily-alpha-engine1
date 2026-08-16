@@ -52,13 +52,16 @@ jobs:
           PY
           fi
 
-      - name: Require ORATS secret
+      - name: Check ORATS secret
         if: steps.gate.outputs.run == 'true'
+        id: orats_secret
         shell: bash
         run: |
-          if [[ -z "$ORATS_TOKEN" ]]; then
-            echo "ORATS_TOKEN GitHub secret is missing" >&2
-            exit 1
+          if [[ -n "$ORATS_TOKEN" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ORATS_TOKEN GitHub secret is missing; OVTLYR intake will still be persisted, but ORATS enrichment must remain DATA_ERROR."
           fi
 
       - name: Install intake tools
@@ -99,19 +102,6 @@ jobs:
               handle.write(f"source_path={selected.path}\n")
               handle.write(f"snapshot_path={destination}\n")
 
-      - name: Verify ORATS connectivity and freshness
-        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.session != 'MORNING'
-        run: |
-          python - <<'PY'
-          from daily_alpha.orats import OratsClient
-
-          chain = OratsClient(mode="delayed").fetch_chain("SPY")
-          print(
-              f"ORATS verified for {chain.ticker}: "
-              f"{len(chain.candidates)} contracts at {chain.observed_at.isoformat()}"
-          )
-          PY
-
       - name: Configure short-lived AWS credentials
         if: steps.gate.outputs.run == 'true'
         uses: aws-actions/configure-aws-credentials@v5
@@ -145,3 +135,36 @@ jobs:
             data/staging/ovtlyr-latest.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Verify ORATS connectivity and freshness
+        if: >-
+          steps.gate.outputs.run == 'true' &&
+          steps.gate.outputs.session != 'MORNING' &&
+          steps.orats_secret.outputs.available == 'true'
+        id: orats
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          from daily_alpha.orats import OratsClient
+
+          chain = OratsClient(mode="delayed").fetch_chain("SPY")
+          print(
+              f"ORATS verified for {chain.ticker}: "
+              f"{len(chain.candidates)} contracts at {chain.observed_at.isoformat()}"
+          )
+          PY
+
+      - name: Report ORATS availability
+        if: >-
+          always() &&
+          steps.gate.outputs.run == 'true' &&
+          steps.gate.outputs.session != 'MORNING'
+        shell: bash
+        run: |
+          if [[ "${{ steps.orats_secret.outputs.available }}" != "true" ]]; then
+            echo "::warning::ORATS unavailable because the GitHub secret is missing. No option or stock fallback decision may be authorized from this condition."
+          elif [[ "${{ steps.orats.outcome }}" == "failure" ]]; then
+            echo "::warning::ORATS connectivity/freshness check failed. OVTLYR data was persisted, but downstream option selection must remain DATA_ERROR and must not substitute stock."
+          else
+            echo "ORATS connectivity and freshness check passed."
+          fi
