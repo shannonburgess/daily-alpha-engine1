@@ -1,0 +1,138 @@
+name: Build Daily Alpha ranked shortlist
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-alpha-ranked-shortlist
+  cancel-in-progress: false
+
+jobs:
+  shortlist:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS_TOKEN GitHub secret is missing" >&2
+            exit 1
+          fi
+
+      - name: Install shortlist tools
+        run: |
+          python -m pip install --disable-pip-version-check . gdown==5.2.0
+
+      - name: Download OVTLYR history
+        run: |
+          mkdir -p data/incoming
+          gdown --folder --remaining-ok "$OVTLYR_FOLDER_URL" -O data/incoming
+
+      - name: Build real ranked research shortlist
+        id: shortlist
+        shell: python
+        run: |
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          from daily_alpha.orats import OratsClient
+          from daily_alpha.research_shortlist import (
+              build_research_shortlist,
+              discover_daily_pair,
+              write_research_shortlist_outputs,
+          )
+          from daily_alpha.sources import OratsBatchSource
+
+          previous, current = discover_daily_pair("data/incoming")
+          now = datetime.now(UTC)
+          # Research data may legitimately be Friday's close during a weekend or
+          # Monday premarket. Execution remains governed by runtime.py's strict
+          # 25-minute delayed-data gate before any paper trade can be authorized.
+          source = OratsBatchSource(
+              OratsClient(mode="delayed", max_age_minutes=72 * 60)
+          )
+          result = build_research_shortlist(
+              previous,
+              current,
+              as_of=now,
+              orats_source=source,
+              request_limit=20,
+          )
+          outputs = write_research_shortlist_outputs("data/shortlist", result)
+          summary = result.summary
+          print(
+              f"Compared {result.previous_file} -> {result.current_file}; "
+              f"ranked {summary['actionable_ranked_count']} actionable candidates, "
+              f"excluded {summary['excluded_not_optionable']} non-optionable symbols, "
+              f"requested {summary['orats_requests']} ORATS chains, and found "
+              f"{summary['qualified_option_count']} qualified option setups."
+          )
+          print("Top ranked candidates:")
+          for rank, item in enumerate(result.items[:10], start=1):
+              print(
+                  f"{rank:02d} {item.symbol} {item.display_label} "
+                  f"score={item.score:.2f} ORATS={item.orats_reason}"
+              )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"previous_file={result.previous_file}\n")
+              handle.write(f"current_file={result.current_file}\n")
+              handle.write(f"ranked_count={summary['actionable_ranked_count']}\n")
+              handle.write(f"qualified_count={summary['qualified_option_count']}\n")
+          assert all(path.exists() for path in outputs.values())
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-shortlist-publish
+          aws-region: us-east-2
+
+      - name: Publish ranked shortlist to AWS staging
+        shell: bash
+        run: |
+          PREFIX="s3://${STAGING_BUCKET}/ovtlyr/shortlist"
+          HISTORY="${PREFIX}/history/${GITHUB_RUN_ID}"
+          for FILE in data/shortlist/*; do
+            NAME="$(basename "$FILE")"
+            aws s3 cp "$FILE" "${PREFIX}/latest/${NAME}" --only-show-errors
+            aws s3 cp "$FILE" "${HISTORY}/${NAME}" --only-show-errors
+          done
+          echo "Published ranked shortlist to ${PREFIX}/latest/"
+
+      - name: Upload ranked shortlist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-ranked-shortlist-${{ github.run_id }}
+          path: data/shortlist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize shortlist build
+        shell: bash
+        run: |
+          {
+            echo "## Daily Alpha ranked shortlist"
+            echo "- Previous OVTLYR: ${{ steps.shortlist.outputs.previous_file }}"
+            echo "- Current OVTLYR: ${{ steps.shortlist.outputs.current_file }}"
+            echo "- Actionable ranked candidates: ${{ steps.shortlist.outputs.ranked_count }}"
+            echo "- Qualified 45-75 DTE option setups in ORATS-enriched top 20: ${{ steps.shortlist.outputs.qualified_count }}"
+            echo "- Research only: no paper or live trade was authorized by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
