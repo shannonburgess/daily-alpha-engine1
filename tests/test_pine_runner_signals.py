@@ -4,7 +4,6 @@ import pytest
 
 from daily_alpha.signals import SignalAction, SignalError, parse_pine_signal
 
-
 NOW = datetime(2026, 8, 15, 16, 5, tzinfo=UTC)
 BASE = {
     "strategy": "DA_TURTLE_ADAPTIVE_TREND",
