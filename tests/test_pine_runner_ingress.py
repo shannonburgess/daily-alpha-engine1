@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 
 from daily_alpha.pine_ingress import build_pine_ingress_record
 
-
 NOW = datetime(2026, 8, 16, 11, 30, tzinfo=UTC)
 SECRET = "runner-secret"
 
