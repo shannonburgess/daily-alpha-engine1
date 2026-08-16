@@ -9,6 +9,9 @@ from daily_alpha.stockdata_smart_money import StockDataSmartMoneyClient
 def test_congressional_purchases_are_normalized():
     def transport(url, headers):
         assert headers["X-API-Key"] == "secret"
+        assert headers["Accept"] == "application/json"
+        assert headers["User-Agent"].startswith("DailyAlphaResearch/")
+        assert headers["Connection"] == "close"
         assert "/congress-trades?" in url
         return {
             "trades": [
