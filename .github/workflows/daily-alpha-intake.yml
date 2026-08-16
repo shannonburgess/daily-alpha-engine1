@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 20
     env:
       OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +33,7 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "session=MANUAL" >> "$GITHUB_OUTPUT"
           else
             python - <<'PY' >> "$GITHUB_OUTPUT"
           from datetime import UTC, datetime
@@ -39,10 +41,21 @@ jobs:
           import sys
 
           sys.path.insert(0, str(Path("src").resolve()))
-          from daily_alpha.schedule import is_scheduled_run_time
+          from daily_alpha.schedule import is_scheduled_run_time, scheduled_session
 
-          print(f"run={'true' if is_scheduled_run_time(datetime.now(UTC)) else 'false'}")
+          now = datetime.now(UTC)
+          print(f"run={'true' if is_scheduled_run_time(now) else 'false'}")
+          print(f"session={scheduled_session(now) or 'SKIP'}")
           PY
+          fi
+
+      - name: Require ORATS secret
+        if: steps.gate.outputs.run == 'true'
+        shell: bash
+        run: |
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS_TOKEN GitHub secret is missing" >&2
+            exit 1
           fi
 
       - name: Install intake tools
@@ -64,6 +77,19 @@ jobs:
 
           selected = OvtlyrInbox("data/incoming").latest()
           print(f"Selected {selected.path.name} ({selected.size_bytes} bytes)")
+          PY
+
+      - name: Verify ORATS connectivity and freshness
+        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.session != 'MORNING'
+        run: |
+          python - <<'PY'
+          from daily_alpha.orats import OratsClient
+
+          chain = OratsClient(mode="delayed").fetch_chain("SPY")
+          print(
+              f"ORATS verified for {chain.ticker}: "
+              f"{len(chain.candidates)} contracts at {chain.observed_at.isoformat()}"
+          )
           PY
 
       - name: Upload validated intake
