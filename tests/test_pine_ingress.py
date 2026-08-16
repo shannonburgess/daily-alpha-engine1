@@ -9,10 +9,11 @@ from daily_alpha.pine_ingress import (
     build_pine_ingress_record,
 )
 from daily_alpha.signals import SignalError
-from lambda_handlers.pine_webhook import lambda_handler
+from lambda_handlers import pine_webhook
 
 NOW = datetime(2026, 8, 16, 11, 30, tzinfo=UTC)
 SECRET = "super-secret-webhook-token"
+SECRET_ID = "daily-alpha/pine-webhook/staging"
 
 
 def payload(*, bar_time=None, secret=SECRET):
@@ -75,11 +76,16 @@ def test_stale_signal_is_rejected_before_queueing():
         )
 
 
+def _configure_secret(monkeypatch):
+    monkeypatch.setenv("PINE_WEBHOOK_SECRET_ID", SECRET_ID)
+    monkeypatch.setattr(pine_webhook, "_load_webhook_secret", lambda _: SECRET)
+
+
 def test_lambda_refuses_false_success_when_queue_is_not_configured(monkeypatch):
-    monkeypatch.setenv("PINE_WEBHOOK_SECRET", SECRET)
+    _configure_secret(monkeypatch)
     monkeypatch.delenv("PINE_INGRESS_QUEUE_URL", raising=False)
     current_payload = payload(bar_time=datetime.now(UTC) - timedelta(minutes=1))
-    response = lambda_handler({"body": json.dumps(current_payload)}, None)
+    response = pine_webhook.lambda_handler({"body": json.dumps(current_payload)}, None)
     body = json.loads(response["body"])
     assert response["statusCode"] == 503
     assert body["status"] == "INGRESS_QUEUE_NOT_CONFIGURED"
@@ -88,13 +94,54 @@ def test_lambda_refuses_false_success_when_queue_is_not_configured(monkeypatch):
 
 
 def test_lambda_rejects_bad_secret_without_echoing_it(monkeypatch):
-    monkeypatch.setenv("PINE_WEBHOOK_SECRET", SECRET)
+    _configure_secret(monkeypatch)
     monkeypatch.setenv("PINE_INGRESS_QUEUE_URL", "https://example.invalid/queue")
     current_payload = payload(
         bar_time=datetime.now(UTC) - timedelta(minutes=1),
         secret="attacker-secret",
     )
-    response = lambda_handler({"body": json.dumps(current_payload)}, None)
+    response = pine_webhook.lambda_handler({"body": json.dumps(current_payload)}, None)
     assert response["statusCode"] == 401
     assert "attacker-secret" not in response["body"]
     assert SECRET not in response["body"]
+
+
+def test_lambda_fails_closed_when_secret_id_is_missing(monkeypatch):
+    monkeypatch.delenv("PINE_WEBHOOK_SECRET_ID", raising=False)
+    monkeypatch.setenv("PINE_INGRESS_QUEUE_URL", "https://example.invalid/queue")
+    response = pine_webhook.lambda_handler({"body": json.dumps(payload())}, None)
+    body = json.loads(response["body"])
+    assert response["statusCode"] == 503
+    assert body["status"] == "INGRESS_SECRET_NOT_CONFIGURED"
+
+
+def test_lambda_fails_closed_when_secret_retrieval_fails(monkeypatch):
+    monkeypatch.setenv("PINE_WEBHOOK_SECRET_ID", SECRET_ID)
+    monkeypatch.setenv("PINE_INGRESS_QUEUE_URL", "https://example.invalid/queue")
+
+    def fail(_):
+        raise RuntimeError("provider detail must not escape")
+
+    monkeypatch.setattr(pine_webhook, "_load_webhook_secret", fail)
+    response = pine_webhook.lambda_handler({"body": json.dumps(payload())}, None)
+    body = json.loads(response["body"])
+    assert response["statusCode"] == 503
+    assert body["status"] == "INGRESS_SECRET_ERROR"
+    assert "provider detail" not in response["body"]
+
+
+def test_secret_parser_requires_expected_json_key(monkeypatch):
+    class FakeSecretsClient:
+        def get_secret_value(self, *, SecretId):
+            assert SecretId == SECRET_ID
+            return {"SecretString": json.dumps({"wrong_key": "value"})}
+
+    class FakeBoto3:
+        @staticmethod
+        def client(service):
+            assert service == "secretsmanager"
+            return FakeSecretsClient()
+
+    monkeypatch.setitem(__import__("sys").modules, "boto3", FakeBoto3())
+    with pytest.raises(ValueError, match="PINE_WEBHOOK_SECRET_KEY_MISSING"):
+        pine_webhook._load_webhook_secret(SECRET_ID)
