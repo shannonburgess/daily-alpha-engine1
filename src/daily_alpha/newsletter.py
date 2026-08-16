@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from html import escape
 
 from .research_report import DailyResearchPacket, ResearchCandidate, ResearchDisposition
+from .smart_money import SmartMoneySnapshot
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,12 @@ class NewsletterRenderer:
     def render(self, packet: DailyResearchPacket) -> RenderedNewsletter:
         sections: list[str] = []
         content: list[str] = []
+        if packet.smart_money is not None and (
+            packet.smart_money.congressional or packet.smart_money.institutional
+        ):
+            sections.append("SMART_MONEY")
+            content.append(self._smart_money_section(packet.smart_money))
+
         for disposition in ResearchDisposition:
             candidates = tuple(
                 candidate
@@ -44,6 +51,56 @@ class NewsletterRenderer:
             candidate_count=len(packet.candidates),
             sections=tuple(sections),
             quality_warnings=warnings,
+        )
+
+    @staticmethod
+    def _smart_money_section(snapshot: SmartMoneySnapshot) -> str:
+        congress_rows = "".join(
+            "<tr>"
+            f"<td>{item.rank}</td>"
+            f"<td><strong>{escape(item.symbol)}</strong></td>"
+            f"<td>{item.score:.2f}</td>"
+            f"<td>{item.unique_politicians}</td>"
+            f"<td>{item.purchase_count}</td>"
+            f"<td>{escape(item.latest_transaction_date)}</td>"
+            "</tr>"
+            for item in snapshot.congressional
+        )
+        institution_rows = "".join(
+            "<tr>"
+            f"<td>{item.rank}</td>"
+            f"<td><strong>{escape(item.symbol or item.cusip)}</strong></td>"
+            f"<td>{item.score:.2f}</td>"
+            f"<td>{item.managers_increasing}</td>"
+            f"<td>{item.new_manager_positions}</td>"
+            f"<td>{escape(item.period_of_report)}</td>"
+            "</tr>"
+            for item in snapshot.institutional
+        )
+        congress_table = (
+            '<h3>Congressional accumulation — Top 5</h3>'
+            '<div class="table-wrap"><table><thead><tr>'
+            "<th>Rank</th><th>Symbol</th><th>Score</th><th>Politicians</th>"
+            "<th>Purchases</th><th>Latest transaction</th>"
+            f"</tr></thead><tbody>{congress_rows}</tbody></table></div>"
+            if congress_rows
+            else ""
+        )
+        institution_table = (
+            '<h3>Institutional accumulation — Top 5</h3>'
+            '<div class="table-wrap"><table><thead><tr>'
+            "<th>Rank</th><th>Symbol</th><th>Score</th><th>Managers adding</th>"
+            "<th>New positions</th><th>13F period</th>"
+            f"</tr></thead><tbody>{institution_rows}</tbody></table></div>"
+            if institution_rows
+            else ""
+        )
+        return (
+            '<section class="report-section smart-money"><h2>Smart Money Accumulation</h2>'
+            '<p class="section-note">Confirmation and rotation intelligence only. '
+            "Congressional disclosures may lag transaction dates; 13F holdings are "
+            "quarter-end snapshots and are not trade-timing signals.</p>"
+            f"{congress_table}{institution_table}</section>"
         )
 
     @staticmethod
@@ -100,9 +157,11 @@ body {{ margin: 0; color: #172033; background: #fff; font: 12pt/1.45 Arial, sans
 header {{ border-bottom: 3px solid #aa7a24; padding-bottom: 14px; margin-bottom: 22px; }}
 h1 {{ margin: 0; font: 700 25pt/1.15 Georgia, serif; }}
 h2 {{ margin: 0 0 12px; font-size: 17pt; color: #17365d; }}
+h3 {{ margin: 18px 0 9px; font-size: 13pt; color: #17365d; }}
 .meta {{ margin-top: 8px; font-size: 10.5pt; color: #526071; }}
+.section-note {{ margin: 0 0 12px; font-size: 10pt; color: #526071; }}
 .report-section {{ margin: 0 0 26px; break-inside: avoid-page; page-break-inside: avoid; }}
-.table-wrap {{ width: 100%; overflow-wrap: anywhere; }}
+.table-wrap {{ width: 100%; overflow-wrap: anywhere; margin-bottom: 12px; }}
 table {{ width: 100%; border-collapse: collapse; table-layout: auto; }}
 thead {{ display: table-header-group; }}
 tr {{ break-inside: avoid; page-break-inside: avoid; }}
@@ -135,4 +194,10 @@ footer {{ border-top: 1px solid #c9d1dc; margin-top: 24px; padding-top: 12px; fo
             warnings.append("CANDIDATE_CONTENT_MISSING")
         if any(escape(item) not in html for item in packet.disclosures):
             warnings.append("DISCLOSURE_MISSING")
+        if packet.smart_money is not None:
+            smart_symbols = [item.symbol for item in packet.smart_money.congressional] + [
+                item.symbol or item.cusip for item in packet.smart_money.institutional
+            ]
+            if any(escape(symbol) not in html for symbol in smart_symbols):
+                warnings.append("SMART_MONEY_CONTENT_MISSING")
         return tuple(warnings)
