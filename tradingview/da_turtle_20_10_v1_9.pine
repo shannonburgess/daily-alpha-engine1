@@ -61,7 +61,7 @@ inWindow = time >= startDate and time <= endDate
 // ===== WEBHOOK =====
 groupWebhook = "09 - Daily Alpha Webhook"
 webhookSecret = input.string("", "Webhook Secret", group=groupWebhook)
-enableWebhookOrders = input.bool(false, "Attach Starter/Final Webhook Messages (Adds Not Connected Yet)", group=groupWebhook)
+enableWebhookOrders = input.bool(false, "Attach Daily Alpha Runner Webhook Messages", group=groupWebhook)
 
 // ===== DISPLAY =====
 groupDisplay = "10 - Display"
@@ -173,6 +173,7 @@ if add2Signal
 harvestSignal = barstate.isconfirmed and useRunnerManagement and strategy.position_size > 0 and add2Done and not harvestDone and not na(add2Bar) and bar_index > add2Bar and close >= runnerBaseEntry + runnerBaseAtr * harvestAtr
 
 if harvestSignal
+    // Capture the weighted-average cost before taking one of four units off.
     breakEvenLevel := strategy.position_avg_price
     harvestDone := true
 
@@ -187,6 +188,9 @@ barTimeIso = str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
 signalBase = syminfo.ticker + "-" + str.tostring(time_close)
 
 entryMessage = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-ENTRY_LONG\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"ENTRY_LONG\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"1.9\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\"}"
+add1Message = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-ADD_1_ATR\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"ADD\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"1.9\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\",\"position_fraction\":0.25,\"runner_stage\":\"ADD_1_ATR\"}"
+add2Message = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-ADD_2_ATR\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"ADD\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"1.9\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\",\"position_fraction\":0.25,\"runner_stage\":\"ADD_2_ATR\"}"
+partialMessage = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-HARVEST_3_ATR\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"PARTIAL\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"1.9\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\",\"position_fraction\":0.25,\"runner_stage\":\"HARVEST_3_ATR\"}"
 exitMessage = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-EXIT\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"EXIT\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"1.9\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\"}"
 
 // ===== STRATEGY ORDERS =====
@@ -196,13 +200,14 @@ if longEntry
     strategy.entry("L", strategy.long, qty=2, alert_message=enableWebhookOrders ? entryMessage : "")
 
 if add1Signal
-    strategy.entry("L", strategy.long, qty=1, alert_message="")
+    strategy.entry("L", strategy.long, qty=1, alert_message=enableWebhookOrders ? add1Message : "")
 
 if add2Signal
-    strategy.entry("L", strategy.long, qty=1, alert_message="")
+    strategy.entry("L", strategy.long, qty=1, alert_message=enableWebhookOrders ? add2Message : "")
 
 if harvestSignal
-    strategy.close("L", qty=1, alert_message="")
+    // One unit out of the full four-unit pyramid = 25%.
+    strategy.close("L", qty=1, alert_message=enableWebhookOrders ? partialMessage : "")
 
 if longExit
     strategy.close("L", alert_message=enableWebhookOrders ? exitMessage : "")
