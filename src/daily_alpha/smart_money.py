@@ -9,10 +9,11 @@ from __future__ import annotations
 import csv
 import json
 import math
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -226,8 +227,7 @@ def rank_institutional_acquisitions(
         bucket["new_positions"] += 1 if prior is None or prior.shares <= 0 else 0
         bucket["shares_added"] += delta_shares
         bucket["estimated_value_added"] += estimated_added
-        if holding.period_of_report > bucket["period"]:
-            bucket["period"] = holding.period_of_report
+        bucket["period"] = max(bucket["period"], holding.period_of_report)
         if holding.symbol:
             bucket["symbol"] = holding.symbol
 
