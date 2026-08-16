@@ -36,6 +36,7 @@ ACTIONABLE_STATUSES = {
 }
 
 _DATE_PATTERN = re.compile(r"(20\d{2}-\d{2}-\d{2})")
+_ORATS_NO_DTE_OPTIONS = "ORATS_NO_45_75_DTE_OPTIONS"
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,7 @@ def build_research_shortlist(
     items: list[ResearchShortlistItem] = []
     qualified_count = 0
     data_error_count = 0
+    excluded_orats_no_dte = 0
     for classified, source, base_score in staged:
         symbol = source.symbol
         selected: OptionCandidate | None = None
@@ -151,17 +153,27 @@ def build_research_shortlist(
         if symbol not in requested_set:
             orats_status = "NOT_REQUESTED"
             orats_reason = "API_LIMIT_REACHED"
+            optionable = source.optionable
         elif symbol in errors:
+            reason = errors[symbol]
+            if reason == _ORATS_NO_DTE_OPTIONS:
+                excluded_orats_no_dte += 1
+                continue
             data_error_count += 1
             orats_status = "DATA_ERROR"
-            orats_reason = errors[symbol]
+            orats_reason = reason
+            optionable = source.optionable
         else:
             chain = chains.get(symbol)
             if chain is None:
                 data_error_count += 1
                 orats_status = "DATA_ERROR"
                 orats_reason = "ORATS_CHAIN_MISSING"
+                optionable = source.optionable
             else:
+                # A returned ORATS 45-75 DTE chain is the authoritative
+                # optionability signal for the enriched research shortlist.
+                optionable = True
                 selected = _best_qualified_option(chain.candidates, rules)
                 if selected is None:
                     orats_status = "ENRICHED"
@@ -186,7 +198,7 @@ def build_research_shortlist(
                 sector_net_score=sector_scores.get(source.sector, 0),
                 trend=source.trend,
                 momentum=source.momentum,
-                optionable=source.optionable,
+                optionable=optionable,
                 price=source.price,
                 average_volume=source.average_volume,
                 orats_status=orats_status,
@@ -219,11 +231,13 @@ def build_research_shortlist(
         "current_buy_count": sum(record.signal == "BUY" for record in current),
         "actionable_ranked_count": len(ranked),
         "excluded_not_optionable": excluded_not_optionable,
+        "excluded_orats_no_45_75_dte_options": excluded_orats_no_dte,
         "excluded_partial_data": excluded_partial,
         "orats_requests": len(requested),
         "orats_request_limit": request_limit,
         "qualified_option_count": qualified_count,
         "orats_data_error_count": data_error_count,
+        "optionability_authority": "ORATS_FOR_ENRICHED_SYMBOLS",
         "classification_counts": status_counts,
         "trading_authorized": False,
         "paper_execution_triggered": False,
