@@ -13,7 +13,9 @@ from .trump_policy import TrumpPolicyCompany
 
 WHITE_HOUSE_INVESTMENTS_URL = "https://www.whitehouse.gov/investments/"
 _USER_AGENT = "DailyAlphaResearch/0.1 (+https://github.com/shannonburgess/daily-alpha-engine1)"
-_AMOUNT_RE = re.compile(r"\$?\s*([0-9][0-9,.]*)\s*(trillion|billion|million)", re.I)
+_AMOUNT_RE = re.compile(
+    r"\$?\s*([0-9][0-9,.]*)\s*(trillion|billion|million)", re.IGNORECASE
+)
 
 
 class TrumpPolicySourceError(RuntimeError):
@@ -172,7 +174,9 @@ def parse_investment_amount(value: str) -> float:
     if not match:
         return 0.0
     number = float(match.group(1).replace(",", ""))
-    multiplier = {"million": 1e6, "billion": 1e9, "trillion": 1e12}[match.group(2).lower()]
+    multiplier = {"million": 1e6, "billion": 1e9, "trillion": 1e12}[
+        match.group(2).lower()
+    ]
     return number * multiplier
 
 
