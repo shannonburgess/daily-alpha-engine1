@@ -137,13 +137,15 @@ class StockDataSmartMoneyClient:
             name = str(item.get("institution") or cik).strip()
             if not cik:
                 continue
-            current_payload = self._get(
-                f"institutions/portfolio/{cik}",
-                {"period": current_period, "limit": portfolio_limit},
+            current_payload = self._get_optional_portfolio(
+                cik,
+                period=current_period,
+                limit=portfolio_limit,
             )
-            previous_payload = self._get(
-                f"institutions/portfolio/{cik}",
-                {"period": previous_period, "limit": portfolio_limit},
+            previous_payload = self._get_optional_portfolio(
+                cik,
+                period=previous_period,
+                limit=portfolio_limit,
             )
             current_rows.extend(
                 _portfolio_holdings(current_payload, cik=cik, manager_name=name, period=current_end)
@@ -163,6 +165,24 @@ class StockDataSmartMoneyClient:
             portfolio_limit=portfolio_limit,
         )
         return tuple(current_rows), tuple(previous_rows), coverage
+
+    def _get_optional_portfolio(self, cik: str, *, period: str, limit: int) -> Any:
+        """Return an empty portfolio when a manager has no filing for that quarter.
+
+        StockData returns HTTP 404 for some institution/quarter combinations.
+        In a quarter-over-quarter comparison that means "no reported portfolio"
+        for that manager in that quarter, not a fatal outage. Other HTTP and
+        network errors remain fail-closed.
+        """
+        try:
+            return self._get(
+                f"institutions/portfolio/{cik}",
+                {"period": period, "limit": limit},
+            )
+        except SmartMoneySourceError as exc:
+            if str(exc) == "STOCKDATA_HTTP_404":
+                return {"holdings": []}
+            raise
 
     def _get(self, path: str, params: Mapping[str, object]) -> Any:
         self._throttle()
