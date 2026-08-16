@@ -36,6 +36,16 @@ Underlying dollar volume should remain an execution/liquidity screen upstream, n
 
 ### Webhook status
 
-The script contains `ENTRY_LONG` and `EXIT` webhook payloads compatible with the current Daily Alpha Pine ingress contract, but webhook order messages default to disabled. Runner `ADD` and `PARTIAL` events are not yet supported by the AWS receiver/processor and must remain paper/backtest-only until the backend contract is extended and tested.
+The canonical script can emit the full paper-only runner lifecycle when `Attach Daily Alpha Runner Webhook Messages` is enabled:
+
+- `ENTRY_LONG`
+- `ADD` with `position_fraction=0.25`, `runner_stage=ADD_1_ATR`
+- `ADD` with `position_fraction=0.25`, `runner_stage=ADD_2_ATR`
+- `PARTIAL` with `position_fraction=0.25`, `runner_stage=HARVEST_3_ATR`
+- `EXIT`
+
+The AWS Pine ingress contract accepts and sanitizes these actions, but ingress still does not authorize trading or mutate the paper ledger. A separate paper-only processor must be added before `ADD` or `PARTIAL` can change a paper position.
+
+Webhook order messages remain disabled by default until end-to-end SQS validation is complete.
 
 No live brokerage execution is enabled.
