@@ -32,7 +32,7 @@ class OratsDataError(OratsError):
 
 
 class OratsNoOptionsError(OratsDataError):
-    """Raised when ORATS has no 45-75 DTE strike rows for the requested symbol."""
+    """Raised when ORATS has no option rows for the requested DTE window."""
 
 
 @dataclass(frozen=True)
@@ -89,18 +89,24 @@ class OratsClient:
         ticker: str,
         *,
         as_of: datetime | None = None,
+        dte_min: int = 45,
+        dte_max: int = 75,
     ) -> OratsChain:
         symbol = ticker.strip().upper()
         if not symbol or not symbol.replace(".", "").replace("-", "").isalnum():
             raise OratsConfigurationError(f"Invalid ticker: {ticker!r}")
+        if dte_min < 0 or dte_max < dte_min:
+            raise OratsConfigurationError("ORATS DTE window is invalid")
 
         path = "live/strikes" if self.mode == "live" else "strikes"
-        query = urlencode({"token": self._token, "ticker": symbol, "dte": "45,75"})
+        query = urlencode(
+            {"token": self._token, "ticker": symbol, "dte": f"{dte_min},{dte_max}"}
+        )
         payload = self._transport(f"{self.BASE_URL}/{path}?{query}", self.timeout_seconds)
         rows = self._extract_rows(payload)
         if not rows:
             raise OratsNoOptionsError(
-                f"ORATS returned no 45-75 DTE option rows for {symbol}"
+                f"ORATS returned no {dte_min}-{dte_max} DTE option rows for {symbol}"
             )
 
         observed_at = self._latest_observation(rows)
