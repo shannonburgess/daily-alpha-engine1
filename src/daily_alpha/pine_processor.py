@@ -43,12 +43,17 @@ class PineProcessorResult:
 
 
 CANONICAL_STRATEGY = "DA_TURTLE_ADAPTIVE_TREND"
-CANONICAL_STRATEGY_VERSION = "2.3"
+# Keep v2.3 accepted during migration so existing TradingView alerts do not break.
+CANONICAL_STRATEGY_VERSIONS = {"2.3", "2.4"}
 CANONICAL_TIMEFRAMES = {"D", "1D"}
 CANONICAL_ADD_STAGES = {"ADD_1_ATR", "ADD_2_ATR"}
 CANONICAL_PARTIAL_STAGE = "HARVEST_3_ATR"
 CANONICAL_RUNNER_FRACTION = 0.25
-INGRESS_SCHEMA_VERSIONS = {"2026-08-16-v2", "2026-08-16-v3"}
+INGRESS_SCHEMA_VERSIONS = {
+    "2026-08-16-v2",
+    "2026-08-16-v3",
+    "2026-08-16-v4",
+}
 PROCESSOR_SCHEMA_VERSION = "2026-08-16-v2"
 
 
@@ -281,7 +286,7 @@ def _signal_from_ingress(
 def _validate_canonical_signal(signal: PineSignal) -> None:
     if signal.strategy != CANONICAL_STRATEGY:
         raise PineProcessorError("PINE_PROCESSOR_STRATEGY_NOT_CANONICAL")
-    if signal.strategy_version != CANONICAL_STRATEGY_VERSION:
+    if signal.strategy_version not in CANONICAL_STRATEGY_VERSIONS:
         raise PineProcessorError("PINE_PROCESSOR_STRATEGY_VERSION_NOT_CANONICAL")
     if signal.timeframe.upper() not in CANONICAL_TIMEFRAMES:
         raise PineProcessorError("PINE_PROCESSOR_TIMEFRAME_NOT_CANONICAL")
