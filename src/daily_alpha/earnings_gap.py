@@ -122,10 +122,12 @@ def classify_earnings_gap(
         and observation.bullish_trend_state
         and breakout
     )
-    gap_go = common_quality and close_location >= cfg.min_close_location
+    threshold_epsilon = 1e-9
+    gap_go = common_quality and close_location >= cfg.min_close_location - threshold_epsilon
     gap_go_early = (
         common_quality
-        and cfg.min_early_close_location <= close_location < cfg.min_close_location
+        and close_location >= cfg.min_early_close_location - threshold_epsilon
+        and close_location < cfg.min_close_location - threshold_epsilon
     )
 
     if gap_go:
