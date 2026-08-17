@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: orats-research
+  queue: max
+
 jobs:
   broad:
     name: Broad liquid cohort 60 vs 70 vs 75
