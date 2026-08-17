@@ -53,7 +53,8 @@ groupEarnings = "08 - Earnings Gap Sleeve"
 useEarningsGapSleeve = input.bool(true, "Enable Earnings Gap & Go Entries", group=groupEarnings)
 minEarningsGapPct = input.float(5.0, "Minimum Earnings Gap %", minval=0.0, step=0.5, group=groupEarnings)
 minEarningsGapAtr = input.float(1.5, "Minimum Earnings Gap ATR", minval=0.0, step=0.25, group=groupEarnings)
-minGapCloseLocation = input.float(0.75, "Gap & Go: Minimum Close Location", minval=0.0, maxval=1.0, step=0.05, group=groupEarnings)
+minGapCloseLocation = input.float(0.70, "Gap & Go: Minimum Close Location", minval=0.0, maxval=1.0, step=0.05, group=groupEarnings)
+minEarlyGapCloseLocation = input.float(0.60, "Early Watch: Minimum Close Location", minval=0.0, maxval=1.0, step=0.05, group=groupEarnings)
 minGapRetention = input.float(0.70, "Gap & Go: Minimum Gap Retention", minval=0.0, maxval=2.0, step=0.05, group=groupEarnings)
 minGapRelativeVolume = input.float(1.5, "Gap & Go: Minimum Relative Volume", minval=0.0, step=0.25, group=groupEarnings)
 maxEarningsRsi = input.float(85.0, "Gap & Go: Maximum RSI", minval=50.0, maxval=100.0, step=0.5, group=groupEarnings)
@@ -159,10 +160,13 @@ relativeVolume = averageVolume20Prior > 0 ? volume / averageVolume20Prior : 0.0
 
 isEarningsUpsideGap = useEarningsGapSleeve and earningsEventWindow and gapDollars > 0 and (gapPct >= minEarningsGapPct or gapAtr >= minEarningsGapAtr)
 earningsBreakout = not na(upper20) and close > upper20
-earningsGapGoQuality = close >= open and closeLocation >= minGapCloseLocation and gapRetention >= minGapRetention and relativeVolume >= minGapRelativeVolume and rsiValue <= maxEarningsRsi and trendState == 1 and earningsBreakout
+earningsCommonQuality = close >= open and gapRetention >= minGapRetention and relativeVolume >= minGapRelativeVolume and rsiValue <= maxEarningsRsi and trendState == 1 and earningsBreakout
+earningsGapGoQuality = earningsCommonQuality and closeLocation >= minGapCloseLocation
+earningsGapEarlyQuality = earningsCommonQuality and closeLocation >= minEarlyGapCloseLocation and closeLocation < minGapCloseLocation
 earningsGapGo = barstate.isconfirmed and isEarningsUpsideGap and earningsGapGoQuality
-earningsGapCrap = barstate.isconfirmed and isEarningsUpsideGap and not earningsGapGo and (close < previousClose or gapRetention < crapGapRetention or (close < open and closeLocation < crapCloseLocation))
-earningsWait = barstate.isconfirmed and isEarningsUpsideGap and not earningsGapGo and not earningsGapCrap
+earningsGapGoEarly = barstate.isconfirmed and isEarningsUpsideGap and earningsGapEarlyQuality
+earningsGapCrap = barstate.isconfirmed and isEarningsUpsideGap and not earningsGapGo and not earningsGapGoEarly and (close < previousClose or gapRetention < crapGapRetention or (close < open and closeLocation < crapCloseLocation))
+earningsWait = barstate.isconfirmed and isEarningsUpsideGap and not earningsGapGo and not earningsGapGoEarly and not earningsGapCrap
 
 // ===== ENTRY / EXIT / RUNNER MANAGEMENT =====
 var float entryBreakoutLevel = na
@@ -185,13 +189,14 @@ efficiencyEntryOK = not useEfficiencyGate or efficiency >= minTrendEfficiency
 normalBaseLongSetup = inWindow and strategy.position_size == 0 and freshLongBreakout and not isEarningsUpsideGap and trendState == 1 and normalTrendMature and freshTrendOK
 normalLongEntry = normalBaseLongSetup and priceEntryOK and efficiencyEntryOK and rsiEntryOK and adxEntryOK
 
-// Earnings Gap & Go intentionally bypasses prior ADX / trend-efficiency because the
-// event itself can reprice the stock. Initial size is still 50%; runner adds require
-// the normal ADX trendability gate before exposure scales further.
+// Only full Gap & Go events enter in v2.4. The 60%-70% EARLY band is deliberately
+// research/watch-only until its starter/confirmation scaling rule is validated.
+// Full Gap & Go intentionally bypasses prior ADX / trend-efficiency because the
+// event itself can reprice the stock. Initial size is 50%; runner adds require ADX.
 earningsGapGoEntry = inWindow and strategy.position_size == 0 and earningsGapGo and freshLongBreakout and priceEntryOK
 longEntry = normalLongEntry or earningsGapGoEntry
 entryType = earningsGapGoEntry ? "EARNINGS_GAP_GO" : normalLongEntry ? "NORMAL_BREAKOUT" : "NONE"
-earningsGapClass = earningsGapGo ? "EARNINGS_GAP_GO" : earningsGapCrap ? "EARNINGS_GAP_CRAP" : earningsWait ? "EARNINGS_WAIT" : "NONE"
+earningsGapClass = earningsGapGo ? "EARNINGS_GAP_GO" : earningsGapGoEarly ? "EARNINGS_GAP_GO_EARLY" : earningsGapCrap ? "EARNINGS_GAP_CRAP" : earningsWait ? "EARNINGS_WAIT" : "NONE"
 
 priceBlockedEntry = normalBaseLongSetup and not priceEntryOK
 efficiencyBlockedEntry = normalBaseLongSetup and priceEntryOK and not efficiencyEntryOK
@@ -306,6 +311,7 @@ plot(showTrendStop and harvestDone and not na(breakEvenLevel) ? breakEvenLevel :
 
 plotshape(showSignals and normalLongEntry, title="NORMAL BREAKOUT ENTRY", text="ENTRY\nNORMAL", style=shape.labelup, location=location.belowbar, color=color.green, textcolor=color.white, size=size.tiny)
 plotshape(showSignals and earningsGapGoEntry, title="EARNINGS GAP GO ENTRY", text="ENTRY\nGAP GO", style=shape.labelup, location=location.belowbar, color=color.aqua, textcolor=color.black, size=size.tiny)
+plotshape(showEarningsClassification and earningsGapGoEarly, title="EARNINGS GAP GO EARLY", text="WATCH\nGAP EARLY", style=shape.labeldown, location=location.abovebar, color=color.lime, textcolor=color.black, size=size.tiny)
 plotshape(showEarningsClassification and earningsGapCrap, title="EARNINGS GAP CRAP", text="PASS\nGAP CRAP", style=shape.labeldown, location=location.abovebar, color=color.red, textcolor=color.white, size=size.tiny)
 plotshape(showEarningsClassification and earningsWait, title="EARNINGS WAIT", text="WAIT\nEARNINGS", style=shape.labeldown, location=location.abovebar, color=color.yellow, textcolor=color.black, size=size.tiny)
 plotshape(showSignals and trendMaturityBlockedEntry, title="TREND NOT MATURE", text="WAIT\nTREND AGE", style=shape.labeldown, location=location.abovebar, color=color.gray, textcolor=color.white, size=size.tiny)
