@@ -17,6 +17,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+CANONICAL_GAP_GO_CLOSE_LOCATION = 0.70
+EARLY_GAP_GO_CLOSE_LOCATION = 0.60
+
 
 @dataclass
 class Bar:
@@ -51,6 +54,19 @@ def _number(value: Any) -> float:
     if value in (None, ""):
         return 0.0
     return float(value)
+
+
+def gap_go_close_location_band(close_location: float) -> str:
+    """Classify the canonical v2.4 close-location band.
+
+    FULL is paper/backtest eligible when all other Gap & Go quality gates pass.
+    EARLY is research/watch-only and must never authorize an entry by itself.
+    """
+    if close_location >= CANONICAL_GAP_GO_CLOSE_LOCATION:
+        return "FULL"
+    if close_location >= EARLY_GAP_GO_CLOSE_LOCATION:
+        return "EARLY"
+    return "BELOW"
 
 
 def _request_json(url: str, *, token: str, header_auth: bool) -> Any:
@@ -354,9 +370,9 @@ def indicators(bars: list[Bar]) -> list[dict[str, Any]]:
             earnings_window and gap_dollars > 0 and (gap_pct >= 5.0 or gap_atr >= 1.5)
         )
         earnings_breakout = upper20 is not None and bar.close > upper20
-        gap_go_quality = (
+        close_location_band = gap_go_close_location_band(close_location)
+        gap_go_core_quality = (
             bar.close >= bar.open
-            and close_location >= 0.75
             and gap_retention >= 0.70
             and relative_volume >= 1.5
             and rsi[i] is not None
@@ -364,17 +380,32 @@ def indicators(bars: list[Bar]) -> list[dict[str, Any]]:
             and trend_state == 1
             and earnings_breakout
         )
-        gap_go = is_earnings_up_gap and gap_go_quality
+        gap_go = (
+            is_earnings_up_gap
+            and close_location_band == "FULL"
+            and gap_go_core_quality
+        )
+        gap_go_early = (
+            is_earnings_up_gap
+            and close_location_band == "EARLY"
+            and gap_go_core_quality
+        )
         gap_crap = (
             is_earnings_up_gap
             and not gap_go
+            and not gap_go_early
             and (
                 (prev_close is not None and bar.close < prev_close)
                 or gap_retention < 0.50
                 or (bar.close < bar.open and close_location < 0.50)
             )
         )
-        gap_wait = is_earnings_up_gap and not gap_go and not gap_crap
+        gap_wait = (
+            is_earnings_up_gap
+            and not gap_go
+            and not gap_go_early
+            and not gap_crap
+        )
 
         rows.append(
             {
@@ -397,6 +428,7 @@ def indicators(bars: list[Bar]) -> list[dict[str, Any]]:
                 "relative_volume": relative_volume,
                 "is_earnings_up_gap": is_earnings_up_gap,
                 "gap_go": gap_go,
+                "gap_go_early": gap_go_early,
                 "gap_crap": gap_crap,
                 "gap_wait": gap_wait,
             }
@@ -487,6 +519,8 @@ def run_strategy(
             classification = (
                 "EARNINGS_GAP_GO"
                 if row["gap_go"]
+                else "EARNINGS_GAP_GO_EARLY"
+                if row.get("gap_go_early", False)
                 else "EARNINGS_GAP_CRAP"
                 if row["gap_crap"]
                 else "EARNINGS_WAIT"
