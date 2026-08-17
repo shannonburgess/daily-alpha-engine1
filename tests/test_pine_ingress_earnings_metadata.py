@@ -67,6 +67,23 @@ def test_gap_go_requires_matching_classification():
         )
 
 
+def test_early_watch_cannot_be_submitted_as_entry_type():
+    with pytest.raises(PineIngressError, match="entry_type is invalid"):
+        build_pine_ingress_record(
+            {
+                "body": json.dumps(
+                    _payload(
+                        entry_type="EARNINGS_GAP_GO_EARLY",
+                        earnings_gap_class="EARNINGS_GAP_GO_EARLY",
+                        earnings_close_location=0.65,
+                    )
+                )
+            },
+            expected_secret=SECRET,
+            received_at=NOW,
+        )
+
+
 def test_v2_3_entry_remains_backward_compatible_without_event_metadata():
     payload = _payload(
         strategy_version="2.3",
