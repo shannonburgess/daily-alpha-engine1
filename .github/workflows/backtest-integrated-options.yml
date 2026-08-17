@@ -1,0 +1,40 @@
+name: Integrated portfolio options NAV backtest
+
+on:
+  pull_request:
+    paths:
+      - "src/daily_alpha/portfolio_options_backtest.py"
+      - ".github/workflows/backtest-integrated-options.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integrated:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run integrated daily NAV test
+        run: |
+          test -n "$ORATS_TOKEN"
+          PYTHONPATH=src python -m daily_alpha.portfolio_options_backtest \
+            --start 2024-01-01 --end 2026-08-14 \
+            --json-out portfolio-options.json | tee portfolio-options.txt
+      - name: Publish summary
+        run: |
+          { echo "## Integrated options NAV"; echo '```text'; cat portfolio-options.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: integrated-options-nav
+          path: |
+            portfolio-options.json
+            portfolio-options.txt
+          if-no-files-found: error
