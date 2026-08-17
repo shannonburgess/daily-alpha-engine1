@@ -1,0 +1,47 @@
+name: Research R2 targeted fixed
+
+on:
+  push:
+    branches: [agent/r2-model-search]
+    paths:
+      - .github/workflows/research-r2-targeted-fix.yml
+
+permissions:
+  contents: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Daily Alpha
+        run: python -m pip install --disable-pip-version-check .
+      - name: Apply research-only bookkeeping fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('research/run_r2_targeted_search.py')
+          s=p.read_text()
+          old="last=max(x for x in b if x.trade_date<=end)"
+          new="last=max((x for x in b if x.trade_date<=end),key=lambda x:x.trade_date)"
+          if old not in s:
+              raise SystemExit('expected line not found')
+          p.write_text(s.replace(old,new))
+          PY
+      - name: Run targeted search
+        run: python research/run_r2_targeted_search.py
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-r2-targeted-fixed
+          path: |
+            r2-targeted.json
+            r2-targeted.md
+          if-no-files-found: error
+          retention-days: 30
