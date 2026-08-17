@@ -1,6 +1,11 @@
 name: Unified R2 portfolio scenario backtest
 
 on:
+  pull_request:
+    paths:
+      - "src/daily_alpha/scenario_backtest.py"
+      - "tests/test_scenario_backtest.py"
+      - ".github/workflows/backtest-portfolio-scenarios.yml"
   workflow_dispatch:
 
 permissions:
