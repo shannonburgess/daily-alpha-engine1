@@ -11,7 +11,6 @@ No broker, Lambda, paper-ledger, or live-trading mutation.
 from __future__ import annotations
 
 import csv
-import hashlib
 import io
 import json
 import math
@@ -32,33 +31,20 @@ FETCH_START = date(2021, 1, 1)
 INITIAL_NAV = 1_250_000.0
 SGOV_FEE = 0.0009  # 0.09% annual fee proxy
 
-# Broad liquid research universe used in the R2 studies.
 STOCK_SECTORS = {
-    # Semiconductors
     "NVDA":"SEMIS","AVGO":"SEMIS","AMD":"SEMIS","QCOM":"SEMIS","TXN":"SEMIS","AMAT":"SEMIS","KLAC":"SEMIS",
-    # Technology / software
     "AAPL":"TECH","MSFT":"TECH","CRM":"TECH","NOW":"TECH","ORCL":"TECH","IBM":"TECH","CSCO":"TECH","PANW":"TECH",
-    # Communication / internet
     "META":"COMM","GOOGL":"COMM","NFLX":"COMM",
-    # Financials
     "JPM":"FIN","BAC":"FIN","WFC":"FIN","GS":"FIN","MS":"FIN","AXP":"FIN","SCHW":"FIN",
-    # Health
     "UNH":"HEALTH","LLY":"HEALTH","ABBV":"HEALTH","TMO":"HEALTH","DHR":"HEALTH","ISRG":"HEALTH","AMGN":"HEALTH",
-    # Industrials
     "CAT":"IND","DE":"IND","GE":"IND","RTX":"IND","HON":"IND","ETN":"IND","EMR":"IND","PWR":"IND",
-    # Energy
     "XOM":"ENERGY","CVX":"ENERGY","COP":"ENERGY","EOG":"ENERGY","SLB":"ENERGY","MPC":"ENERGY",
-    # Consumer
     "WMT":"CONS","COST":"CONS","HD":"CONS","LOW":"CONS","MCD":"CONS","BKNG":"CONS","TSLA":"CONS",
-    # Real estate
     "AMT":"REAL","PLD":"REAL","EQIX":"REAL",
-    # Materials
     "LIN":"MAT","FCX":"MAT",
-    # Utilities
     "NEE":"UTIL",
 }
 
-# Signal proxy -> execution vehicles. If a ticker lacks history, that lane is skipped.
 SECTOR_VEHICLES = {
     "SEMIS": {"proxy":"SOXX", "lev2":"USD", "lev3":"SOXL"},
     "TECH": {"proxy":"XLK", "lev2":"ROM", "lev3":"TECL"},
@@ -72,13 +58,12 @@ SECTOR_VEHICLES = {
     "MAT": {"proxy":"XLB", "lev2":"UYM", "lev3":"MATL"},
     "UTIL": {"proxy":"XLU", "lev2":"UPW", "lev3":None},
 }
-
 ALL_FETCH = sorted(set(STOCK_SECTORS) | {"SPY"} | {x for v in SECTOR_VEHICLES.values() for x in v.values() if x})
 
 @dataclass
 class Position:
     symbol: str
-    kind: str  # STOCK / LEV2 / LEV3
+    kind: str
     sector: str
     qty: float
     unit_qty: float
@@ -152,7 +137,6 @@ def gap_go_signal(bars, ind, i):
 
 
 def sector_signal(bars, ind, i):
-    # Base sector qualification from unlevered sector ETF.
     if not normal_r2_signal(bars, ind, i, close_min=0.65, adx_min=17.0):
         return None
     r = ind[i]
@@ -166,11 +150,6 @@ def fetch_one(symbol, token):
 
 
 def get_tbill_daily_rates():
-    """Fetch DGS3MO from FRED and convert annual percent yield to daily decimal.
-
-    Used as an SGOV-like Treasury reserve carry proxy, net of SGOV fee. Missing days
-    forward-fill the last available observation. If unavailable, reserve carry is 0.
-    """
     url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS3MO"
     try:
         with urllib.request.urlopen(url, timeout=20) as resp:
@@ -181,7 +160,8 @@ def get_tbill_daily_rates():
             val = row.get("DGS3MO")
             if not val or val == ".":
                 continue
-            d = datetime.strptime(row["observation_date"], "%Y-%m-%d").date()
+            dkey = "observation_date" if "observation_date" in row else "DATE"
+            d = datetime.strptime(row[dkey], "%Y-%m-%d").date()
             obs[d] = max(float(val) / 100.0 - SGOV_FEE, 0.0) / 252.0
         return obs, "FRED_DGS3MO_NET_SGOV_FEE"
     except Exception as exc:
@@ -206,9 +186,8 @@ def metrics(dates, navs, rf_daily):
             if underwater_start is not None:
                 max_recovery = max(max_recovery, (dates[i] - underwater_start).days)
                 underwater_start = None
-        else:
-            if underwater_start is None:
-                underwater_start = dates[i]
+        elif underwater_start is None:
+            underwater_start = dates[i]
         dd = navs[i] / peak - 1.0
         if dd < max_dd:
             max_dd = dd
@@ -243,8 +222,7 @@ def metrics(dates, navs, rf_daily):
 
 
 def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector_exit_days=10):
-    # Align to SPY dates; only dates with SPY history are portfolio dates.
-    spy_bars, spy_ind, _ = data["SPY"]
+    spy_bars, _, _ = data["SPY"]
     dates = [b.trade_date for b in spy_bars if START <= b.trade_date <= END]
     by_symbol = {}
     idx_by_symbol = {}
@@ -258,70 +236,61 @@ def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector
     navs = [nav]
     out_dates = [dates[0]]
     peak = nav
-    prior_prices = {}
+    prior_spy = None
     hedge_weight = 0.0
     stats = defaultdict(int)
 
     for di, d in enumerate(dates):
+        spy_row = by_symbol["SPY"].get(d)
         if di == 0:
-            for s in by_symbol:
-                if d in by_symbol[s]:
-                    prior_prices[s] = by_symbol[s][d][0].close
+            prior_spy = spy_row[0].close if spy_row else None
             continue
 
-        # Treasury reserve carry on idle cash (SGOV-like reserve proxy).
+        # Idle investable cash earns a short-Treasury/SGOV-like carry proxy.
         cash *= 1.0 + rf_daily.get(d, 0.0)
 
-        # Mark risky positions to market.
-        for s, p in list(positions.items()):
-            row = by_symbol.get(s, {}).get(d)
-            if not row:
-                continue
-            px = row[0].close
-            prev = prior_prices.get(s, px)
-            cash += p.qty * (px - prev)
-            prior_prices[s] = px
-
-        # Synthetic SPY beta hedge overlay. Hedge notional is set from prior-day drawdown.
-        spy_row = by_symbol["SPY"].get(d)
+        # Hedge P&L is cash-settled synthetically; not an options backtest.
         if spy_row:
             spy_px = spy_row[0].close
-            spy_prev = prior_prices.get("SPY", spy_px)
-            if beta_hedge and spy_prev > 0 and hedge_weight > 0:
-                cash += -hedge_weight * nav * (spy_px / spy_prev - 1.0)
-            prior_prices["SPY"] = spy_px
+            if beta_hedge and prior_spy and prior_spy > 0 and hedge_weight > 0:
+                cash += -hedge_weight * nav * (spy_px / prior_spy - 1.0)
+            prior_spy = spy_px
 
-        # Current NAV equals cash plus current market value notionally already embedded via MTM.
-        nav = cash
-        for p in positions.values():
-            row = by_symbol.get(p.symbol, {}).get(d)
-            if row:
-                nav += p.qty * row[0].close
-                cash -= p.qty * row[0].close
-        # Rebase cash after computing NAV: actual cash is NAV minus marked market values.
-        mv = sum(p.qty * by_symbol[p.symbol][d][0].close for p in positions.values() if d in by_symbol.get(p.symbol, {}))
-        cash = nav - mv
+        # Mark portfolio from actual cash + current market value. No P&L double counting.
+        mv = sum(
+            p.qty * by_symbol[p.symbol][d][0].close
+            for p in positions.values()
+            if d in by_symbol.get(p.symbol, {})
+        )
+        nav = cash + mv
         peak = max(peak, nav)
         dd = nav / peak - 1.0
 
         risk_mult = 1.0
         if throttle:
-            if dd <= -0.12: risk_mult = 0.25
-            elif dd <= -0.08: risk_mult = 0.50
-            elif dd <= -0.05: risk_mult = 0.75
+            if dd <= -0.12:
+                risk_mult = 0.25
+            elif dd <= -0.08:
+                risk_mult = 0.50
+            elif dd <= -0.05:
+                risk_mult = 0.75
         if beta_hedge:
-            if dd <= -0.12: hedge_weight = 0.60
-            elif dd <= -0.08: hedge_weight = 0.40
-            elif dd <= -0.05: hedge_weight = 0.20
-            else: hedge_weight = 0.0
+            if dd <= -0.12:
+                hedge_weight = 0.60
+            elif dd <= -0.08:
+                hedge_weight = 0.40
+            elif dd <= -0.05:
+                hedge_weight = 0.20
+            else:
+                hedge_weight = 0.0
 
-        # Exit and add logic.
+        # Exit and stock pyramiding logic.
         for s, p in list(positions.items()):
             row = by_symbol.get(s, {}).get(d)
             if not row:
                 continue
             bar, r, i = row
-            bars, ind = idx_by_symbol[s]
+            bars, _ = idx_by_symbol[s]
             exit_n = 55 if p.kind == "STOCK" else sector_exit_days
             low_exit = prior_low(bars, i, exit_n)
             hard = bar.close <= p.entry - 0.75 * p.risk_dist
@@ -351,10 +320,8 @@ def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector
                         p.added2 = True
                         stats["stock_add2"] += 1
 
-        # Determine stock entry candidates first.
         stock_candidates = []
         sectors_with_stock_entry = set()
-        sectors_with_open_stock = {p.sector for p in positions.values() if p.kind == "STOCK"}
         for s, sector in STOCK_SECTORS.items():
             if s in positions or s not in by_symbol or d not in by_symbol[s]:
                 continue
@@ -371,11 +338,9 @@ def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector
                 sectors_with_stock_entry.add(sector)
         stock_candidates.sort(reverse=True)
 
-        # Open highest-quality stock entries subject to cash and 0.50% initial-risk budget.
         for _, s, sector, px, risk_dist, atr in stock_candidates:
             risk_budget = nav * 0.005 * risk_mult
             unit_qty = (risk_budget / 2.0) / risk_dist
-            # 15% NAV initial notional cap per stock.
             unit_qty = min(unit_qty, (0.15*nav/2.0) / px)
             qty = 2*unit_qty
             cost = qty*px
@@ -383,10 +348,8 @@ def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector
                 continue
             cash -= cost
             positions[s] = Position(s, "STOCK", sector, qty, unit_qty, px, px, risk_dist, atr)
-            prior_prices[s] = px
             stats["entry_STOCK"] += 1
 
-        # Sector proxy sleeve only when the sector has no qualifying/open stock exposure.
         if sector_sleeve:
             sectors_with_open_stock = {p.sector for p in positions.values() if p.kind == "STOCK"}
             sectors_with_open_lev = {p.sector for p in positions.values() if p.kind in ("LEV2","LEV3")}
@@ -396,7 +359,7 @@ def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector
                 proxy = spec["proxy"]
                 if proxy not in by_symbol or d not in by_symbol[proxy]:
                     continue
-                pbar, pr, pi = by_symbol[proxy][d]
+                _, _, pi = by_symbol[proxy][d]
                 pbars, pind = idx_by_symbol[proxy]
                 lane = sector_signal(pbars, pind, pi)
                 if not lane:
@@ -405,7 +368,7 @@ def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector
                 if not exec_symbol or exec_symbol not in by_symbol or d not in by_symbol[exec_symbol] or exec_symbol in positions:
                     continue
                 ebar, er, ei = by_symbol[exec_symbol][d]
-                ebars, eind = idx_by_symbol[exec_symbol]
+                ebars, _ = idx_by_symbol[exec_symbol]
                 l10 = prior_low(ebars, ei, 10)
                 atr = er.get("atr")
                 if l10 is None or atr is None or ebar.close <= l10:
@@ -414,7 +377,6 @@ def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector
                 risk_pct = 0.0025 if lane == "LEV3" else 0.0035
                 risk_budget = nav * risk_pct * risk_mult
                 qty = risk_budget / risk_dist
-                # Cap leveraged ETF initial notional: 10% NAV (3x), 12.5% NAV (2x).
                 cap = (0.10 if lane == "LEV3" else 0.125) * nav
                 qty = min(qty, cap / ebar.close)
                 cost = qty * ebar.close
@@ -422,11 +384,13 @@ def run_portfolio(data, rf_daily, *, sector_sleeve, throttle, beta_hedge, sector
                     continue
                 cash -= cost
                 positions[exec_symbol] = Position(exec_symbol, lane, sector, qty, qty, ebar.close, ebar.close, risk_dist, float(atr))
-                prior_prices[exec_symbol] = ebar.close
                 stats[f"entry_{lane}"] += 1
 
-        # End-of-day NAV.
-        mv = sum(p.qty * by_symbol[p.symbol][d][0].close for p in positions.values() if d in by_symbol.get(p.symbol, {}))
+        mv = sum(
+            p.qty * by_symbol[p.symbol][d][0].close
+            for p in positions.values()
+            if d in by_symbol.get(p.symbol, {})
+        )
         nav = cash + mv
         navs.append(nav)
         out_dates.append(d)
@@ -453,7 +417,6 @@ def main():
         raise SystemExit("SPY history unavailable")
 
     rf_daily, rf_source = get_tbill_daily_rates()
-
     variants = {
         "A_R2_STOCKS_SGOV": dict(sector_sleeve=False, throttle=False, beta_hedge=False),
         "B_R2_PLUS_2X3X_SECTOR_SGOV": dict(sector_sleeve=True, throttle=False, beta_hedge=False),
