@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           test -n "$ORATS_TOKEN"
-          PYTHONPATH=src python -m daily_alpha.backtest_options_gapgo --thresholds 0.70,0.75 --json-out gapgo-options.json | tee gapgo-options.txt
+          PYTHONPATH=src python -m daily_alpha.backtest_options_gapgo --thresholds 0.60,0.70,0.75 --json-out gapgo-options.json | tee gapgo-options.txt
       - name: Add summary
         shell: bash
         run: |
