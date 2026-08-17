@@ -18,7 +18,8 @@ from typing import Any
 from .backtest import fetch_orats_history, indicators, run_strategy
 from .backtest_options import _num, fetch_contract
 from .backtest_options_conservative import optionize_conservative
-from .scenario_backtest import DEFAULT_STOCKS, metrics, r2_scores, run as run_scenarios
+from .scenario_backtest import DEFAULT_STOCKS, metrics, r2_scores
+from .scenario_backtest import run as run_scenarios
 
 OPTION_COHORT = (
     "MRVL,NVDA,AMD,AVGO,MU,QCOM,ARM,INTC,DELL,ORCL,MSFT,GOOGL,META,"
