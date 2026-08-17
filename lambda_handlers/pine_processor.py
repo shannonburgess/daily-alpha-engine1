@@ -35,7 +35,7 @@ def lambda_handler(event, context):
         try:
             raw_signal = event.get("signal")
             if not isinstance(raw_signal, dict):
-                raise ValueError("SCANNER_SIGNAL_REQUIRED")
+                raise TypeError("SCANNER_SIGNAL_REQUIRED")
             ingress = build_scanner_ingress(raw_signal, received_at=now)
             processor_result = PineProcessorResult(
                 schema_version="2026-08-17-scanner-v1",
