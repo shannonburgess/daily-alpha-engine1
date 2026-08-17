@@ -1,0 +1,338 @@
+name: Replay Aug 17 v2.4 trades without execution
+
+on:
+  push:
+    branches: [agent/replay-2026-08-17-trades]
+    paths: [.github/workflows/replay-2026-08-17-trades.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Daily Alpha
+        run: python -m pip install --disable-pip-version-check .
+      - name: Run no-write historical replay
+        shell: python
+        run: |
+          import csv
+          import json
+          import os
+          from datetime import UTC, date, datetime
+          from pathlib import Path
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          from daily_alpha.backtest import fetch_orats_history
+          from daily_alpha.config import OptionQualityRules, StockFallbackRules
+          from daily_alpha.execution_queue import build_pending_action, prepare_next_session_signal
+          from daily_alpha.execution_universe import evaluate_latest_v24
+          from daily_alpha.models import OptionCandidate, StockCandidate
+          from daily_alpha.runtime import evaluate_entry_event
+
+          token = os.environ.get('ORATS_TOKEN', '').strip()
+          if not token:
+              raise SystemExit('ORATS_TOKEN missing')
+
+          top20 = [
+              'MU','LRCX','FTI','IRM','PENG','RELY','SJM','PSX','VLO','WMB',
+              'OII','RCMT','OGS','INVH','ARTNA','BATRA','HUBB','ALGN','HUM','MRK'
+          ]
+          friday = date(2026, 8, 14)
+          friday_eval_time = datetime(2026, 8, 14, 20, 5, tzinfo=UTC)
+          monday_945 = datetime(2026, 8, 17, 13, 45, tzinfo=UTC)
+          option_rules = OptionQualityRules()
+          stock_rules = StockFallbackRules()
+
+          def hist_minute_chain(symbol):
+              qs = urlencode({
+                  'token': token,
+                  'ticker': symbol,
+                  'tradeDate': '202608170945',
+              })
+              url = 'https://api.orats.io/datav2/hist/one-minute/strikes/chain?' + qs
+              req = Request(url, headers={'Accept': 'text/csv'})
+              try:
+                  with urlopen(req, timeout=30) as resp:
+                      body = resp.read().decode('utf-8', errors='replace')
+              except HTTPError as exc:
+                  detail = exc.read().decode('utf-8', errors='replace')[:500]
+                  raise RuntimeError(f'ORATS_1MIN_HTTP_{exc.code}:{detail}') from exc
+              except URLError as exc:
+                  raise RuntimeError(f'ORATS_1MIN_REQUEST:{exc.reason}') from exc
+              if not body.strip():
+                  raise RuntimeError('ORATS_1MIN_EMPTY')
+              if body.lstrip().startswith('{'):
+                  obj = json.loads(body)
+                  raise RuntimeError('ORATS_1MIN_JSON:' + str(obj)[:500])
+              rows = list(csv.DictReader(body.splitlines()))
+              if not rows:
+                  raise RuntimeError('ORATS_1MIN_NO_ROWS')
+              return rows
+
+          def num(row, key, default=0.0):
+              try:
+                  raw = row.get(key)
+                  return default if raw in (None, '') else float(raw)
+              except (TypeError, ValueError):
+                  return default
+
+          def normalize(symbol, rows):
+              candidates = []
+              stock_prices = []
+              observed = []
+              for row in rows:
+                  price = num(row, 'stockPrice', num(row, 'spotPrice', 0.0))
+                  if price > 0:
+                      stock_prices.append(price)
+                  stamp = row.get('updatedAt') or row.get('quoteDate') or row.get('snapShotDate')
+                  if stamp:
+                      observed.append(stamp)
+                  dte = int(num(row, 'dte', 0))
+                  exp = str(row.get('expirDate') or '')
+                  strike = num(row, 'strike', 0.0)
+                  call_delta = num(row, 'delta', 0.0)
+                  put_delta = call_delta - 1.0
+                  for typ, prefix, delta in (
+                      ('CALL', 'call', call_delta),
+                      ('PUT', 'put', put_delta),
+                  ):
+                      bid = num(row, prefix + 'BidPrice', -1)
+                      ask = num(row, prefix + 'AskPrice', -1)
+                      if bid < 0 or ask <= 0 or strike <= 0 or not exp:
+                          continue
+                      candidates.append(OptionCandidate(
+                          symbol=symbol,
+                          expiration=exp,
+                          strike=strike,
+                          option_type=typ,
+                          dte=dte,
+                          bid=bid,
+                          ask=ask,
+                          open_interest=int(num(row, prefix + 'OpenInterest', 0)),
+                          volume=int(num(row, prefix + 'Volume', 0)),
+                          delta=delta,
+                      ))
+              if not stock_prices:
+                  raise RuntimeError('ORATS_1MIN_NO_STOCK_PRICE')
+              return stock_prices[0], candidates, observed[0] if observed else '2026-08-17T13:45:00+00:00'
+
+          def passes(c):
+              return (
+                  option_rules.min_dte <= c.dte <= option_rules.max_dte
+                  and c.bid >= option_rules.min_bid
+                  and c.ask >= c.bid
+                  and c.spread_pct <= option_rules.max_spread_pct
+                  and c.open_interest >= option_rules.min_open_interest
+                  and c.volume >= option_rules.min_volume
+                  and (c.delta is None or option_rules.min_abs_delta <= abs(c.delta) <= option_rules.max_abs_delta)
+              )
+
+          def choice_dict(decision_payload):
+              d = decision_payload.get('decision', {})
+              return {
+                  'status': d.get('status'),
+                  'instrument_selected': d.get('instrument_selected'),
+                  'fallback_reason': d.get('fallback_reason'),
+                  'selected_contract': d.get('selected_contract'),
+                  'risk_approved': decision_payload.get('risk', {}).get('approved'),
+                  'risk_reasons': decision_payload.get('risk', {}).get('reasons'),
+              }
+
+          results = []
+          friday_signals = []
+          for rank, symbol in enumerate(top20, start=1):
+              record = {'rank': rank, 'symbol': symbol}
+              try:
+                  bars, meta = fetch_orats_history(
+                      symbol,
+                      start=date(2025, 8, 1),
+                      end=friday,
+                      token=token,
+                  )
+                  decision = evaluate_latest_v24(
+                      symbol,
+                      bars,
+                      state=None,
+                      now=friday_eval_time,
+                      require_trade_date=friday,
+                  )
+                  record['friday_decision'] = decision.to_dict()
+                  if decision.action != 'ENTRY_LONG' or decision.signal is None:
+                      record['replay_status'] = 'NO_FRIDAY_ENTRY_SIGNAL'
+                      results.append(record)
+                      continue
+
+                  friday_signals.append(symbol)
+                  pending = build_pending_action(
+                      symbol=symbol,
+                      action='ENTRY_LONG',
+                      reason=decision.reason,
+                      signal=decision.signal,
+                      market_date=decision.market_bar_date,
+                      created_at=friday_eval_time,
+                      state_before=None,
+                      state_after=decision.proposed_state,
+                  )
+                  rows = hist_minute_chain(symbol)
+                  stock_price, candidates, observed_at = normalize(symbol, rows)
+                  record['monday_0945_stock_price'] = stock_price
+                  record['monday_0945_orats_observed_at'] = observed_at
+                  prepared = prepare_next_session_signal(
+                      pending,
+                      stock_price=stock_price,
+                      now=monday_945,
+                  )
+                  record['next_session_revalidation'] = prepared.to_dict()
+                  if not prepared.should_execute:
+                      record['replay_status'] = prepared.status
+                      results.append(record)
+                      continue
+
+                  signal = prepared.signal
+                  stock = StockCandidate(
+                      symbol=symbol,
+                      price=stock_price,
+                      average_daily_dollar_volume=float(signal.get('average_daily_dollar_volume', 0)),
+                      eligible=True,
+                  )
+                  common = {
+                      'signal': signal,
+                      'portfolio': {
+                          'snapshot_id': 'replay-2026-08-17',
+                          'account_id': 'counterfactual-no-write',
+                          'source': 'COUNTERFACTUAL_REPLAY',
+                          'as_of': monday_945.isoformat(),
+                          'cash': 1_250_000.0,
+                          'buying_power': 1_250_000.0,
+                          'positions': [],
+                          'data_status': 'AVAILABLE',
+                      },
+                      'risk_state': {
+                          'daily_new_risk': 0.0,
+                          'new_positions_today': 0,
+                          'daily_loss': 0.0,
+                          'weekly_drawdown': 0.0,
+                          'rolling_drawdown': 0.0,
+                          'total_risk': 0.0,
+                          'beta_exposure': 0.0,
+                          'delta_exposure': 0.0,
+                          'cluster_risk': [],
+                          'sector_risk': [],
+                      },
+                      'proposed_trade': {
+                          'decision_id': signal['signal_id'],
+                          'planned_loss': 6_250.0,
+                          'cluster_id': symbol,
+                          'sector': 'UNKNOWN',
+                          'beta_exposure': 0.0,
+                          'delta_exposure': 0.0,
+                          'event_risk': False,
+                          'liquidity_score': 1.0,
+                      },
+                  }
+
+                  def option_payload(seq):
+                      return [{
+                          'expiration': c.expiration,
+                          'strike': c.strike,
+                          'option_type': c.option_type,
+                          'dte': c.dte,
+                          'bid': c.bid,
+                          'ask': c.ask,
+                          'open_interest': c.open_interest,
+                          'volume': c.volume,
+                          'delta': c.delta,
+                      } for c in seq]
+
+                  all_event = dict(common)
+                  all_event['market'] = {
+                      'option_data_available': True,
+                      'option_data_observed_at': monday_945.isoformat(),
+                      'orats_mode': 'delayed',
+                      'options': option_payload(candidates),
+                      'stock': {
+                          'price': stock.price,
+                          'average_daily_dollar_volume': stock.average_daily_dollar_volume,
+                          'eligible': stock.eligible,
+                      },
+                  }
+                  call_event = dict(common)
+                  call_event['market'] = {
+                      'option_data_available': True,
+                      'option_data_observed_at': monday_945.isoformat(),
+                      'orats_mode': 'delayed',
+                      'options': option_payload([c for c in candidates if c.option_type == 'CALL']),
+                      'stock': all_event['market']['stock'],
+                  }
+                  current_logic = evaluate_entry_event(all_event, now=monday_945)
+                  direction_safe = evaluate_entry_event(call_event, now=monday_945)
+                  record['current_runtime_selection'] = choice_dict(current_logic)
+                  record['direction_safe_selection'] = choice_dict(direction_safe)
+                  record['qualified_calls'] = sum(1 for c in candidates if c.option_type == 'CALL' and passes(c))
+                  record['qualified_puts'] = sum(1 for c in candidates if c.option_type == 'PUT' and passes(c))
+                  record['replay_status'] = 'REVALIDATED_AT_0945'
+              except Exception as exc:
+                  record['replay_status'] = 'DATA_ERROR'
+                  record['error'] = f'{type(exc).__name__}:{exc}'
+              results.append(record)
+
+          out = {
+              'schema_version': '2026-08-17-counterfactual-v1',
+              'no_ledger_writes': True,
+              'friday_market_date': friday.isoformat(),
+              'monday_revalidation_time': monday_945.isoformat(),
+              'top20': top20,
+              'friday_entry_signal_symbols': friday_signals,
+              'results': results,
+          }
+          Path('replay-results.json').write_text(json.dumps(out, indent=2, sort_keys=True), encoding='utf-8')
+
+          lines = [
+              '# Daily Alpha Aug 17 Counterfactual Replay',
+              '',
+              '**NO LEDGER WRITES / NO LAMBDA EXECUTION**',
+              '',
+              f'Friday v2.4 ENTRY signals: {", ".join(friday_signals) if friday_signals else "NONE"}',
+              '',
+              '| Rank | Symbol | Friday v2.4 | 9:45 Revalidation | Direction-safe selection | Current runtime selection |',
+              '|---:|---|---|---|---|---|',
+          ]
+          for r in results:
+              fd = r.get('friday_decision', {})
+              fd_text = fd.get('action') or fd.get('reason') or r.get('replay_status')
+              rv = r.get('next_session_revalidation', {})
+              rv_text = rv.get('status') or r.get('replay_status')
+              safe = r.get('direction_safe_selection', {})
+              cur = r.get('current_runtime_selection', {})
+              def fmt(x):
+                  if not x:
+                      return ''
+                  c = x.get('selected_contract') or {}
+                  if x.get('instrument_selected') == 'OPTION' and c:
+                      return f"OPTION {c.get('expiration')} {c.get('strike')} {c.get('option_type')} @ {c.get('bid')}/{c.get('ask')}"
+                  return f"{x.get('instrument_selected') or ''} {x.get('fallback_reason') or ''}".strip()
+              lines.append(f"| {r['rank']} | {r['symbol']} | {fd_text} | {rv_text} | {fmt(safe)} | {fmt(cur)} |")
+              if r.get('error'):
+                  lines.append(f"|  |  |  | DATA_ERROR | `{r['error'][:180]}` |  |")
+          Path('replay-results.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          print(Path('replay-results.md').read_text())
+      - name: Upload replay results
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-counterfactual-2026-08-17
+          path: |
+            replay-results.json
+            replay-results.md
+          if-no-files-found: error
+          retention-days: 30
