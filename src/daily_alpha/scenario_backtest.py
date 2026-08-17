@@ -48,6 +48,8 @@ class Scenario:
     use_sgov: bool
     allow_3x: bool
     throttle: bool
+    top_stocks: int | None = None
+    top_sectors: int | None = None
 
 
 SCENARIOS = (
@@ -57,6 +59,9 @@ SCENARIOS = (
     Scenario("S3_R2_2X_SGOV", 0.70, 0.15, True, False, False),
     Scenario("S4_R2_2X3X_SGOV", 0.70, 0.15, True, True, False),
     Scenario("S5_THROTTLED_HYBRID", 0.70, 0.15, True, True, True),
+    Scenario("S6_RANKED_TOP10_FULL", 1.00, 0.0, False, False, False, 10),
+    Scenario("S7_RANKED_TOP10_SGOV", 0.90, 0.0, True, False, False, 10),
+    Scenario("S8_RANKED_TOP10_2X", 0.90, 0.10, True, False, False, 10, 2),
 )
 
 
@@ -98,6 +103,22 @@ def r2_states(bars: list[Bar]) -> dict[date, bool]:
             entry_i = None
         states[bar.trade_date] = active
     return states
+
+
+def r2_scores(bars: list[Bar]) -> dict[date, float]:
+    """Point-in-time price/strength ranking; deliberately contains no OVTLYR data."""
+    rows = indicators(bars)
+    scores: dict[date, float] = {}
+    for i, (bar, row) in enumerate(zip(bars, rows)):
+        momentum_20 = bar.close / bars[i - 20].close - 1.0 if i >= 20 else 0.0
+        efficiency = float(row["efficiency"] or 0.0)
+        adx = float(row["adx"] or 0.0)
+        rsi = float(row["rsi"] or 50.0)
+        overbought_penalty = max(rsi - 75.0, 0.0)
+        scores[bar.trade_date] = (
+            100.0 * efficiency + adx + 100.0 * momentum_20 - overbought_penalty
+        )
+    return scores
 
 
 def throttle_multiplier(drawdown: float) -> tuple[float, bool]:
@@ -146,6 +167,7 @@ def simulate(
     scenario: Scenario,
     bars: dict[str, dict[date, Bar]],
     states: dict[str, dict[date, bool]],
+    scores: dict[str, dict[date, float]],
     dates: list[date],
     stocks: list[str],
     initial_nav: float,
@@ -171,6 +193,11 @@ def simulate(
         mult, lev_enabled = throttle_multiplier(dd) if scenario.throttle else (1.0, True)
 
         active_stocks = [t for t in stocks if signal_date and states[t].get(signal_date, False)]
+        active_stocks.sort(
+            key=lambda t: scores[t].get(signal_date, float("-inf")), reverse=True
+        )
+        if scenario.top_stocks is not None:
+            active_stocks = active_stocks[: scenario.top_stocks]
         stock_budget = scenario.stock_cap * mult
         each_stock = min(0.075, stock_budget / len(active_stocks)) if active_stocks else 0.0
         targets = {t: each_stock for t in active_stocks}
@@ -180,6 +207,11 @@ def simulate(
             if signal_date and states[t].get(signal_date, False)
             and pair[0] in bars and (not scenario.allow_3x or pair[1] in bars)
         ]
+        active_sectors.sort(
+            key=lambda t: scores[t].get(signal_date, float("-inf")), reverse=True
+        )
+        if scenario.top_sectors is not None:
+            active_sectors = active_sectors[: scenario.top_sectors]
         if scenario.lev_cap and lev_enabled and active_sectors:
             two_budget = scenario.lev_cap - (0.05 if scenario.allow_3x else 0.0)
             for base in active_sectors:
@@ -253,11 +285,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError(f"Only {len(dates)} common trading dates")
     by_date = {t: {b.trade_date: b for b in series} for t, series in raw.items()}
     states = {t: r2_states(raw[t]) for t in set(stocks) | set(SECTOR_MAP)}
+    scores = {t: r2_scores(raw[t]) for t in set(stocks) | set(SECTOR_MAP)}
 
     results: dict[str, Any] = {}
     curves: dict[str, list[dict[str, Any]]] = {}
     for scenario in SCENARIOS:
-        curve, summary = simulate(scenario, by_date, states, dates, stocks, args.initial_nav)
+        curve, summary = simulate(
+            scenario, by_date, states, scores, dates, stocks, args.initial_nav
+        )
         results[scenario.name] = summary
         curves[scenario.name] = [{"date": d.isoformat(), "nav": round(v, 2)} for d, v in curve]
     return {
@@ -266,7 +301,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "options_included": False,
         "start": start.isoformat(), "end": end.isoformat(),
         "initial_nav": args.initial_nav, "stock_count": len(stocks),
-        "assumptions": {"stock_cap": 0.70, "single_stock_cap": 0.075, "leveraged_cap": 0.15, "three_x_cap": 0.05, "execution": "NEXT_SESSION_OPEN"},
+        "assumptions": {"stock_cap": 0.70, "single_stock_cap": 0.075, "leveraged_cap": 0.15, "three_x_cap": 0.05, "execution": "NEXT_SESSION_OPEN", "ranker": "PRICE_STRENGTH_V1_NO_OVTLYR_HISTORY"},
         "data_failures_nonessential": failures,
         "results": results, "curves": curves,
     }
