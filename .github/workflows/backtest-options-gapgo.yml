@@ -1,0 +1,41 @@
+name: Backtest Gap Go options
+
+on:
+  pull_request:
+    paths:
+      - "src/daily_alpha/backtest_options_gapgo.py"
+      - ".github/workflows/backtest-options-gapgo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gapgo:
+    name: Gap Go historical call options
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run Gap Go option test
+        shell: bash
+        run: |
+          test -n "$ORATS_TOKEN"
+          PYTHONPATH=src python -m daily_alpha.backtest_options_gapgo --thresholds 0.70,0.75 --json-out gapgo-options.json | tee gapgo-options.txt
+      - name: Add summary
+        shell: bash
+        run: |
+          { echo "## Gap & Go historical option backtest"; echo '```text'; cat gapgo-options.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gapgo-historical-options
+          path: |
+            gapgo-options.json
+            gapgo-options.txt
+          if-no-files-found: error
