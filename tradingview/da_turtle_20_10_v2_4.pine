@@ -161,8 +161,9 @@ relativeVolume = averageVolume20Prior > 0 ? volume / averageVolume20Prior : 0.0
 isEarningsUpsideGap = useEarningsGapSleeve and earningsEventWindow and gapDollars > 0 and (gapPct >= minEarningsGapPct or gapAtr >= minEarningsGapAtr)
 earningsBreakout = not na(upper20) and close > upper20
 earningsCommonQuality = close >= open and gapRetention >= minGapRetention and relativeVolume >= minGapRelativeVolume and rsiValue <= maxEarningsRsi and trendState == 1 and earningsBreakout
-earningsGapGoQuality = earningsCommonQuality and closeLocation >= minGapCloseLocation
-earningsGapEarlyQuality = earningsCommonQuality and closeLocation >= minEarlyGapCloseLocation and closeLocation < minGapCloseLocation
+thresholdEpsilon = 0.000001
+earningsGapGoQuality = earningsCommonQuality and closeLocation >= minGapCloseLocation - thresholdEpsilon
+earningsGapEarlyQuality = earningsCommonQuality and closeLocation >= minEarlyGapCloseLocation - thresholdEpsilon and closeLocation < minGapCloseLocation - thresholdEpsilon
 earningsGapGo = barstate.isconfirmed and isEarningsUpsideGap and earningsGapGoQuality
 earningsGapGoEarly = barstate.isconfirmed and isEarningsUpsideGap and earningsGapEarlyQuality
 earningsGapCrap = barstate.isconfirmed and isEarningsUpsideGap and not earningsGapGo and not earningsGapGoEarly and (close < previousClose or gapRetention < crapGapRetention or (close < open and closeLocation < crapCloseLocation))
