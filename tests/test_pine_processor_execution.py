@@ -40,7 +40,7 @@ def test_sqs_processor_hands_validated_event_to_executor():
         "symbol": "AAPL",
         "action": "ENTRY_LONG",
         "strategy": "DA_TURTLE_ADAPTIVE_TREND",
-        "strategy_version": "1.9",
+        "strategy_version": "2.3",
         "timeframe": "1D",
         "price": 110.0,
         "bar_time": NOW.isoformat(),
