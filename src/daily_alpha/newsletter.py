@@ -186,7 +186,7 @@ footer {{ border-top: 1px solid #c9d1dc; margin-top: 24px; padding-top: 12px; fo
 <body>
 <header>
 <div class="brand-kicker">{RESEARCH_PRODUCT}</div>
-<h1>{NEWSLETTER_TITLE}</h1>
+<h1>{escape(NEWSLETTER_TITLE)}</h1>
 <div class="brand-line">Quantitative Intelligence by <strong>{INSTITUTIONAL_BRAND}</strong></div>
 <div class="company-line">A {PARENT_COMPANY} Company</div>
 <div class="meta">{escape(packet.report_date)} · Run {escape(packet.run_id)} · Method {escape(packet.methodology_version)} · Regime {escape(packet.market_regime)}</div>
