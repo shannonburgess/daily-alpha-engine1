@@ -35,7 +35,7 @@ def contract_history(
     query = urlencode(
         {
             "token": token, "ticker": ticker, "expirDate": expiry,
-            "strike": strike, "tradeDate": f"{start.isoformat()},{end.isoformat()}",
+            "strike": strike,
         }
     )
     url = f"https://api.orats.io/datav2/hist/strikes/options?{query}"
