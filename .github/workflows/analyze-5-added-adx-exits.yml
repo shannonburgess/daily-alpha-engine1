@@ -1,0 +1,162 @@
+name: Analyze 5 added ADX and runner exit grid
+
+on:
+  push:
+    branches: [agent/analyze-11-stock-adx-exits]
+    paths: [.github/workflows/analyze-5-added-adx-exits.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Daily Alpha
+        run: python -m pip install --disable-pip-version-check .
+      - name: Run added-name grid
+        shell: python
+        run: |
+          import json
+          import os
+          from datetime import date
+          from pathlib import Path
+          from daily_alpha.backtest import fetch_orats_history, indicators
+
+          token = os.environ.get('ORATS_TOKEN', '').strip()
+          if not token:
+              raise SystemExit('ORATS_TOKEN missing')
+          symbols = ['PLTR','SNDK','JNJ','HOOD','C']
+          start = date(2026,3,1)
+          end = date(2026,7,31)
+          adx_modes = ['17_RISING','20','25']
+          exit_modes = ['CURRENT_BE','NO_BE_TURTLE_TREND','TRAIL_2ATR','TRAIL_3ATR']
+
+          def threshold(mode):
+              return 17.0 if mode == '17_RISING' else float(mode)
+
+          def entry_adx_ok(mode, rows, i):
+              if rows[i]['adx'] is None:
+                  return False
+              v = float(rows[i]['adx'])
+              if v < threshold(mode):
+                  return False
+              if mode != '17_RISING':
+                  return True
+              return i > 0 and rows[i-1]['adx'] is not None and v > float(rows[i-1]['adx'])
+
+          def runner_adx_ok(mode, row):
+              return row['adx'] is not None and float(row['adx']) >= threshold(mode)
+
+          def run_variant(bars, ind, adx_mode, exit_mode):
+              qty=0.0; avg_cost=0.0; entry_breakout=None; entry_bar=None
+              base_entry=None; base_atr=None; add1_done=add2_done=harvest_done=False
+              add1_bar=add2_bar=None; current=None; runner_floor=None; high_after=None
+              trades=[]
+              for i,(bar,row) in enumerate(zip(bars,ind)):
+                  in_window = start <= bar.trade_date <= end
+                  flat = qty == 0
+                  price_ok = bar.close >= 25.0
+                  eff_ok = row['efficiency'] is not None and float(row['efficiency']) >= 0.20
+                  rsi_ok = row['rsi'] is not None and float(row['rsi']) <= 80.0
+                  adx_ok = entry_adx_ok(adx_mode, ind, i)
+                  normal_setup = (in_window and flat and bool(row['fresh_breakout']) and not bool(row['is_earnings_up_gap']) and int(row['trend_state'])==1 and bool(row['normal_trend_mature']))
+                  normal_entry = normal_setup and price_ok and eff_ok and rsi_ok and adx_ok
+                  gap_entry = in_window and flat and bool(row['gap_go']) and bool(row['fresh_breakout']) and price_ok
+                  long_entry = normal_entry or gap_entry
+                  entry_type = 'EARNINGS_GAP_GO' if gap_entry else 'NORMAL_BREAKOUT' if normal_entry else 'NONE'
+                  if long_entry:
+                      entry_breakout=float(row['upper20']); entry_bar=i; base_entry=bar.close
+                      base_atr=float(row['atr']) if row['atr'] is not None else None
+                      add1_done=add2_done=harvest_done=False; add1_bar=add2_bar=None
+                      runner_floor=None; high_after=None
+                  bars_since = i-entry_bar if entry_bar is not None else None
+                  failed_exit = qty>0 and entry_breakout is not None and bars_since is not None and 1<=bars_since<=3 and bar.close<entry_breakout
+                  trend_ok = int(row['trend_state'])==1 and runner_adx_ok(adx_mode,row)
+                  add1 = qty>0 and not add1_done and base_entry is not None and base_atr is not None and trend_ok and bar.close>=base_entry+base_atr
+                  if add1: add1_done=True; add1_bar=i
+                  add2 = qty>0 and add1_done and not add2_done and add1_bar is not None and i>add1_bar and base_entry is not None and base_atr is not None and trend_ok and bar.close>=base_entry+2*base_atr
+                  if add2: add2_done=True; add2_bar=i
+                  harvest = qty>0 and add2_done and not harvest_done and add2_bar is not None and i>add2_bar and base_entry is not None and base_atr is not None and bar.close>=base_entry+3*base_atr
+                  if harvest:
+                      harvest_done=True; high_after=bar.close
+                      if exit_mode=='CURRENT_BE': runner_floor=avg_cost
+                      elif exit_mode=='TRAIL_2ATR': runner_floor=bar.close-2*base_atr
+                      elif exit_mode=='TRAIL_3ATR': runner_floor=bar.close-3*base_atr
+                      else: runner_floor=None
+                  if harvest_done and high_after is not None:
+                      high_after=max(high_after,bar.close)
+                      if exit_mode=='TRAIL_2ATR' and base_atr is not None: runner_floor=high_after-2*base_atr
+                      elif exit_mode=='TRAIL_3ATR' and base_atr is not None: runner_floor=high_after-3*base_atr
+                  floor_exit = qty>0 and harvest_done and runner_floor is not None and bar.close<=runner_floor
+                  turtle_exit = qty>0 and row['lower10'] is not None and bar.close<float(row['lower10'])
+                  trend_exit = qty>0 and bool(row['bear_flip'])
+                  long_exit = in_window and (floor_exit or failed_exit or turtle_exit or trend_exit)
+                  exit_reason = ('BREAK_EVEN' if floor_exit and exit_mode=='CURRENT_BE' else exit_mode if floor_exit else 'FAILED_BREAKOUT' if failed_exit else 'TURTLE_10' if turtle_exit else 'TREND_FLIP' if trend_exit else '')
+                  if long_entry:
+                      qty=2.0; avg_cost=bar.close
+                      current={'entry_date':bar.trade_date.isoformat(),'entry_price':bar.close,'entry_type':entry_type,'entry_adx':row['adx'],'gross_cost':2*bar.close,'realized_pnl':0.0,'adds':0,'harvested':False}
+                  if add1 and current is not None:
+                      nq=qty+1; avg_cost=(avg_cost*qty+bar.close)/nq; qty=nq; current['gross_cost']+=bar.close; current['adds']+=1
+                  if add2 and current is not None:
+                      nq=qty+1; avg_cost=(avg_cost*qty+bar.close)/nq; qty=nq; current['gross_cost']+=bar.close; current['adds']+=1
+                  if harvest and current is not None and qty>=1:
+                      current['realized_pnl'] += bar.close-avg_cost; qty-=1; current['harvested']=True; current['harvest_date']=bar.trade_date.isoformat(); current['harvest_price']=bar.close
+                  if long_exit and current is not None and qty>0:
+                      current['realized_pnl'] += (bar.close-avg_cost)*qty
+                      current['exit_date']=bar.trade_date.isoformat(); current['exit_price']=bar.close; current['exit_reason']=exit_reason
+                      current['return_pct']=current['realized_pnl']/current['gross_cost']*100
+                      trades.append(current)
+                      qty=0.0; avg_cost=0.0; entry_breakout=entry_bar=base_entry=base_atr=None
+                      add1_done=add2_done=harvest_done=False; add1_bar=add2_bar=None; current=None; runner_floor=None; high_after=None
+              if current is not None and qty>0:
+                  last=max((b for b in bars if b.trade_date<=end),key=lambda b:b.trade_date)
+                  current['realized_pnl'] += (last.close-avg_cost)*qty
+                  current['exit_date']=last.trade_date.isoformat(); current['exit_price']=last.close; current['exit_reason']='MARK_TO_END'
+                  current['return_pct']=current['realized_pnl']/current['gross_cost']*100; trades.append(current)
+              gross=sum(float(t['gross_cost']) for t in trades); pnl=sum(float(t['realized_pnl']) for t in trades)
+              comp=1.0
+              for t in trades: comp*=1+float(t['return_pct'])/100
+              return {'adx_mode':adx_mode,'exit_mode':exit_mode,'trade_count':len(trades),'wins':sum(1 for t in trades if float(t['realized_pnl'])>0),'aggregate_return_pct_on_gross':pnl/gross*100 if gross else 0.0,'compounded_trade_return_pct':(comp-1)*100 if trades else 0.0,'trades':trades}
+
+          out={}
+          for symbol in symbols:
+              rec={'symbol':symbol}
+              try:
+                  bars,_=fetch_orats_history(symbol,start=date(2026,1,1),end=end,token=token)
+                  ind=indicators(bars); wb=[b for b in bars if start<=b.trade_date<=end]
+                  if not wb: raise RuntimeError('NO_WINDOW_BARS')
+                  rec['buy_hold_return_pct']=(wb[-1].close/wb[0].close-1)*100
+                  variants=[run_variant(bars,ind,a,e) for a in adx_modes for e in exit_modes]
+                  current=next(v for v in variants if v['adx_mode']=='25' and v['exit_mode']=='CURRENT_BE')
+                  tradable=[v for v in variants if v['trade_count']>0]
+                  best=max(tradable,key=lambda v:(v['aggregate_return_pct_on_gross'],v['compounded_trade_return_pct'])) if tradable else current
+                  rec['current_v24']=current; rec['best_variant']=best
+                  rec['improvement_pct_points']=best['aggregate_return_pct_on_gross']-current['aggregate_return_pct_on_gross']
+              except Exception as exc:
+                  rec['data_error']=f'{type(exc).__name__}:{exc}'
+              out[symbol]=rec
+          Path('analysis-5-added-grid.json').write_text(json.dumps(out,indent=2,default=str),encoding='utf-8')
+          print('| Symbol | Buy&hold | Current v2.4 | Best grid | Best ADX | Best runner exit | Improvement | Trades/Wins |')
+          print('|---|---:|---:|---:|---|---|---:|---:|')
+          for symbol in symbols:
+              r=out[symbol]
+              if 'data_error' in r:
+                  print(f"| {symbol} | | | DATA_ERROR: {r['data_error']} | | | | |")
+              else:
+                  c=r['current_v24']; b=r['best_variant']
+                  print(f"| {symbol} | {r['buy_hold_return_pct']:.2f}% | {c['aggregate_return_pct_on_gross']:.2f}% | {b['aggregate_return_pct_on_gross']:.2f}% | {b['adx_mode']} | {b['exit_mode']} | {r['improvement_pct_points']:+.2f}pp | {b['trade_count']}/{b['wins']} |")
+      - name: Upload analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-5-added-adx-exit-grid
+          path: analysis-5-added-grid.json
+          if-no-files-found: error
+          retention-days: 30
