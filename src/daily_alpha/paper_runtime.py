@@ -27,10 +27,14 @@ def process_paper_event(
     *,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Open, close, or inspect paper positions without any live execution path."""
+    """Open, adjust, close, or inspect paper positions without live execution."""
     operation = str(event.get("operation", "")).strip().upper()
     if operation == "OPEN_FROM_DECISION":
         return _open_from_decision(event, ledger)
+    if operation == "ADD_FROM_SIGNAL":
+        return _runner_from_signal(event, ledger, action=SignalAction.ADD, now=now)
+    if operation == "PARTIAL_FROM_SIGNAL":
+        return _runner_from_signal(event, ledger, action=SignalAction.PARTIAL, now=now)
     if operation == "CLOSE_FROM_SIGNAL":
         return _close_from_signal(event, ledger, now=now)
     if operation == "GET_OPEN":
@@ -104,6 +108,78 @@ def _open_from_decision(event: Mapping[str, Any], ledger: Any) -> dict[str, Any]
     result["pricing_source"] = pricing_source
     result["risk_policy_version"] = str(risk.get("policy_version", ""))
     return result
+
+
+def _runner_from_signal(
+    event: Mapping[str, Any],
+    ledger: Any,
+    *,
+    action: SignalAction,
+    now: datetime | None,
+) -> dict[str, Any]:
+    received_at = now or datetime.now(UTC)
+    signal = parse_pine_signal(
+        dict(_mapping(event, "signal")),
+        received_at=received_at,
+        max_age_minutes=_positive_int(
+            event.get("signal_max_age_minutes", 30),
+            "signal_max_age_minutes",
+        ),
+    )
+    if signal.action != action:
+        required = "ADD" if action == SignalAction.ADD else "PARTIAL"
+        raise PaperRuntimeError(f"RUNNER_OPERATION_REQUIRES_{required}_SIGNAL")
+
+    open_before = ledger.find_open(signal.symbol)
+    if not open_before:
+        return {
+            "operation": f"{action.value}_FROM_SIGNAL",
+            "status": "NO_OPEN_POSITION",
+            "symbol": signal.symbol,
+            "updated_trades": [],
+            "paper_ledger_updated": False,
+            "live_trading_enabled": False,
+            "account_id": getattr(ledger, "account_id", None),
+        }
+
+    pricing = _as_mapping(event.get("pricing", {}), "pricing")
+    option_fill = _optional_nonnegative_float(
+        pricing.get("option_fill_price"), "option_fill_price"
+    )
+    stock_fill = _optional_nonnegative_float(
+        pricing.get("stock_fill_price"), "stock_fill_price"
+    )
+    pipeline = PaperTradingPipeline(ledger, PortfolioLimits(nav=1.0))
+    if action == SignalAction.ADD:
+        updated = pipeline.process_add(
+            signal=signal,
+            option_fill_price=option_fill,
+            stock_fill_price=stock_fill,
+            fill_time=received_at,
+        )
+        status = "ADDED"
+        operation = "ADD_FROM_SIGNAL"
+    else:
+        updated = pipeline.process_partial(
+            signal=signal,
+            option_fill_price=option_fill,
+            stock_fill_price=stock_fill,
+            fill_time=received_at,
+        )
+        status = "PARTIAL"
+        operation = "PARTIAL_FROM_SIGNAL"
+
+    return {
+        "operation": operation,
+        "status": status,
+        "symbol": signal.symbol,
+        "runner_stage": signal.runner_stage,
+        "position_fraction": signal.position_fraction,
+        "updated_trades": [trade.to_dict() for trade in updated],
+        "paper_ledger_updated": bool(updated),
+        "live_trading_enabled": False,
+        "account_id": getattr(ledger, "account_id", None),
+    }
 
 
 def _close_from_signal(
