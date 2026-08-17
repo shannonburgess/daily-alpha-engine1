@@ -3,8 +3,10 @@ from datetime import UTC, datetime
 from daily_alpha.execution_queue import (
     CANCEL_STATUS,
     EXECUTE_STATUS,
+    RETRY_STATUS,
     WAIT_STATUS,
     build_pending_action,
+    merge_pending_actions,
     prepare_next_session_signal,
 )
 from daily_alpha.execution_universe import ScannerState
@@ -118,3 +120,36 @@ def test_pending_exit_is_executable_next_session_without_price_trigger_recheck()
     )
     assert decision.status == EXECUTE_STATUS
     assert decision.signal["action"] == "EXIT"
+
+
+def test_retry_action_survives_market_holiday_when_no_new_close_confirmed():
+    pending = _entry_pending()
+    pending["status"] = RETRY_STATUS
+    merged = merge_pending_actions(
+        [pending],
+        [],
+        now=datetime(2026, 8, 18, 20, 20, tzinfo=UTC),
+        confirmed_market_date=None,
+    )
+    assert len(merged) == 1
+    assert merged[0]["symbol"] == "MU"
+
+
+def test_old_pending_action_drops_after_a_new_regular_close_is_confirmed():
+    merged = merge_pending_actions(
+        [_entry_pending()],
+        [],
+        now=datetime(2026, 8, 18, 20, 20, tzinfo=UTC),
+        confirmed_market_date="2026-08-18",
+    )
+    assert merged == []
+
+
+def test_pending_action_expires_after_seven_days():
+    decision = prepare_next_session_signal(
+        _entry_pending(),
+        stock_price=101.0,
+        now=datetime(2026, 8, 25, 20, 21, tzinfo=UTC),
+    )
+    assert decision.status == CANCEL_STATUS
+    assert decision.reason == "CANCEL_PENDING_ACTION_EXPIRED"
