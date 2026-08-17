@@ -1,6 +1,6 @@
-from datetime import UTC, datetime
 import io
 import json
+from datetime import UTC, datetime
 
 from daily_alpha.staging_reporting import AwsStagingReportPublisher
 
