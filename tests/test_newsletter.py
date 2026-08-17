@@ -261,7 +261,7 @@ def test_staging_publisher_writes_newsletter_csvs_and_manifest():
     assert "Daily Alpha &amp; Risk" in html
     assert "AAPL" in html
     assert "XYZ" in html
-    assert "DATA ERROR" in html
+    assert "Data Error" in html
     assert "ACCOUNT#paper-unit#POSITION#OPTION#AAPL" in ledger_csv
     assert "Technology" in sector_csv
     assert '"session": "MORNING"' in manifest
