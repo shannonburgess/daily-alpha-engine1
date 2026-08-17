@@ -17,7 +17,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-
 CANONICAL_GAP_GO_CLOSE_LOCATION = 0.70
 EARLY_GAP_GO_CLOSE_LOCATION = 0.60
 
