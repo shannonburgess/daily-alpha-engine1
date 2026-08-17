@@ -71,11 +71,11 @@ class PerformanceEvidence:
             raise ValueError("sample_size must be positive")
         if self.gross_value is None and self.net_value is None:
             raise ValueError("at least one performance value is required")
-        if self.basis in {EvidenceBasis.BACKTEST, EvidenceBasis.HYPOTHETICAL}:
-            if not self.assumptions or not self.limitations:
-                raise ValueError(
-                    "backtest/hypothetical evidence requires assumptions and limitations"
-                )
+        if (
+            self.basis in {EvidenceBasis.BACKTEST, EvidenceBasis.HYPOTHETICAL}
+            and (not self.assumptions or not self.limitations)
+        ):
+            raise ValueError("backtest/hypothetical evidence requires assumptions and limitations")
 
 
 @dataclass(frozen=True)
@@ -153,9 +153,11 @@ def evaluate_customer_claim(
     if selected and any(not item.limitations for item in selected):
         reasons.append("EVIDENCE_LIMITATIONS_MISSING")
 
-    if claim.displayed_basis in {EvidenceBasis.BACKTEST, EvidenceBasis.HYPOTHETICAL}:
-        if not all(item.assumptions for item in selected):
-            reasons.append("HYPOTHETICAL_ASSUMPTIONS_MISSING")
+    if (
+        claim.displayed_basis in {EvidenceBasis.BACKTEST, EvidenceBasis.HYPOTHETICAL}
+        and not all(item.assumptions for item in selected)
+    ):
+        reasons.append("HYPOTHETICAL_ASSUMPTIONS_MISSING")
 
     if reasons:
         return ClaimGateResult(False, tuple(dict.fromkeys(reasons)))
