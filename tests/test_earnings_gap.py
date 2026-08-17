@@ -47,8 +47,10 @@ def test_gap_and_crap_is_rejected():
 
 
 def test_ambiguous_earnings_gap_waits_for_confirmation():
+    # Holds the gap and closes in the upper half of the range, but finishes below
+    # the open, so it is neither a qualified Gap & Go nor an obvious Gap & Crap.
     result = classify_earnings_gap(
-        _observation(open=86.0, high=91.0, low=83.0, close=85.5)
+        _observation(open=86.0, high=91.0, low=83.0, close=87.5)
     )
 
     assert result.classification == EarningsGapClass.EARNINGS_WAIT
