@@ -29,7 +29,8 @@ def test_entry_preserves_validated_stop_and_liquidity_without_secret():
         received_at=NOW,
     ).to_dict()
 
-    assert record["schema_version"] == "2026-08-16-v3"
+    assert record["schema_version"] == "2026-08-16-v4"
     assert record["stock_stop_price"] == 100.0
     assert record["average_daily_dollar_volume"] == 75_000_000.0
+    assert record["entry_type"] is None
     assert "webhook_secret" not in record
