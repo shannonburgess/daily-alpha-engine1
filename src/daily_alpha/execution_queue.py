@@ -8,16 +8,18 @@ session. It never executes a trade itself.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from .execution_universe import ScannerState
 
 PENDING_STATUS = "PENDING_NEXT_SESSION"
+RETRY_STATUS = "RETRY_DATA_ERROR"
 EXECUTE_STATUS = "EXECUTE_NEXT_SESSION"
 CANCEL_STATUS = "CANCELLED_NEXT_SESSION"
 WAIT_STATUS = "WAIT_NEXT_SESSION"
+MAX_PENDING_AGE_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,41 @@ def build_pending_action(
     }
 
 
+def merge_pending_actions(
+    existing: list[dict[str, Any]],
+    new_actions: list[dict[str, Any]],
+    *,
+    now: datetime,
+    confirmed_market_date: str | None,
+) -> list[dict[str, Any]]:
+    """Preserve unresolved actions safely and let a newer signal replace a symbol.
+
+    If a new regular-session close has been confirmed, an unresolved action from an
+    older market date is stale and is dropped. On a weekday market holiday or broad
+    data outage, confirmed_market_date is None and unresolved actions are preserved.
+    """
+    timestamp = _aware(now)
+    merged: dict[str, dict[str, Any]] = {}
+    for item in existing:
+        if not isinstance(item, dict):
+            continue
+        symbol = str(item.get("symbol", "")).strip().upper()
+        if not symbol or str(item.get("status", "")) not in {PENDING_STATUS, RETRY_STATUS}:
+            continue
+        created = _pending_created_at(item)
+        if created is None or timestamp - created > timedelta(days=MAX_PENDING_AGE_DAYS):
+            continue
+        market_date = str(item.get("market_date", ""))
+        if confirmed_market_date and market_date and market_date < confirmed_market_date:
+            continue
+        merged[symbol] = dict(item)
+    for item in new_actions:
+        symbol = str(item.get("symbol", "")).strip().upper()
+        if symbol:
+            merged[symbol] = dict(item)
+    return [merged[symbol] for symbol in sorted(merged)]
+
+
 def prepare_next_session_signal(
     pending: dict[str, Any],
     *,
@@ -70,8 +107,14 @@ def prepare_next_session_signal(
     timestamp = _aware(now)
     if stock_price <= 0:
         raise ValueError("Next-session stock price must be positive")
-    if str(pending.get("status", "")) not in {PENDING_STATUS, "RETRY_DATA_ERROR"}:
+    if str(pending.get("status", "")) not in {PENDING_STATUS, RETRY_STATUS}:
         return NextSessionDecision(WAIT_STATUS, "PENDING_ACTION_NOT_EXECUTABLE", None)
+
+    created = _pending_created_at(pending)
+    if created is None:
+        raise ValueError("Pending action created_at is required")
+    if timestamp - created > timedelta(days=MAX_PENDING_AGE_DAYS):
+        return NextSessionDecision(CANCEL_STATUS, "CANCEL_PENDING_ACTION_EXPIRED", None)
 
     market_date = str(pending.get("market_date", ""))
     if not market_date:
@@ -153,6 +196,16 @@ def prepare_next_session_signal(
         }
     )
     return NextSessionDecision(EXECUTE_STATUS, "NEXT_SESSION_REVALIDATED", signal)
+
+
+def _pending_created_at(value: dict[str, Any]) -> datetime | None:
+    raw = value.get("created_at")
+    if raw in (None, ""):
+        return None
+    try:
+        return _aware(datetime.fromisoformat(str(raw)))
+    except ValueError:
+        return None
 
 
 def _state(value: Any) -> ScannerState | None:
