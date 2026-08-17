@@ -1,0 +1,79 @@
+name: Deploy v2.4 paper staging now
+
+on:
+  push:
+    branches: [agent/deploy-v24-paper-now]
+    paths: [.github/workflows/deploy-v24-paper-now.yml]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test-deploy-verify:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Quality gates
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          ruff check .
+          pytest -q
+      - name: Verify v2.4 paper contract in source
+        run: |
+          grep -q 'CANONICAL_STRATEGY_VERSIONS = {"2.3", "2.4"}' src/daily_alpha/pine_processor.py
+          grep -q 'enableWebhookOrders = input.bool(false' tradingview/da_turtle_20_10_v2_4.pine
+      - name: Build Lambda package
+        run: |
+          rm -rf build deployment.zip
+          mkdir -p build
+          pip install . --target build --no-deps
+          cp -R lambda_handlers build/lambda_handlers
+          (cd build && zip -qr ../deployment.zip .)
+          unzip -l deployment.zip | grep -E 'lambda_handlers/(engine|report|paper_trader|pine_webhook|pine_processor)\.py'
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-v24-paper-deploy
+          aws-region: us-east-2
+      - name: Deploy five staging Lambdas
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A HANDLERS=(
+            [daily-alpha-engine]=lambda_handlers.engine.lambda_handler
+            [daily-alpha-report]=lambda_handlers.report.lambda_handler
+            [daily-alpha-paper-trader]=lambda_handlers.paper_trader.lambda_handler
+            [daily-alpha-pine-ingress]=lambda_handlers.pine_webhook.lambda_handler
+            [daily-alpha-pine-processor]=lambda_handlers.pine_processor.lambda_handler
+          )
+          for FN in daily-alpha-engine daily-alpha-report daily-alpha-paper-trader daily-alpha-pine-ingress daily-alpha-pine-processor; do
+            aws lambda update-function-code --function-name "$FN" --zip-file fileb://deployment.zip --publish >/tmp/${FN}-code.json
+            aws lambda wait function-updated --function-name "$FN"
+            aws lambda update-function-configuration --function-name "$FN" --handler "${HANDLERS[$FN]}" >/tmp/${FN}-config.json
+            aws lambda wait function-updated --function-name "$FN"
+          done
+      - name: Verify deployed configuration and paper safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          for FN in daily-alpha-engine daily-alpha-report daily-alpha-paper-trader daily-alpha-pine-ingress daily-alpha-pine-processor; do
+            aws lambda get-function-configuration --function-name "$FN" --query '{FunctionName:FunctionName,Handler:Handler,LastUpdateStatus:LastUpdateStatus,Version:Version}'
+          done
+          aws lambda invoke --function-name daily-alpha-engine --cli-binary-format raw-in-base64-out --payload '{"operation":"READINESS"}' /tmp/engine.json >/tmp/engine-meta.json || true
+          aws lambda invoke --function-name daily-alpha-paper-trader --cli-binary-format raw-in-base64-out --payload '{"operation":"READINESS"}' /tmp/paper.json >/tmp/paper-meta.json || true
+          echo 'ENGINE:'; cat /tmp/engine.json || true
+          echo; echo 'PAPER:'; cat /tmp/paper.json || true
+          echo
+          if grep -Eqi '"live_trading_enabled"[[:space:]]*:[[:space:]]*true' /tmp/engine.json /tmp/paper.json 2>/dev/null; then
+            echo 'Unsafe live-trading flag detected' >&2
+            exit 1
+          fi
+          echo "DEPLOYED_COMMIT=${GITHUB_SHA}"
