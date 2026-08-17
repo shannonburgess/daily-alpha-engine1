@@ -1,0 +1,62 @@
+name: Backtest historical options
+
+on:
+  pull_request:
+    paths:
+      - "src/daily_alpha/backtest_options.py"
+      - ".github/workflows/backtest-options.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  options:
+    name: ORATS 45-75 DTE option layer
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+          test -n "$ORATS_TOKEN" || { echo "ORATS_TOKEN missing" >&2; exit 1; }
+      - name: Run 70 percent close-location option backtest
+        shell: bash
+        run: |
+          PYTHONPATH=src python -m daily_alpha.backtest_options --close-location 0.70 --json-out option-70.json | tee option-70.txt
+      - name: Run 75 percent close-location option backtest
+        shell: bash
+        run: |
+          PYTHONPATH=src python -m daily_alpha.backtest_options --close-location 0.75 --json-out option-75.json | tee option-75.txt
+      - name: Summarize
+        shell: bash
+        run: |
+          {
+            echo "## Historical ORATS option-layer backtest"
+            echo
+            echo "### 70% close-location"
+            echo '```text'
+            cat option-70.txt
+            echo '```'
+            echo
+            echo "### 75% close-location"
+            echo '```text'
+            cat option-75.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-option-backtest
+          path: |
+            option-70.json
+            option-70.txt
+            option-75.json
+            option-75.txt
+          if-no-files-found: error

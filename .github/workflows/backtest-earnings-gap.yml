@@ -1,0 +1,268 @@
+name: Backtest earnings gap sleeve
+
+on:
+  pull_request:
+    paths:
+      - "src/daily_alpha/backtest.py"
+      - "src/daily_alpha/earnings_gap.py"
+      - "tradingview/da_turtle_20_10_v2_3.pine"
+      - "tradingview/da_turtle_20_10_v2_4.pine"
+      - ".github/workflows/backtest-earnings-gap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mrvl:
+    name: MRVL v2.3 vs v2.4
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS_TOKEN GitHub secret is missing" >&2
+            exit 1
+          fi
+
+      - name: Run MRVL event-aware backtest
+        shell: bash
+        run: |
+          PYTHONPATH=src python -m daily_alpha.backtest \
+            --ticker MRVL \
+            --start 2024-01-01 \
+            --end 2026-08-14 \
+            --json-out backtest-mrvl.json | tee backtest-mrvl.txt
+          {
+            echo "## MRVL v2.3 vs v2.4 backtest"
+            echo '```text'
+            cat backtest-mrvl.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload backtest result
+        uses: actions/upload-artifact@v4
+        with:
+          name: mrvl-v2-3-v2-4-backtest
+          path: |
+            backtest-mrvl.json
+            backtest-mrvl.txt
+          if-no-files-found: error
+
+  pilot-cohort:
+    name: Liquid growth / semiconductor pilot
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS_TOKEN GitHub secret is missing" >&2
+            exit 1
+          fi
+
+      - name: Run fixed pilot cohort
+        shell: bash
+        run: |
+          mkdir -p pilot
+          tickers=(MRVL NVDA AMD AVGO MU QCOM ARM INTC DELL ORCL MSFT GOOGL META AMZN NFLX CRM NOW TSLA)
+          : > pilot/failures.txt
+          for ticker in "${tickers[@]}"; do
+            echo "=== $ticker ==="
+            if PYTHONPATH=src python -m daily_alpha.backtest \
+              --ticker "$ticker" \
+              --start 2024-01-01 \
+              --end 2026-08-14 \
+              --json-out "pilot/${ticker}.json" > "pilot/${ticker}.txt"; then
+              tail -n +1 "pilot/${ticker}.txt" | head -n 6
+            else
+              echo "$ticker" | tee -a pilot/failures.txt
+            fi
+          done
+
+      - name: Aggregate cohort results
+        shell: python
+        run: |
+          import glob
+          import json
+          from pathlib import Path
+
+          payloads = []
+          for path in sorted(glob.glob("pilot/*.json")):
+              with open(path, encoding="utf-8") as fh:
+                  payloads.append(json.load(fh))
+
+          if not payloads:
+              raise SystemExit("No pilot backtests completed")
+
+          totals = {
+              "tickers_completed": len(payloads),
+              "v23_trades": 0,
+              "v23_wins": 0,
+              "v23_total_r": 0.0,
+              "v23_sum_return_pct": 0.0,
+              "v24_trades": 0,
+              "v24_wins": 0,
+              "v24_total_r": 0.0,
+              "v24_sum_return_pct": 0.0,
+          }
+          classes = {"EARNINGS_GAP_GO": 0, "EARNINGS_GAP_CRAP": 0, "EARNINGS_WAIT": 0}
+          gap_trades = []
+          rows = []
+
+          for data in payloads:
+              s23 = data["v2_3"]
+              s24 = data["v2_4"]
+              totals["v23_trades"] += s23["trades"]
+              totals["v23_wins"] += s23["wins"]
+              totals["v23_total_r"] += s23["total_r"]
+              totals["v23_sum_return_pct"] += s23["sum_return_pct"]
+              totals["v24_trades"] += s24["trades"]
+              totals["v24_wins"] += s24["wins"]
+              totals["v24_total_r"] += s24["total_r"]
+              totals["v24_sum_return_pct"] += s24["sum_return_pct"]
+
+              for event in data["earnings_gap_events"]:
+                  cls = event["classification"]
+                  if cls in classes:
+                      classes[cls] += 1
+
+              for trade in data["trades_v2_4"]:
+                  if trade["entry_type"] == "EARNINGS_GAP_GO":
+                      gap_trades.append({"ticker": data["ticker"], **trade})
+
+              rows.append(
+                  {
+                      "ticker": data["ticker"],
+                      "v23_trades": s23["trades"],
+                      "v23_r": s23["total_r"],
+                      "v24_trades": s24["trades"],
+                      "v24_r": s24["total_r"],
+                      "delta_r": round(s24["total_r"] - s23["total_r"], 2),
+                      "gap_go_trades": s24["gap_go_trades"],
+                  }
+              )
+
+          totals["v23_total_r"] = round(totals["v23_total_r"], 2)
+          totals["v24_total_r"] = round(totals["v24_total_r"], 2)
+          totals["v23_sum_return_pct"] = round(totals["v23_sum_return_pct"], 2)
+          totals["v24_sum_return_pct"] = round(totals["v24_sum_return_pct"], 2)
+          totals["v23_win_rate_pct"] = round(
+              100 * totals["v23_wins"] / totals["v23_trades"], 2
+          ) if totals["v23_trades"] else 0.0
+          totals["v24_win_rate_pct"] = round(
+              100 * totals["v24_wins"] / totals["v24_trades"], 2
+          ) if totals["v24_trades"] else 0.0
+          totals["delta_total_r"] = round(
+              totals["v24_total_r"] - totals["v23_total_r"], 2
+          )
+          totals["delta_sum_return_pct"] = round(
+              totals["v24_sum_return_pct"] - totals["v23_sum_return_pct"], 2
+          )
+
+          gap_rs = [
+              float(t["r_multiple"])
+              for t in gap_trades
+              if t["r_multiple"] is not None
+          ]
+          gap_returns = [float(t["return_pct"]) for t in gap_trades]
+          gap_summary = {
+              "trades": len(gap_trades),
+              "wins": sum(float(t["realized_pnl"]) > 0 for t in gap_trades),
+              "win_rate_pct": round(
+                  100 * sum(float(t["realized_pnl"]) > 0 for t in gap_trades) / len(gap_trades),
+                  2,
+              ) if gap_trades else 0.0,
+              "total_r": round(sum(gap_rs), 2),
+              "avg_r": round(sum(gap_rs) / len(gap_rs), 2) if gap_rs else None,
+              "sum_return_pct": round(sum(gap_returns), 2),
+              "avg_return_pct": (
+                  round(sum(gap_returns) / len(gap_returns), 2)
+                  if gap_returns
+                  else None
+              ),
+          }
+
+          report = {
+              "cohort": [d["ticker"] for d in payloads],
+              "totals": totals,
+              "earnings_gap_classifications": classes,
+              "gap_go_trade_summary": gap_summary,
+              "gap_go_trades": gap_trades,
+              "per_ticker": sorted(
+                  rows, key=lambda r: (r["delta_r"], r["ticker"]), reverse=True
+              ),
+          }
+
+          with open("pilot-summary.json", "w", encoding="utf-8") as fh:
+              json.dump(report, fh, indent=2, sort_keys=True)
+              fh.write("\n")
+
+          lines = []
+          lines.append("DAILY ALPHA PILOT COHORT")
+          lines.append(json.dumps(totals, sort_keys=True))
+          lines.append("EARNINGS GAP CLASSIFICATIONS")
+          lines.append(json.dumps(classes, sort_keys=True))
+          lines.append("GAP & GO TRADE SUMMARY")
+          lines.append(json.dumps(gap_summary, sort_keys=True))
+          lines.append("GAP & GO TRADES")
+          for trade in gap_trades:
+              lines.append(json.dumps(trade, sort_keys=True))
+          lines.append("PER TICKER")
+          for row in report["per_ticker"]:
+              lines.append(json.dumps(row, sort_keys=True))
+          failures = [
+              line.strip()
+              for line in Path("pilot/failures.txt").read_text().splitlines()
+              if line.strip()
+          ]
+          lines.append("FAILURES")
+          lines.append(json.dumps(failures))
+
+          text = "\n".join(lines) + "\n"
+          Path("pilot-summary.txt").write_text(text, encoding="utf-8")
+          print(text)
+
+      - name: Add cohort summary
+        shell: bash
+        run: |
+          {
+            echo "## Fixed liquid growth / semiconductor pilot"
+            echo
+            echo "> Exploratory fixed cohort only; not a survivorship-bias-free production universe."
+            echo
+            echo '```text'
+            cat pilot-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cohort results
+        uses: actions/upload-artifact@v4
+        with:
+          name: earnings-gap-pilot-cohort
+          path: |
+            pilot/
+            pilot-summary.json
+            pilot-summary.txt
+          if-no-files-found: error
