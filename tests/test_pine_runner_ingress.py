@@ -30,7 +30,7 @@ def test_add_ingress_record_is_sanitized_and_never_authorizes_trading():
         received_at=NOW,
     ).to_dict()
 
-    assert record["schema_version"] == "2026-08-16-v2"
+    assert record["schema_version"] == "2026-08-16-v3"
     assert record["action"] == "ADD"
     assert record["position_fraction"] == 0.25
     assert record["runner_stage"] == "ADD_1_ATR"
