@@ -1,0 +1,28 @@
+name: Research R2 risk cap
+on:
+  push:
+    branches: [agent/r2-model-search]
+    paths:
+      - research/run_r2_risk_cap.py
+      - .github/workflows/research-r2-risk-cap.yml
+permissions:
+  contents: read
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check .
+      - run: python research/run_r2_risk_cap.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-r2-risk-cap
+          path: r2-risk-cap.json
+          if-no-files-found: error
+          retention-days: 30
