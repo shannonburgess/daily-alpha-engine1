@@ -264,7 +264,7 @@ def _packet_from_shortlist(
             data_status = "PASS"
 
         reasons = [
-            f"OVTLYR={str(raw.get('ovtlyr_status', 'UNKNOWN'))}",
+            f"OVTLYR={raw.get('ovtlyr_status', 'UNKNOWN')!s}",
             f"ORATS={orats_reason}",
             f"RANK_SCORE={raw.get('score', 0)}",
         ]
@@ -287,8 +287,13 @@ def _packet_from_shortlist(
                 symbol=symbol,
                 disposition=disposition,
                 instrument=instrument,
-                signal_label=str(raw.get("display_label") or raw.get("ovtlyr_status") or "WATCH"),
-                thesis=str(raw.get("classification_reason") or "Ranked Daily Alpha research candidate."),
+                signal_label=str(
+                    raw.get("display_label") or raw.get("ovtlyr_status") or "WATCH"
+                ),
+                thesis=str(
+                    raw.get("classification_reason")
+                    or "Ranked Daily Alpha research candidate."
+                ),
                 reasons=tuple(reasons),
                 risk_status=risk_status,
                 data_status=data_status,
@@ -341,7 +346,8 @@ def _ddb_value(value: Any) -> Any:
     if "N" in value:
         text = str(value["N"])
         try:
-            return int(text) if text.isdigit() or (text.startswith("-") and text[1:].isdigit()) else float(text)
+            is_integer = text.isdigit() or (text.startswith("-") and text[1:].isdigit())
+            return int(text) if is_integer else float(text)
         except ValueError:
             return text
     if "BOOL" in value:
