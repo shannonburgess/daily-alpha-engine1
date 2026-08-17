@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
-from typing import Any, Callable
+from typing import Any
 
 from .dynamo_ledger import DynamoPaperLedger, _trade_from_json
 from .ledger import PaperTrade
@@ -347,8 +347,6 @@ def _read_secret_token(client: Any, secret_id: str) -> str:
 
 def _all_open_trades(ledger: Any) -> list[PaperTrade]:
     if not isinstance(ledger, DynamoPaperLedger):
-        # Unit-test/local ledgers may expose a helper; otherwise the current symbol
-        # path still remains fail-closed by returning no assumed cross-position risk.
         helper = getattr(ledger, "list_open_all", None)
         return list(helper()) if callable(helper) else []
 
@@ -390,8 +388,6 @@ def _paper_risk_state(
     by_symbol: dict[str, float] = {}
     for trade in trades:
         multiplier = 100 if trade.instrument == InstrumentSelected.OPTION else 1
-        # Long-option premium at risk is exact; treating stock capital as fully at
-        # risk is intentionally conservative until a richer stored stop model exists.
         amount = trade.quantity * trade.entry_price * multiplier
         total += amount
         by_symbol[trade.symbol] = by_symbol.get(trade.symbol, 0.0) + amount
