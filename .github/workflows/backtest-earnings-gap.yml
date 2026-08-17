@@ -1,0 +1,61 @@
+name: Backtest earnings gap sleeve
+
+on:
+  pull_request:
+    paths:
+      - "src/daily_alpha/backtest.py"
+      - "src/daily_alpha/earnings_gap.py"
+      - "tradingview/da_turtle_20_10_v2_3.pine"
+      - "tradingview/da_turtle_20_10_v2_4.pine"
+      - ".github/workflows/backtest-earnings-gap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mrvl:
+    name: MRVL v2.3 vs v2.4
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS_TOKEN GitHub secret is missing" >&2
+            exit 1
+          fi
+
+      - name: Run MRVL event-aware backtest
+        shell: bash
+        run: |
+          PYTHONPATH=src python -m daily_alpha.backtest \
+            --ticker MRVL \
+            --start 2024-01-01 \
+            --end 2026-08-14 \
+            --json-out backtest-mrvl.json | tee backtest-mrvl.txt
+          {
+            echo "## MRVL v2.3 vs v2.4 backtest"
+            echo '```text'
+            cat backtest-mrvl.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload backtest result
+        uses: actions/upload-artifact@v4
+        with:
+          name: mrvl-v2-3-v2-4-backtest
+          path: |
+            backtest-mrvl.json
+            backtest-mrvl.txt
+          if-no-files-found: error
