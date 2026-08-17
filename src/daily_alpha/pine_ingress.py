@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hmac
 import json
+import math
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -23,6 +24,15 @@ class PineIngressError(ValueError):
 
 class PineIngressAuthError(PineIngressError):
     """Webhook authentication failed."""
+
+
+ENTRY_TYPES = {"NORMAL_BREAKOUT", "EARNINGS_GAP_GO"}
+EARNINGS_GAP_CLASSES = {
+    "NONE",
+    "EARNINGS_GAP_GO",
+    "EARNINGS_GAP_CRAP",
+    "EARNINGS_WAIT",
+}
 
 
 @dataclass(frozen=True)
@@ -42,6 +52,13 @@ class PineIngressRecord:
     runner_stage: str | None = None
     stock_stop_price: float | None = None
     average_daily_dollar_volume: float | None = None
+    entry_type: str | None = None
+    earnings_gap_class: str | None = None
+    earnings_gap_pct: float | None = None
+    earnings_gap_atr: float | None = None
+    earnings_close_location: float | None = None
+    earnings_gap_retention: float | None = None
+    earnings_relative_volume: float | None = None
     trading_authorized: bool = False
     paper_execution_triggered: bool = False
     live_trading_enabled: bool = False
@@ -110,6 +127,18 @@ def _record_from_signal(
 ) -> PineIngressRecord:
     stock_stop_price = None
     average_daily_dollar_volume = None
+    entry_type = _optional_tag(payload.get("entry_type"), "entry_type", ENTRY_TYPES)
+    earnings_gap_class = _optional_tag(
+        payload.get("earnings_gap_class"),
+        "earnings_gap_class",
+        EARNINGS_GAP_CLASSES,
+    )
+    earnings_gap_pct = None
+    earnings_gap_atr = None
+    earnings_close_location = None
+    earnings_gap_retention = None
+    earnings_relative_volume = None
+
     if signal.action == SignalAction.ENTRY_LONG:
         stop_value = payload.get("stock_stop_price")
         if stop_value not in (None, ""):
@@ -133,8 +162,40 @@ def _record_from_signal(
                     "average_daily_dollar_volume must be non-negative"
                 )
 
+        if signal.strategy_version == "2.4" and entry_type is None:
+            raise PineIngressError("entry_type is required for strategy 2.4 entries")
+
+        earnings_gap_pct = _optional_float(payload.get("earnings_gap_pct"), "earnings_gap_pct")
+        earnings_gap_atr = _optional_float(payload.get("earnings_gap_atr"), "earnings_gap_atr")
+        earnings_close_location = _optional_float(
+            payload.get("earnings_close_location"), "earnings_close_location"
+        )
+        earnings_gap_retention = _optional_float(
+            payload.get("earnings_gap_retention"), "earnings_gap_retention"
+        )
+        earnings_relative_volume = _optional_float(
+            payload.get("earnings_relative_volume"), "earnings_relative_volume"
+        )
+
+        if entry_type == "EARNINGS_GAP_GO":
+            if earnings_gap_class != "EARNINGS_GAP_GO":
+                raise PineIngressError(
+                    "EARNINGS_GAP_GO entry requires matching earnings_gap_class"
+                )
+            required_metrics = {
+                "earnings_gap_pct": earnings_gap_pct,
+                "earnings_gap_atr": earnings_gap_atr,
+                "earnings_close_location": earnings_close_location,
+                "earnings_gap_retention": earnings_gap_retention,
+                "earnings_relative_volume": earnings_relative_volume,
+            }
+            if any(value is None for value in required_metrics.values()):
+                raise PineIngressError(
+                    "EARNINGS_GAP_GO entry requires complete earnings metrics"
+                )
+
     return PineIngressRecord(
-        schema_version="2026-08-16-v3",
+        schema_version="2026-08-16-v4",
         source="TRADINGVIEW_PINE",
         signal_id=signal.signal_id,
         symbol=signal.symbol,
@@ -149,4 +210,32 @@ def _record_from_signal(
         runner_stage=signal.runner_stage,
         stock_stop_price=stock_stop_price,
         average_daily_dollar_volume=average_daily_dollar_volume,
+        entry_type=entry_type,
+        earnings_gap_class=earnings_gap_class,
+        earnings_gap_pct=earnings_gap_pct,
+        earnings_gap_atr=earnings_gap_atr,
+        earnings_close_location=earnings_close_location,
+        earnings_gap_retention=earnings_gap_retention,
+        earnings_relative_volume=earnings_relative_volume,
     )
+
+
+def _optional_tag(value: Any, name: str, allowed: set[str]) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip().upper()
+    if text not in allowed:
+        raise PineIngressError(f"{name} is invalid")
+    return text
+
+
+def _optional_float(value: Any, name: str) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise PineIngressError(f"{name} must be numeric") from exc
+    if not math.isfinite(number):
+        raise PineIngressError(f"{name} must be finite")
+    return number
