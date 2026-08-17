@@ -10,13 +10,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlencode
 
-from .backtest import fetch_orats_history, indicators, run_strategy
-from .backtest_options import _num, fetch_contract
+from .backtest import _request_json, fetch_orats_history, indicators, run_strategy
+from .backtest_options import _num, _rows
 from .backtest_options_conservative import optionize_conservative
 from .scenario_backtest import DEFAULT_STOCKS, metrics, r2_scores
 from .scenario_backtest import run as run_scenarios
@@ -27,16 +28,20 @@ OPTION_COHORT = (
 )
 
 
-def _prior_quote(
-    ticker: str, expiry: str, strike: float, mark_date: date, token: str
-) -> tuple[date, dict[str, Any]] | None:
-    candidate = mark_date
-    for _ in range(6):
-        row = fetch_contract(ticker, expiry, strike, candidate.isoformat(), token)
-        if row is not None:
-            return candidate, row
-        candidate -= timedelta(days=1)
-    return None
+def contract_history(
+    ticker: str, expiry: str, strike: float, start: date, end: date, token: str
+) -> list[dict[str, Any]]:
+    query = urlencode(
+        {
+            "token": token, "ticker": ticker, "expirDate": expiry,
+            "strike": strike, "tradeDate": f"{start.isoformat()},{end.isoformat()}",
+        }
+    )
+    payload = _request_json(
+        f"https://api.orats.io/datav2/hist/strikes/options?{query}",
+        token=token, header_auth=False,
+    )
+    return _rows(payload)
 
 
 def candidate_options(start: date, end: date, token: str) -> list[dict[str, Any]]:
@@ -78,19 +83,25 @@ def daily_marks(
     marks: dict[date, float] = {}
     start = date.fromisoformat(str(trade["underlying_entry"]))
     end = date.fromisoformat(str(trade["exit_date"]))
+    history = contract_history(
+        str(trade["ticker"]), str(trade["expiry"]), float(trade["strike"]),
+        start, end, token,
+    )
+    by_date = {
+        date.fromisoformat(str(row["tradeDate"])[:10]): row
+        for row in history if row.get("tradeDate")
+    }
+    last_bid: float | None = None
     for mark_date in dates:
         if mark_date < start or mark_date > end:
             continue
-        quote = _prior_quote(
-            str(trade["ticker"]), str(trade["expiry"]),
-            float(trade["strike"]), mark_date, token
-        )
-        if quote is None:
-            continue
-        _, row = quote
-        bid = _num(row.get("callBidPrice"))
-        if bid >= 0:
-            marks[mark_date] = bid
+        row = by_date.get(mark_date)
+        if row is not None:
+            bid = _num(row.get("callBidPrice"))
+            if bid >= 0:
+                last_bid = bid
+        if last_bid is not None:
+            marks[mark_date] = last_bid
     return marks
 
 
