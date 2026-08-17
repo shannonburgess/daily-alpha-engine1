@@ -28,7 +28,7 @@ jobs:
         run: |
           test -n "$ORATS_TOKEN"
           PYTHONPATH=src python -m daily_alpha.backtest_options_conservative \
-            --thresholds 0.70,0.75 --json-out conservative-options.json \
+            --thresholds 0.60,0.70,0.75 --json-out conservative-options.json \
             | tee conservative-options.txt
       - name: Add summary
         shell: bash
