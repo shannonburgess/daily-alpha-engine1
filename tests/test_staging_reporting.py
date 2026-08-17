@@ -1,5 +1,3 @@
-import io
-import json
 from datetime import UTC, datetime
 
 from daily_alpha.staging_reporting import AwsStagingReportPublisher
@@ -8,13 +6,21 @@ from daily_alpha.staging_reporting import AwsStagingReportPublisher
 NOW = datetime(2026, 8, 17, 13, 5, tzinfo=UTC)
 
 
+class Body:
+    def __init__(self, value):
+        self.value = value
+
+    def read(self):
+        return self.value
+
+
 class FakeS3:
     def __init__(self):
         self.objects = {}
 
     def get_object(self, *, Bucket, Key):
         assert Bucket == "unit-bucket"
-        return {"Body": io.BytesIO(self.objects[Key])}
+        return {"Body": Body(self.objects[Key])}
 
     def put_object(self, *, Bucket, Key, Body, ContentType, ServerSideEncryption):
         assert Bucket == "unit-bucket"
@@ -50,48 +56,45 @@ class FakeDynamo:
 
 
 def seed_s3(client):
-    shortlist = [
-        {
-            "rank": 1,
-            "symbol": "AAPL",
-            "ovtlyr_status": "LEADER",
-            "display_label": "🚀 LEADER",
-            "classification_reason": "Leadership and momentum remain strong.",
-            "score": 92.5,
-            "sector": "Technology",
-            "orats_status": "ENRICHED",
-            "orats_reason": "QUALIFIED_OPTION_FOUND",
-            "selected_expiration": "2026-10-16",
-            "selected_strike": 250.0,
-            "selected_option_type": "CALL",
-            "smart_money_bonus": 5.0,
-            "trump_policy_bonus": 0.0,
-        },
-        {
-            "rank": 2,
-            "symbol": "XYZ",
-            "ovtlyr_status": "ENTRY_WATCH",
-            "display_label": "🎯 ENTRY WATCH",
-            "classification_reason": "Required ORATS data did not pass validation.",
-            "score": 70.0,
-            "sector": "Industrials",
-            "orats_status": "DATA_ERROR",
-            "orats_reason": "ORATS_DATA_STALE",
-            "selected_expiration": "",
-            "selected_strike": 0.0,
-            "selected_option_type": "",
-            "smart_money_bonus": 0.0,
-            "trump_policy_bonus": 0.0,
-        },
-    ]
-    summary = {"qualified_option_count": 1}
-    sector = [
-        {"sector": "Technology", "new_buys": 3, "leaders": 5, "net_score": 8},
-        {"sector": "Industrials", "new_buys": 1, "leaders": 2, "net_score": 3},
-    ]
-    client.objects["ovtlyr/shortlist/latest/shortlist.json"] = json.dumps(shortlist).encode()
-    client.objects["ovtlyr/shortlist/latest/summary.json"] = json.dumps(summary).encode()
-    client.objects["ovtlyr/shortlist/latest/sector_rotation.json"] = json.dumps(sector).encode()
+    client.objects["ovtlyr/shortlist/latest/shortlist.json"] = b'''[
+      {
+        "rank": 1,
+        "symbol": "AAPL",
+        "ovtlyr_status": "LEADER",
+        "display_label": "LEADER",
+        "classification_reason": "Leadership and momentum remain strong.",
+        "score": 92.5,
+        "sector": "Technology",
+        "orats_status": "ENRICHED",
+        "orats_reason": "QUALIFIED_OPTION_FOUND",
+        "selected_expiration": "2026-10-16",
+        "selected_strike": 250.0,
+        "selected_option_type": "CALL",
+        "smart_money_bonus": 5.0,
+        "trump_policy_bonus": 0.0
+      },
+      {
+        "rank": 2,
+        "symbol": "XYZ",
+        "ovtlyr_status": "ENTRY_WATCH",
+        "display_label": "ENTRY WATCH",
+        "classification_reason": "Required ORATS data did not pass validation.",
+        "score": 70.0,
+        "sector": "Industrials",
+        "orats_status": "DATA_ERROR",
+        "orats_reason": "ORATS_DATA_STALE",
+        "selected_expiration": "",
+        "selected_strike": 0.0,
+        "selected_option_type": "",
+        "smart_money_bonus": 0.0,
+        "trump_policy_bonus": 0.0
+      }
+    ]'''
+    client.objects["ovtlyr/shortlist/latest/summary.json"] = b'{"qualified_option_count":1}'
+    client.objects["ovtlyr/shortlist/latest/sector_rotation.json"] = b'''[
+      {"sector":"Technology","new_buys":3,"leaders":5,"net_score":8},
+      {"sector":"Industrials","new_buys":1,"leaders":2,"net_score":3}
+    ]'''
     client.objects["ovtlyr/shortlist/latest/shortlist.csv"] = b"rank,symbol\n1,AAPL\n2,XYZ\n"
 
 
@@ -119,7 +122,7 @@ def test_publish_writes_readable_newsletter_csvs_and_manifest():
     html = s3.objects[latest + "newsletter.html"].decode()
     ledger_csv = s3.objects[latest + "paper_ledger.csv"].decode()
     sector_csv = s3.objects[latest + "sector_rotation.csv"].decode()
-    manifest = json.loads(s3.objects[latest + "report_manifest.json"].decode())
+    manifest = s3.objects[latest + "report_manifest.json"].decode()
 
     assert "Daily Alpha &amp; Risk" in html
     assert "AAPL" in html
@@ -127,8 +130,8 @@ def test_publish_writes_readable_newsletter_csvs_and_manifest():
     assert "DATA ERROR" in html
     assert "ACCOUNT#paper-unit#POSITION#OPTION#AAPL" in ledger_csv
     assert "Technology" in sector_csv
-    assert manifest["session"] == "MORNING"
-    assert manifest["live_trading_enabled"] is False
+    assert '"session": "MORNING"' in manifest
+    assert '"live_trading_enabled": false' in manifest
 
 
 def test_publish_keeps_history_and_latest_copies():
