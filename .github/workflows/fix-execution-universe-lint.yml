@@ -15,30 +15,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/server-side-execution-universe
-      - name: Apply exact lint fixes
+      - name: Fix import order
         shell: python
         run: |
           from pathlib import Path
 
           path = Path("src/daily_alpha/execution_universe.py")
           text = path.read_text(encoding="utf-8")
-          replacements = {
-              "from typing import Any, Mapping": "from collections.abc import Mapping\nfrom typing import Any",
-              'def from_dict(cls, payload: Mapping[str, Any]) -> "ScannerState":': "def from_dict(cls, payload: Mapping[str, Any]) -> ScannerState:",
-              'raise ValueError("Execution-universe state must be an object")': 'raise TypeError("Execution-universe state must be an object")',
-              '''    if parsed.action == SignalAction.ADD:\n        if parsed.runner_stage not in {"ADD_1_ATR", "ADD_2_ATR"} or parsed.position_fraction != 0.25:\n            raise ValueError("Scanner ADD runner contract is invalid")''': '''    if parsed.action == SignalAction.ADD and (\n        parsed.runner_stage not in {"ADD_1_ATR", "ADD_2_ATR"}\n        or parsed.position_fraction != 0.25\n    ):\n        raise ValueError("Scanner ADD runner contract is invalid")''',
-              '''    if parsed.action == SignalAction.PARTIAL:\n        if parsed.runner_stage != "HARVEST_3_ATR" or parsed.position_fraction != 0.25:\n            raise ValueError("Scanner PARTIAL runner contract is invalid")''': '''    if parsed.action == SignalAction.PARTIAL and (\n        parsed.runner_stage != "HARVEST_3_ATR"\n        or parsed.position_fraction != 0.25\n    ):\n        raise ValueError("Scanner PARTIAL runner contract is invalid")''',
-          }
-          for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit(f"Expected text not found: {old[:80]}")
-              text = text.replace(old, new, 1)
-          path.write_text(text, encoding="utf-8")
-      - name: Commit fixes
+          old = "from pathlib import Path\nfrom collections.abc import Mapping"
+          new = "from collections.abc import Mapping\nfrom pathlib import Path"
+          if old not in text:
+              raise SystemExit("Expected import block not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+      - name: Commit fix
         shell: bash
         run: |
           git config user.name "daily-alpha-bot"
           git config user.email "actions@users.noreply.github.com"
           git add src/daily_alpha/execution_universe.py
-          git commit -m "Fix execution-universe lint" || exit 0
+          git commit -m "Fix execution-universe import order" || exit 0
           git push origin HEAD:agent/server-side-execution-universe
