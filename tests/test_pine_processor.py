@@ -16,13 +16,13 @@ RECEIVED = NOW - timedelta(minutes=2)
 
 def ingress(action="ENTRY_LONG", **overrides):
     payload = {
-        "schema_version": "2026-08-16-v2",
+        "schema_version": "2026-08-16-v3",
         "source": "TRADINGVIEW_PINE",
         "signal_id": f"mu-{action.lower()}-1",
         "symbol": "MU",
         "action": action,
         "strategy": "DA_TURTLE_ADAPTIVE_TREND",
-        "strategy_version": "1.9",
+        "strategy_version": "2.3",
         "timeframe": "D",
         "price": 575.5,
         "bar_time": (RECEIVED - timedelta(minutes=1)).isoformat(),
@@ -77,6 +77,11 @@ def test_canonical_partial_is_held_with_harvest_metadata_preserved():
     assert result.action == "PARTIAL"
     assert result.runner_stage == "HARVEST_3_ATR"
     assert result.reason == "PARTIAL_REQUIRES_OPEN_POSITION_AND_INSTRUMENT_FILL_CONTEXT"
+
+
+def test_processor_rejects_noncanonical_strategy_version():
+    with pytest.raises(PineProcessorError, match="STRATEGY_VERSION_NOT_CANONICAL"):
+        process_ingress_record(ingress(strategy_version="1.9"), now=NOW)
 
 
 def test_processor_rejects_noncanonical_runner_stage():
