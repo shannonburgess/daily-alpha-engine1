@@ -159,3 +159,18 @@ def test_stock_fallback_below_50m_is_no_trade(tmp_path):
 
     assert result["disposition"] == "NO_TRADE"
     assert service.ledger.find_open("AAPL") == []
+
+
+def test_after_close_signal_cannot_mutate_paper_ledger(tmp_path):
+    fake_orats = FakeOrats()
+    service = executor(tmp_path, fake_orats)
+    after_close = datetime(2026, 8, 17, 20, 5, tzinfo=UTC)
+
+    result = service.execute(ingress(), now=after_close)
+
+    assert result["disposition"] == "NO_TRADE"
+    assert result["reason"] == "OUTSIDE_REGULAR_EXECUTION_WINDOW"
+    assert result["paper_execution_triggered"] is False
+    assert result["live_trading_enabled"] is False
+    assert service.ledger.find_open("AAPL") == []
+    assert fake_orats.calls == []

@@ -38,10 +38,10 @@ class OratsNoOptionsError(OratsDataError):
 @dataclass(frozen=True)
 class OratsChain:
     ticker: str
-    stock_price: float
     candidates: tuple[OptionCandidate, ...]
     observed_at: datetime
     source_mode: str
+    stock_price: float | None = None
 
 
 Transport = Callable[[str, float], Any]
