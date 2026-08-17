@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .dynamo_ledger import DynamoPaperLedger, _trade_from_json
 from .ledger import PaperTrade
@@ -78,11 +79,19 @@ class AwsPinePaperExecutor:
     ) -> dict[str, Any]:
         timestamp = _aware(now or datetime.now(UTC))
         action = str(ingress.get("action", "")).upper()
+        if action not in {"ENTRY_LONG", "ADD", "PARTIAL", "EXIT"}:
+            raise PinePaperExecutionError("PINE_ACTION_UNSUPPORTED")
+        symbol = _required_text(ingress.get("symbol"), "symbol").upper()
+        if not _regular_execution_window(timestamp):
+            return _execution_result(
+                disposition="NO_TRADE",
+                reason="OUTSIDE_REGULAR_EXECUTION_WINDOW",
+                action=action,
+                symbol=symbol,
+            )
         if action == "ENTRY_LONG":
             return self._entry(ingress, timestamp)
-        if action in {"ADD", "PARTIAL", "EXIT"}:
-            return self._runner(ingress, timestamp)
-        raise PinePaperExecutionError("PINE_ACTION_UNSUPPORTED")
+        return self._runner(ingress, timestamp)
 
     def _entry(self, ingress: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         symbol = _required_text(ingress.get("symbol"), "symbol").upper()
@@ -313,6 +322,14 @@ class AwsPinePaperExecutor:
         if self._token is None:
             self._token = _read_secret_token(self.secrets_client, self.secret_id)
         return self.orats_factory(self._token)
+
+
+def _regular_execution_window(value: datetime) -> bool:
+    local = _aware(value).astimezone(ZoneInfo("America/New_York"))
+    if local.weekday() >= 5:
+        return False
+    clock = local.time().replace(tzinfo=None)
+    return time(9, 40) <= clock < time(15, 50)
 
 
 def _paper_nav_from_env() -> float:

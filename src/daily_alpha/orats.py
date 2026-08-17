@@ -41,6 +41,7 @@ class OratsChain:
     candidates: tuple[OptionCandidate, ...]
     observed_at: datetime
     source_mode: str
+    stock_price: float | None = None
 
 
 Transport = Callable[[str, float], Any]
@@ -110,6 +111,7 @@ class OratsClient:
             )
 
         observed_at = self._latest_observation(rows)
+        stock_price = self._latest_stock_price(rows)
         reference = as_of or datetime.now(UTC)
         if reference.tzinfo is None:
             reference = reference.replace(tzinfo=UTC)
@@ -127,6 +129,7 @@ class OratsClient:
             raise OratsDataError(f"ORATS rows for {symbol} contained no usable contracts")
         return OratsChain(
             ticker=symbol,
+            stock_price=stock_price,
             candidates=candidates,
             observed_at=observed_at,
             source_mode=self.mode,
@@ -153,6 +156,23 @@ class OratsClient:
         if not observations:
             raise OratsDataError("ORATS response has no observation timestamp")
         return max(observations)
+
+    @staticmethod
+    def _latest_stock_price(rows: list[Mapping[str, Any]]) -> float:
+        observations: list[tuple[datetime, float]] = []
+        for row in rows:
+            stamp = row.get("updatedAt") or row.get("quoteDate") or row.get("snapShotDate")
+            raw_price = row.get("stockPrice")
+            if raw_price in (None, ""):
+                raw_price = row.get("spotPrice")
+            if not stamp or raw_price in (None, ""):
+                continue
+            price = _number(raw_price)
+            if price > 0:
+                observations.append((_parse_timestamp(str(stamp)), price))
+        if not observations:
+            raise OratsDataError("ORATS response has no positive underlying stock price")
+        return max(observations, key=lambda item: item[0])[1]
 
     @staticmethod
     def _normalize_rows(
