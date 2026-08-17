@@ -87,7 +87,7 @@ def test_objective_and_observation_kinds_must_match():
     with pytest.raises(ValueError, match="kinds must match"):
         evaluate_delivery(
             objective=objective(DeliveryKind.EOD_BRIEF),
-            observation=observation(DeliveryKind.PREMARKET_NOTE),
+            observation=observation(kind=DeliveryKind.PREMARKET_NOTE),
         )
 
 
