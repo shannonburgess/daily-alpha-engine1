@@ -1,0 +1,78 @@
+name: Deploy next-session market-hours lock to staging once
+
+on:
+  push:
+    branches: [agent/deploy-next-session-lock-staging]
+    paths: [.github/workflows/deploy-next-session-lock-staging-once.yml]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b345307f6f541edb2ba855ffce38f4a5a0d6e5a2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate merged main
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]' pyyaml
+          ruff check .
+          pytest -q
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('src/daily_alpha/pine_paper_orchestrator.py').read_text(encoding='utf-8')
+          assert 'OUTSIDE_REGULAR_EXECUTION_WINDOW' in text
+          close = Path('.github/workflows/scan-execution-universe.yml').read_text(encoding='utf-8')
+          assert 'EXECUTE_SCANNER_SIGNAL' not in close
+          print('market-hours lock and close-scan no-execution invariant verified')
+          PY
+      - name: Build Lambda package
+        run: |
+          rm -rf build deployment.zip
+          mkdir -p build
+          pip install . --target build --no-deps
+          cp -R lambda_handlers build/lambda_handlers
+          (cd build && zip -qr ../deployment.zip .)
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: next-session-lock-staging-deploy
+          aws-region: us-east-2
+      - name: Deploy Pine processor only
+        run: |
+          aws lambda update-function-code \
+            --function-name daily-alpha-pine-processor \
+            --zip-file fileb://deployment.zip \
+            --publish
+          aws lambda wait function-updated --function-name daily-alpha-pine-processor
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --handler lambda_handlers.pine_processor.lambda_handler
+          aws lambda wait function-updated --function-name daily-alpha-pine-processor
+      - name: Smoke test processor and safety flags
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"LIST_OPEN_PAPER_POSITIONS"}' \
+            /tmp/open.json >/tmp/meta.json
+          cat /tmp/open.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('/tmp/open.json').read_text())
+          assert result.get('ok') is True, result
+          assert result.get('trading_authorized') is False, result
+          assert result.get('live_trading_enabled') is False, result
+          print('staging processor verified; live trading disabled')
+          PY
