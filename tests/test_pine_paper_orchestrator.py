@@ -111,7 +111,7 @@ def test_option_runner_add_uses_same_contract_orats_ask(tmp_path):
     assert result["reason"] == "PAPER_ADD_APPLIED"
     assert after.quantity > before.quantity
     assert after.runner_stage == "ADD_1_ATR"
-    assert any(call[2] < 45 for call in fake_orats.calls[1:])
+    assert fake_orats.calls[-1][2:] == (59, 61)
 
 
 def test_stock_fallback_requires_stop_and_50m_liquidity(tmp_path):
