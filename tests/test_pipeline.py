@@ -58,8 +58,11 @@ def test_option_entry_and_exit_use_option_ledger(tmp_path):
     )
 
     assert opened.instrument == InstrumentSelected.OPTION
+    assert opened.quantity == 12
+    assert opened.target_quantity == 24
+    assert opened.runner_stage == "STARTER"
     assert closed[0].state == TradeState.CLOSED
-    assert closed[0].realized_pnl == 1_250
+    assert closed[0].realized_pnl == 600
     assert (tmp_path / "option_trades.jsonl").exists()
     assert not (tmp_path / "stock_trades.jsonl").exists()
 
@@ -81,5 +84,6 @@ def test_stock_fallback_has_separate_ledger(tmp_path):
     )
 
     assert opened.instrument == InstrumentSelected.STOCK
+    assert opened.quantity * 2 == opened.target_quantity
     assert (tmp_path / "stock_trades.jsonl").exists()
     assert not (tmp_path / "option_trades.jsonl").exists()
