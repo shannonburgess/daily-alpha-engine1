@@ -1,0 +1,57 @@
+name: Morning newsletter recovery 2026-08-17
+
+on:
+  push:
+    branches:
+      - agent/morning-newsletter-recovery-20260817
+    paths:
+      - .github/workflows/morning-newsletter-recovery-20260817.yml
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require ORATS token
+        run: |
+          test -n "$ORATS_TOKEN" || (echo 'ORATS_TOKEN missing' >&2; exit 1)
+      - name: Install tools
+        run: |
+          python -m pip install --disable-pip-version-check . gdown==5.2.0
+      - name: Download OVTLYR history
+        run: |
+          mkdir -p data/incoming
+          gdown --folder --remaining-ok "$OVTLYR_FOLDER_URL" -O data/incoming
+          ls -lh data/incoming
+      - name: Build 8/17 ORATS-ranked shortlist
+        shell: python
+        run: |
+          from datetime import UTC, datetime
+          from daily_alpha.orats import OratsClient
+          from daily_alpha.research_shortlist import build_research_shortlist, discover_daily_pair, write_research_shortlist_outputs
+          from daily_alpha.sources import OratsBatchSource
+
+          previous, current = discover_daily_pair('data/incoming')
+          source = OratsBatchSource(OratsClient(mode='delayed', max_age_minutes=72*60))
+          result = build_research_shortlist(previous, current, as_of=datetime.now(UTC), orats_source=source, request_limit=20)
+          write_research_shortlist_outputs('data/shortlist', result)
+          print(f'PAIR {result.previous_file} -> {result.current_file}')
+          print('SUMMARY', result.summary)
+          for rank, item in enumerate(result.items[:20], 1):
+              print(rank, item.symbol, item.display_label, f'score={item.score:.2f}', item.orats_reason, item.selected_expiration, item.selected_strike, item.selected_option_type)
+      - name: Upload recovery shortlist
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning-newsletter-recovery-shortlist
+          path: data/shortlist
+          retention-days: 1
