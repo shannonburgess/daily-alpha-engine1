@@ -1,0 +1,115 @@
+name: Execute Daily Alpha pending actions next session
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Covers EDT/EST. The gate permits only 09:45 ET primary and 10:05 ET retry.
+    - cron: "45 13,14 * * 1-5"
+    - cron: "5 14,15 * * 1-5"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-alpha-next-session-execution
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.market.outputs.run }}
+      mode: ${{ steps.market.outputs.mode }}
+    steps:
+      - name: Resolve regular-session execution window
+        id: market
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from datetime import UTC, datetime
+          from zoneinfo import ZoneInfo
+          local = datetime.now(UTC).astimezone(ZoneInfo("America/New_York"))
+          if local.weekday() >= 5:
+              print("run=false")
+              print("mode=none")
+          elif local.hour == 9 and 40 <= local.minute <= 59:
+              print("run=true")
+              print("mode=morning_primary")
+          elif local.hour == 10 and 0 <= local.minute <= 20:
+              print("run=true")
+              print("mode=morning_retry")
+          else:
+              print("run=false")
+              print("mode=none")
+          PY
+
+  execute:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
+      EXECUTION_MODE: ${{ needs.gate.outputs.mode }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS_TOKEN GitHub secret is missing" >&2
+            exit 1
+          fi
+
+      - name: Install next-session execution runner
+        run: python -m pip install --disable-pip-version-check . boto3
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-next-session-execution
+          aws-region: us-east-2
+
+      - name: Revalidate and execute paper-only pending actions
+        id: execute
+        run: |
+          python -m daily_alpha.next_session_execution \
+            --mode "$EXECUTION_MODE" \
+            --bucket "$STAGING_BUCKET" \
+            --workdir data/execution-universe-morning \
+            --run-id "$GITHUB_RUN_ID"
+
+      - name: Upload next-session execution audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-next-session-${{ github.run_id }}
+          path: data/execution-universe-morning/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize next-session paper execution
+        shell: bash
+        run: |
+          {
+            echo "## Daily Alpha next-session paper execution"
+            echo "- Window: $EXECUTION_MODE"
+            echo "- Pending actions attempted: ${{ steps.execute.outputs.attempted }}"
+            echo "- Paper actions executed: ${{ steps.execute.outputs.executed }}"
+            echo "- Cancelled / no-trade: ${{ steps.execute.outputs.cancelled }}"
+            echo "- Deferred DATA_ERROR: ${{ steps.execute.outputs.deferred }}"
+            echo "- Remaining pending: ${{ steps.execute.outputs.remaining }}"
+            echo "- Entry revalidation: breakout must remain valid and price must remain below +1 ATR add level"
+            echo "- Underlying + option data: refreshed from ORATS before execution"
+            echo "- Downstream gates: portfolio risk + fresh ORATS + option-first instrument selection"
+            echo "- Live trading: DISABLED"
+          } >> "$GITHUB_STEP_SUMMARY"
