@@ -18,7 +18,7 @@ from pathlib import Path
 from statistics import mean, pstdev
 from typing import Any
 
-from daily_alpha.backtest import Bar, fetch_orats_history, indicators
+from .backtest import Bar, fetch_orats_history, indicators
 
 
 DEFAULT_STOCKS = (
@@ -238,7 +238,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             t = futures[future]
             try:
                 _, raw[t] = future.result()
-            except Exception as exc:  # keep complete failure evidence
+            except RuntimeError as exc:  # keep complete failure evidence
                 failures[t] = f"{type(exc).__name__}: {exc}"
     essential = set(SECTOR_MAP) | {"SPY", "SGOV"}
     missing = sorted(essential - set(raw))
@@ -248,7 +248,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if len(stocks) < 40:
         raise RuntimeError(f"Only {len(stocks)} of 50 stock histories available; failures={failures}")
 
-    common = set.intersection(*(set(b.trade_date for b in raw[t]) for t in essential | set(stocks)))
+    common = set.intersection(*({b.trade_date for b in raw[t]} for t in essential | set(stocks)))
     dates = sorted(d for d in common if start <= d <= end)
     if len(dates) < 252:
         raise RuntimeError(f"Only {len(dates)} common trading dates")
