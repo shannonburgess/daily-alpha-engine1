@@ -24,6 +24,10 @@ DEFAULT_BUCKET = "daily-alpha-staging-490809405132-us-east-2"
 LATEST_PREFIX = "daily-alpha/execution-universe/latest"
 
 
+class UnsafeExecutionError(RuntimeError):
+    """Raised when a downstream response violates the paper-only safety contract."""
+
+
 def run_next_session_execution(
     *,
     mode: str,
@@ -167,6 +171,8 @@ def run_next_session_execution(
                     execution=disposition,
                 )
             attempts.append(record)
+        except UnsafeExecutionError:
+            raise
         except (OratsError, RuntimeError, ValueError, TypeError) as exc:
             deferred_data_error += 1
             retry_item = dict(item)
@@ -296,7 +302,7 @@ def _invoke_processor(client: Any, signal: dict[str, Any] | None) -> dict[str, A
     if response.get("FunctionError"):
         raise RuntimeError(f"Pine processor FunctionError: {body}")
     if body.get("live_trading_enabled") is not False:
-        raise RuntimeError(f"Unsafe live trading response: {body}")
+        raise UnsafeExecutionError(f"Unsafe live trading response: {body}")
     return body
 
 
