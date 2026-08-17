@@ -11,7 +11,7 @@ import argparse
 import json
 import math
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
