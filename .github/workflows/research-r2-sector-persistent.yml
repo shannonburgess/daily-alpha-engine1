@@ -1,0 +1,33 @@
+name: Research R2 persistent sector sleeve
+
+on:
+  push:
+    branches: [agent/r2-portfolio-defense-study]
+    paths:
+      - research/run_r2_sector_persistent.py
+      - .github/workflows/research-r2-sector-persistent.yml
+
+permissions:
+  contents: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check .
+      - run: python research/run_r2_sector_persistent.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-r2-sector-persistent
+          path: |
+            r2-sector-persistent.json
+            r2-sector-persistent.md
+          if-no-files-found: error
+          retention-days: 30
