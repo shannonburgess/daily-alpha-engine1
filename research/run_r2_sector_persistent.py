@@ -9,12 +9,14 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 BASE_PATH = Path(__file__).with_name("run_r2_portfolio_defense.py")
 spec = importlib.util.spec_from_file_location("r2def", BASE_PATH)
 r2 = importlib.util.module_from_spec(spec)
+sys.modules["r2def"] = r2
 spec.loader.exec_module(r2)
 
 
@@ -37,7 +39,6 @@ def persistent_sector_signal(bars, ind, i):
     sma20 = sum(x.close for x in bars[i-20:i]) / 20
     if bars[i].close <= sma20:
         return None
-    # 3x only for a materially stronger persistent trend; otherwise 2x.
     strong = (
         float(adx) >= 22
         and r2.relvol(bars, i) >= 1.20
@@ -65,7 +66,6 @@ def main():
         raise SystemExit("SPY history unavailable")
 
     rf_daily, rf_source = r2.get_tbill_daily_rates()
-    # Monkeypatch only the sector trigger; stock model/risk logic stays unchanged.
     r2.sector_signal = persistent_sector_signal
 
     results = {}
