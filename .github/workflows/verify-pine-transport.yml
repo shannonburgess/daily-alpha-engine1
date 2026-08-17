@@ -32,12 +32,12 @@ jobs:
           echo 'Secret id configured:'
           test "$(aws lambda get-function-configuration --function-name daily-alpha-pine-ingress --query 'Environment.Variables.PINE_WEBHOOK_SECRET_ID' --output text)" != 'None'
           echo 'Processor event-source mappings:'
-          aws lambda list-event-source-mappings --function-name daily-alpha-pine-processor --query 'EventSourceMappings[].{State:State,EventSourceArn:EventSourceArn,LastProcessingResult:LastProcessingResult}'
+          aws lambda list-event-source-mappings --function-name daily-alpha-pine-processor --query 'EventSourceMappings[].{State:State,EventSourceArn:EventSourceArn,LastProcessingResult:LastProcessingResult}' 2>/dev/null || echo 'EVENT_SOURCE_MAPPING_QUERY_NOT_PERMITTED'
       - name: Discover public ingress endpoint
         shell: bash
         run: |
           set -euo pipefail
           echo 'Lambda Function URL:'
-          aws lambda get-function-url-config --function-name daily-alpha-pine-ingress --query '{FunctionUrl:FunctionUrl,AuthType:AuthType}' 2>/dev/null || echo 'NO_LAMBDA_FUNCTION_URL'
+          aws lambda get-function-url-config --function-name daily-alpha-pine-ingress --query '{FunctionUrl:FunctionUrl,AuthType:AuthType}' 2>/dev/null || echo 'NO_LAMBDA_FUNCTION_URL_OR_QUERY_NOT_PERMITTED'
           echo 'HTTP APIs (if permitted):'
           aws apigatewayv2 get-apis --query 'Items[].{Name:Name,ApiEndpoint:ApiEndpoint,ProtocolType:ProtocolType}' 2>/dev/null || echo 'APIGATEWAY_QUERY_NOT_PERMITTED'
