@@ -33,11 +33,14 @@ jobs:
           Path('/tmp/patch.py').write_text('\n'.join(payload) + '\n', encoding='utf-8')
           PY
           python /tmp/patch.py
-      - name: Commit architecture patch
+          mkdir -p tmp
+          cp .github/workflows/scan-execution-universe.yml tmp/scan-execution-universe.patched.yml
+          git checkout -- .github/workflows/scan-execution-universe.yml
+      - name: Commit non-workflow patch outputs
         shell: bash
         run: |
           git config user.name "daily-alpha-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add src/daily_alpha/orats.py tests/test_orats.py .github/workflows/scan-execution-universe.yml
-          git commit -m "Stage close signals and execute next session"
+          git add src/daily_alpha/orats.py tests/test_orats.py tmp/scan-execution-universe.patched.yml
+          git commit -m "Prepare next-session execution workflow blob"
           git push origin HEAD:agent/next-session-paper-execution
