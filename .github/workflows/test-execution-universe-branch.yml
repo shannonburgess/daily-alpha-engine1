@@ -1,0 +1,29 @@
+name: Validate execution-universe branch
+
+on:
+  push:
+    branches: [agent/server-side-execution-universe]
+    paths:
+      - src/daily_alpha/execution_universe.py
+      - lambda_handlers/pine_processor.py
+      - tests/test_execution_universe.py
+      - .github/workflows/scan-execution-universe.yml
+      - .github/workflows/test-execution-universe-branch.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          ruff check .
+          pytest -q
