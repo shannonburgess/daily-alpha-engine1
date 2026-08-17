@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: orats-research
+  queue: max
+
 jobs:
   sensitivity:
     name: Close-location threshold sensitivity
