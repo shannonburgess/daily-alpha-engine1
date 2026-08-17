@@ -81,6 +81,15 @@ def main():
         )
         results[f"SECTOR_2X3X_EXIT_{exit_days}D"] = {"metrics": r2.metrics(d, n, rf_daily), "stats": st}
 
+    d, n, st = r2.run_portfolio(
+        data, rf_daily,
+        sector_sleeve=True,
+        throttle=True,
+        beta_hedge=False,
+        sector_exit_days=10,
+    )
+    results["SECTOR_2X3X_10D_PLUS_DD_THROTTLE"] = {"metrics": r2.metrics(d, n, rf_daily), "stats": st}
+
     out = {
         "research_only": True,
         "reserve": rf_source,
