@@ -11,14 +11,14 @@ import argparse
 import json
 import os
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlencode
 
 from .backtest import _request_json, fetch_orats_history, indicators, run_strategy
-from .backtest_options import _num, _rows
+from .backtest_options import _num, _rows, fetch_contract
 from .backtest_options_conservative import optionize_conservative
 from .scenario_backtest import DEFAULT_STOCKS, metrics, r2_scores
 from .scenario_backtest import run as run_scenarios
@@ -81,6 +81,28 @@ def candidate_options(start: date, end: date, token: str) -> list[dict[str, Any]
         )[:2]
         for ticker, trade in ranked:
             row = optionize_conservative(ticker, trade, token)
+            if row.get("status") == "OK":
+                expiry = date.fromisoformat(str(row["expiry"]))
+                roll_date = expiry - timedelta(days=21)
+                current_exit = date.fromisoformat(str(row["exit_date"]))
+                entry_date_actual = date.fromisoformat(str(row["underlying_entry"]))
+                if entry_date_actual < roll_date < current_exit:
+                    quote_date = roll_date
+                    exit_row = None
+                    for _ in range(6):
+                        exit_row = fetch_contract(
+                            ticker, str(row["expiry"]), float(row["strike"]),
+                            quote_date.isoformat(), token,
+                        )
+                        if exit_row is not None:
+                            break
+                        quote_date -= timedelta(days=1)
+                    if exit_row is None:
+                        row = {**row, "status": "NO_21_DTE_EXIT_QUOTE"}
+                    else:
+                        row["exit_date"] = quote_date.isoformat()
+                        row["exit_bid"] = round(_num(exit_row.get("callBidPrice")), 4)
+                        row["exit_reason"] = "21_DTE"
             row["rank_at_entry"] = next(
                 i + 1 for i, item in enumerate(ranked) if item[0] == ticker
             )
