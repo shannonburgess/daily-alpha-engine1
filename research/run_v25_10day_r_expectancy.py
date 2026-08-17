@@ -6,12 +6,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
 
 from daily_alpha.backtest import fetch_orats_history, indicators
-from research.run_v25_10day_breakout import HOLDOUT_SYMBOLS, PERIODS, run_variant
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from run_v25_10day_breakout import HOLDOUT_SYMBOLS, PERIODS, run_variant
 
 FETCH_START = date(2021,1,1)
 FETCH_END = date(2026,7,31)
@@ -41,7 +44,6 @@ def summarize(trades):
     avg_win=sum(wins)/len(wins) if wins else 0.0
     avg_loss=abs(sum(losses)/len(losses)) if losses else 0.0
     expectancy=(win_rate*avg_win)-((1-win_rate)*avg_loss) if rs else 0.0
-    # algebraically identical to mean R; include both as cross-check.
     mean_r=sum(rs)/len(rs) if rs else 0.0
     return {
         'trades_with_r':len(rs),
