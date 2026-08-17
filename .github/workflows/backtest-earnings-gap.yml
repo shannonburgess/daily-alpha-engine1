@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: orats-research
+  queue: max
+
 jobs:
   mrvl:
     name: MRVL v2.3 vs v2.4
@@ -62,6 +66,7 @@ jobs:
 
   pilot-cohort:
     name: Liquid growth / semiconductor pilot
+    needs: mrvl
     environment: staging
     runs-on: ubuntu-latest
     timeout-minutes: 20
