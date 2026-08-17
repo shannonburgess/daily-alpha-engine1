@@ -1,0 +1,712 @@
+name: Scan Daily Alpha execution universe
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Close signal staging: 16:20 ET. Morning execution: 09:45 ET, with a
+    # 10:05 ET retry window only for transient DATA_ERROR items.
+    - cron: "20 20,21 * * 1-5"
+    - cron: "45 13,14 * * 1-5"
+    - cron: "5 14,15 * * 1-5"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-alpha-execution-universe
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.market.outputs.run }}
+      mode: ${{ steps.market.outputs.mode }}
+    steps:
+      - name: Resolve US signal-staging / execution window
+        id: market
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "mode=close_signal" >> "$GITHUB_OUTPUT"
+          else
+            python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from datetime import UTC, datetime
+          from zoneinfo import ZoneInfo
+          local = datetime.now(UTC).astimezone(ZoneInfo("America/New_York"))
+          if local.hour == 16 and 15 <= local.minute <= 40:
+              print("run=true")
+              print("mode=close_signal")
+          elif local.hour == 9 and 40 <= local.minute <= 59:
+              print("run=true")
+              print("mode=morning_primary")
+          elif local.hour == 10 and 0 <= local.minute <= 20:
+              print("run=true")
+              print("mode=morning_retry")
+          else:
+              print("run=false")
+              print("mode=none")
+          PY
+          fi
+
+  scan:
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.mode == 'close_signal'
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
+      EXECUTION_UNIVERSE_LIMIT: "20"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS_TOKEN GitHub secret is missing" >&2
+            exit 1
+          fi
+
+      - name: Install execution scanner
+        run: |
+          python -m pip install --disable-pip-version-check . boto3
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-execution-universe
+          aws-region: us-east-2
+
+      - name: Evaluate v2.4 across ranked universe and execute paper-only signals
+        id: scan
+        shell: python
+        run: |
+          import csv
+          import json
+          import os
+          import time
+          from datetime import UTC, datetime, timedelta
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          import boto3
+          from botocore.exceptions import ClientError
+
+          from daily_alpha.backtest import fetch_orats_history
+          from daily_alpha.execution_queue import build_pending_action
+          from daily_alpha.execution_universe import (
+              ScannerState,
+              evaluate_latest_v24,
+              load_state,
+              select_execution_universe,
+              write_state,
+          )
+
+          bucket = os.environ["STAGING_BUCKET"]
+          token = os.environ["ORATS_TOKEN"]
+          limit = int(os.environ.get("EXECUTION_UNIVERSE_LIMIT", "20"))
+          run_id = os.environ["GITHUB_RUN_ID"]
+          s3 = boto3.client("s3")
+          lamb = boto3.client("lambda")
+          work = Path("data/execution-universe")
+          work.mkdir(parents=True, exist_ok=True)
+          shortlist = work / "shortlist.csv"
+          state_path = work / "state.json"
+
+          s3.download_file(bucket, "ovtlyr/shortlist/latest/shortlist.csv", str(shortlist))
+          try:
+              s3.download_file(
+                  bucket,
+                  "daily-alpha/execution-universe/latest/state.json",
+                  str(state_path),
+              )
+          except ClientError as exc:
+              code = exc.response.get("Error", {}).get("Code", "")
+              if code not in {"404", "NoSuchKey", "NotFound"}:
+                  raise
+              state_path.write_text("{}", encoding="utf-8")
+
+          state = load_state(state_path)
+
+          def invoke(payload):
+              response = lamb.invoke(
+                  FunctionName="daily-alpha-pine-processor",
+                  InvocationType="RequestResponse",
+                  Payload=json.dumps(payload).encode("utf-8"),
+              )
+              raw = response["Payload"].read().decode("utf-8")
+              body = json.loads(raw or "{}")
+              if response.get("FunctionError"):
+                  raise RuntimeError(f"Pine processor FunctionError: {body}")
+              if body.get("live_trading_enabled") is not False:
+                  raise RuntimeError(f"Unsafe live trading response: {body}")
+              return body
+
+          open_result = invoke({"operation": "LIST_OPEN_PAPER_POSITIONS"})
+          if open_result.get("ok") is not True:
+              raise RuntimeError(f"Unable to read open paper positions: {open_result}")
+          open_positions = open_result.get("open_positions", [])
+          open_symbols = sorted(
+              {str(item.get("symbol", "")).upper() for item in open_positions if item.get("symbol")}
+          )
+
+          # State can only remain active while a durable paper position is open.
+          stale_state = sorted(set(state) - set(open_symbols))
+          for symbol in stale_state:
+              state.pop(symbol, None)
+
+          with shortlist.open(newline="", encoding="utf-8") as handle:
+              shortlist_rows = list(csv.DictReader(handle))
+          rank_by_symbol = {}
+          label_by_symbol = {}
+          for row in shortlist_rows:
+              symbol = str(row.get("symbol", "")).upper()
+              if not symbol:
+                  continue
+              rank_by_symbol[symbol] = row.get("rank", "")
+              label_by_symbol[symbol] = row.get("display_label", "")
+
+          symbols = select_execution_universe(
+              shortlist,
+              state,
+              open_symbols=open_symbols,
+              limit=limit,
+          )
+          now = datetime.now(UTC)
+          market_now = now.astimezone(ZoneInfo("America/New_York"))
+          trade_date = market_now.date()
+          decisions = []
+          watch = []
+          data_errors = 0
+          emitted = 0
+          executed = 0
+          pending = []
+
+          for index, symbol in enumerate(symbols, start=1):
+              symbol_state = state.get(symbol)
+              open_exists = symbol in open_symbols
+              if open_exists and symbol_state is None:
+                  watch.append(
+                      {
+                          "rank": rank_by_symbol.get(symbol, ""),
+                          "symbol": symbol,
+                          "label": label_by_symbol.get(symbol, ""),
+                          "position": "OPEN",
+                          "runner_stage": "EXTERNAL_OR_TRADINGVIEW",
+                          "scanner_status": "STATE_MISSING_SERVER_MANAGEMENT_DISABLED",
+                          "action": "",
+                          "execution": "",
+                      }
+                  )
+                  decisions.append(
+                      {
+                          "symbol": symbol,
+                          "status": "STATE_MISSING_SERVER_MANAGEMENT_DISABLED",
+                          "open_position": True,
+                      }
+                  )
+                  continue
+
+              try:
+                  bars, history_meta = fetch_orats_history(
+                      symbol,
+                      start=trade_date - timedelta(days=365),
+                      end=trade_date,
+                      token=token,
+                  )
+                  decision = evaluate_latest_v24(
+                      symbol,
+                      bars,
+                      state=symbol_state,
+                      now=now,
+                      require_trade_date=trade_date,
+                  )
+                  decision_payload = decision.to_dict()
+                  decision_payload["history_source"] = (
+                      history_meta[0].get("source") if history_meta else "ORATS"
+                  )
+                  outcome = None
+                  if decision.signal is not None:
+                      emitted += 1
+                      pending_item = build_pending_action(
+                          symbol=symbol,
+                          action=decision.action or "",
+                          reason=decision.reason,
+                          signal=decision.signal,
+                          market_date=decision.market_bar_date,
+                          created_at=now,
+                          state_before=symbol_state,
+                          state_after=decision.proposed_state,
+                      )
+                      pending.append(pending_item)
+                      decision_payload["pending"] = {
+                          "status": "PENDING_NEXT_SESSION",
+                          "execution_timing": "NEXT_REGULAR_SESSION",
+                      }
+                  decisions.append(decision_payload)
+                  execution_label = (
+                      "PENDING_NEXT_SESSION" if decision.signal is not None else ""
+                  )
+                  current_state = state.get(symbol)
+                  watch.append(
+                      {
+                          "rank": rank_by_symbol.get(symbol, ""),
+                          "symbol": symbol,
+                          "label": label_by_symbol.get(symbol, ""),
+                          "position": "OPEN" if symbol in open_symbols else "FLAT",
+                          "runner_stage": current_state.runner_stage if current_state else "",
+                          "scanner_status": decision.reason,
+                          "action": decision.action or "",
+                          "execution": execution_label,
+                      }
+                  )
+              except Exception as exc:
+                  data_errors += 1
+                  decisions.append(
+                      {
+                          "symbol": symbol,
+                          "status": "DATA_ERROR",
+                          "error": f"{type(exc).__name__}:{exc}",
+                      }
+                  )
+                  watch.append(
+                      {
+                          "rank": rank_by_symbol.get(symbol, ""),
+                          "symbol": symbol,
+                          "label": label_by_symbol.get(symbol, ""),
+                          "position": "OPEN" if open_exists else "FLAT",
+                          "runner_stage": symbol_state.runner_stage if symbol_state else "",
+                          "scanner_status": "DATA_ERROR",
+                          "action": "",
+                          "execution": "NO_ACTION",
+                      }
+                  )
+              time.sleep(0.35)
+
+          write_state(state_path, state)
+          audit = {
+              "schema_version": "2026-08-17-execution-universe-v1",
+              "generated_at": now.isoformat(),
+              "market_date": trade_date.isoformat(),
+              "universe_limit": limit,
+              "symbols_monitored": symbols,
+              "open_symbols": sorted(open_symbols),
+              "signals_emitted": emitted,
+              "paper_actions_executed": executed,
+              "pending_next_session_actions": len(pending),
+              "data_error_count": data_errors,
+              "live_trading_enabled": False,
+              "decisions": decisions,
+          }
+          audit_path = work / "audit.json"
+          audit_path.write_text(json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8")
+          pending_path = work / "pending_actions.json"
+          pending_path.write_text(
+              json.dumps(
+                  {
+                      "schema_version": "2026-08-17-pending-v1",
+                      "generated_at": now.isoformat(),
+                      "market_date": trade_date.isoformat(),
+                      "actions": pending,
+                  },
+                  indent=2,
+                  sort_keys=True,
+              ),
+              encoding="utf-8",
+          )
+          watch_json = work / "active_watch.json"
+          watch_json.write_text(json.dumps(watch, indent=2, sort_keys=True), encoding="utf-8")
+          watch_csv = work / "active_watch.csv"
+          with watch_csv.open("w", newline="", encoding="utf-8") as handle:
+              writer = csv.DictWriter(
+                  handle,
+                  fieldnames=[
+                      "rank",
+                      "symbol",
+                      "label",
+                      "position",
+                      "runner_stage",
+                      "scanner_status",
+                      "action",
+                      "execution",
+                  ],
+              )
+              writer.writeheader()
+              writer.writerows(watch)
+
+          latest = "daily-alpha/execution-universe/latest"
+          history = f"daily-alpha/execution-universe/history/{run_id}"
+          for path in (state_path, audit_path, pending_path, watch_json, watch_csv):
+              s3.upload_file(str(path), bucket, f"{latest}/{path.name}")
+              s3.upload_file(str(path), bucket, f"{history}/{path.name}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"monitored={len(symbols)}\n")
+              handle.write(f"emitted={emitted}\n")
+              handle.write(f"executed={executed}\n")
+              handle.write(f"pending={len(pending)}\n")
+              handle.write(f"data_errors={data_errors}\n")
+              handle.write(f"open_count={len(open_symbols)}\n")
+
+          print(json.dumps({k: audit[k] for k in (
+              "market_date", "symbols_monitored", "signals_emitted",
+              "paper_actions_executed", "pending_next_session_actions",
+              "data_error_count", "open_symbols"
+          )}, indent=2))
+
+          # Fail closed if the market-data layer broadly degrades. Individual symbol
+          # errors are audited and skipped; no trade is ever substituted on DATA_ERROR.
+          if symbols and data_errors > max(3, len(symbols) // 4):
+              raise SystemExit(
+                  f"Execution-universe data quality failed: {data_errors}/{len(symbols)} errors"
+              )
+
+      - name: Upload execution-universe audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-execution-universe-${{ github.run_id }}
+          path: data/execution-universe/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize paper execution-universe scan
+        shell: bash
+        run: |
+          {
+            echo "## Daily Alpha server-side v2.4 execution universe"
+            echo "- Monitored symbols: ${{ steps.scan.outputs.monitored }}"
+            echo "- Canonical signals emitted: ${{ steps.scan.outputs.emitted }}"
+            echo "- After-close paper actions executed: ${{ steps.scan.outputs.executed }} (must remain 0)"
+            echo "- Pending next-session actions: ${{ steps.scan.outputs.pending }}"
+            echo "- Open paper positions after scan: ${{ steps.scan.outputs.open_count }}"
+            echo "- Data errors: ${{ steps.scan.outputs.data_errors }}"
+            echo "- Universe: ranked Top 20 + all open paper positions"
+            echo "- Signal engine: v2.4 confirmed daily close"
+            echo "- Downstream gates: portfolio risk + fresh ORATS + option/stock fallback rules"
+            echo "- Active Watch: s3://${STAGING_BUCKET}/daily-alpha/execution-universe/latest/active_watch.csv"
+            echo "- Live trading: DISABLED"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  execute-pending:
+    needs: gate
+    if: >-
+      needs.gate.outputs.run == 'true' &&
+      (needs.gate.outputs.mode == 'morning_primary' || needs.gate.outputs.mode == 'morning_retry')
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
+      EXECUTION_MODE: ${{ needs.gate.outputs.mode }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+python-version: "3.11"
+
+      - name: Require ORATS secret
+        shell: bash
+        run: |
+if [[ -z "$ORATS_TOKEN" ]]; then
+  echo "ORATS_TOKEN GitHub secret is missing" >&2
+  exit 1
+fi
+
+      - name: Install execution scanner
+        run: python -m pip install --disable-pip-version-check . boto3
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+role-session-name: daily-alpha-next-session-execution
+aws-region: us-east-2
+
+      - name: Revalidate pending actions and execute during regular session
+        id: execute
+        shell: python
+        run: |
+import csv
+import json
+import os
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+
+import boto3
+from botocore.exceptions import ClientError
+
+from daily_alpha.execution_queue import (
+    CANCEL_STATUS,
+    WAIT_STATUS,
+    prepare_next_session_signal,
+)
+from daily_alpha.execution_universe import (
+    ScannerState,
+    execution_succeeded,
+    load_state,
+    write_state,
+)
+from daily_alpha.orats import OratsClient, OratsError
+
+bucket = os.environ["STAGING_BUCKET"]
+token = os.environ["ORATS_TOKEN"]
+mode = os.environ["EXECUTION_MODE"]
+retry_window = mode == "morning_retry"
+run_id = os.environ["GITHUB_RUN_ID"]
+now = datetime.now(UTC)
+s3 = boto3.client("s3")
+lamb = boto3.client("lambda")
+work = Path("data/execution-universe-morning")
+work.mkdir(parents=True, exist_ok=True)
+pending_path = work / "pending_actions.json"
+state_path = work / "state.json"
+watch_json = work / "active_watch.json"
+
+def download_optional(key, path, default):
+    try:
+        s3.download_file(bucket, key, str(path))
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code not in {"404", "NoSuchKey", "NotFound"}:
+            raise
+        path.write_text(json.dumps(default), encoding="utf-8")
+
+download_optional(
+    "daily-alpha/execution-universe/latest/pending_actions.json",
+    pending_path,
+    {"schema_version": "2026-08-17-pending-v1", "actions": []},
+)
+download_optional(
+    "daily-alpha/execution-universe/latest/state.json",
+    state_path,
+    {},
+)
+download_optional(
+    "daily-alpha/execution-universe/latest/active_watch.json",
+    watch_json,
+    [],
+)
+
+pending_doc = json.loads(pending_path.read_text(encoding="utf-8"))
+actions = list(pending_doc.get("actions") or [])
+state = load_state(state_path)
+try:
+    watch = json.loads(watch_json.read_text(encoding="utf-8"))
+    if not isinstance(watch, list):
+        watch = []
+except json.JSONDecodeError:
+    watch = []
+watch_by_symbol = {
+    str(row.get("symbol", "")).upper(): row
+    for row in watch
+    if isinstance(row, dict) and row.get("symbol")
+}
+
+def invoke(payload):
+    response = lamb.invoke(
+        FunctionName="daily-alpha-pine-processor",
+        InvocationType="RequestResponse",
+        Payload=json.dumps(payload).encode("utf-8"),
+    )
+    raw = response["Payload"].read().decode("utf-8")
+    body = json.loads(raw or "{}")
+    if response.get("FunctionError"):
+        raise RuntimeError(f"Pine processor FunctionError: {body}")
+    if body.get("live_trading_enabled") is not False:
+        raise RuntimeError(f"Unsafe live trading response: {body}")
+    return body
+
+attempted = 0
+executed = 0
+cancelled = 0
+retries = 0
+remaining = []
+attempts = []
+
+for item in actions:
+    symbol = str(item.get("symbol", "")).upper()
+    action = str(item.get("action", "")).upper()
+    if not symbol or not action:
+        continue
+    attempted += 1
+    record = {
+        "symbol": symbol,
+        "action": action,
+        "origin_market_date": item.get("market_date"),
+        "mode": mode,
+    }
+    try:
+        chain = OratsClient(
+            token=token,
+            mode="delayed",
+            max_age_minutes=25,
+        ).fetch_chain(symbol, as_of=now)
+        record["orats_observed_at"] = chain.observed_at.isoformat()
+        record["stock_price"] = chain.stock_price
+        prepared = prepare_next_session_signal(
+            item,
+            stock_price=chain.stock_price,
+            now=now,
+        )
+        record["revalidation"] = prepared.to_dict()
+        if prepared.status == WAIT_STATUS:
+            remaining.append(item)
+            attempts.append(record)
+            continue
+        if prepared.status == CANCEL_STATUS:
+            cancelled += 1
+            record["final_status"] = "CANCELLED"
+            attempts.append(record)
+            row = watch_by_symbol.setdefault(symbol, {"symbol": symbol})
+            row["scanner_status"] = prepared.reason
+            row["execution"] = "CANCELLED_NEXT_SESSION"
+            continue
+
+        outcome = invoke(
+            {
+                "operation": "EXECUTE_SCANNER_SIGNAL",
+                "signal": prepared.signal,
+            }
+        )
+        record["processor"] = outcome
+        if outcome.get("ok") is not True:
+            error = str(outcome.get("error_code", "PROCESSOR_REJECTED"))
+            raise RuntimeError(error)
+        execution = outcome.get("execution", {})
+        if execution_succeeded(execution):
+            executed += 1
+            record["final_status"] = "EXECUTED_PAPER"
+            if action == "EXIT":
+                state.pop(symbol, None)
+            else:
+                after = item.get("state_after")
+                if isinstance(after, dict):
+                    state[symbol] = ScannerState.from_dict(after)
+            row = watch_by_symbol.setdefault(symbol, {"symbol": symbol})
+            row["position"] = "FLAT" if action == "EXIT" else "OPEN"
+            current = state.get(symbol)
+            row["runner_stage"] = current.runner_stage if current else ""
+            row["scanner_status"] = "NEXT_SESSION_REVALIDATED"
+            row["execution"] = "EXECUTED_PAPER"
+        else:
+            cancelled += 1
+            record["final_status"] = str(
+                execution.get("disposition", "NO_TRADE")
+            )
+            record["reason"] = execution.get("reason")
+            row = watch_by_symbol.setdefault(symbol, {"symbol": symbol})
+            row["scanner_status"] = str(execution.get("reason", "NO_TRADE"))
+            row["execution"] = str(execution.get("disposition", "NO_TRADE"))
+        attempts.append(record)
+    except (OratsError, RuntimeError, ValueError, TypeError) as exc:
+        record["error"] = f"{type(exc).__name__}:{exc}"
+        if not retry_window:
+            retry_item = dict(item)
+            retry_item["status"] = "RETRY_DATA_ERROR"
+            retry_item["attempt_count"] = int(item.get("attempt_count", 0)) + 1
+            remaining.append(retry_item)
+            retries += 1
+            record["final_status"] = "RETRY_DATA_ERROR"
+        else:
+            cancelled += 1
+            record["final_status"] = "EXPIRED_DATA_ERROR"
+        attempts.append(record)
+        row = watch_by_symbol.setdefault(symbol, {"symbol": symbol})
+        row["scanner_status"] = record["final_status"]
+        row["execution"] = record["final_status"]
+    time.sleep(0.35)
+
+write_state(state_path, state)
+pending_doc["last_execution_attempt_at"] = now.isoformat()
+pending_doc["actions"] = remaining
+pending_path.write_text(
+    json.dumps(pending_doc, indent=2, sort_keys=True), encoding="utf-8"
+)
+
+watch = sorted(
+    watch_by_symbol.values(),
+    key=lambda row: (
+        int(row.get("rank")) if str(row.get("rank", "")).isdigit() else 999999,
+        str(row.get("symbol", "")),
+    ),
+)
+watch_json.write_text(json.dumps(watch, indent=2, sort_keys=True), encoding="utf-8")
+watch_csv = work / "active_watch.csv"
+fields = [
+    "rank", "symbol", "label", "position", "runner_stage",
+    "scanner_status", "action", "execution",
+]
+with watch_csv.open("w", newline="", encoding="utf-8") as handle:
+    writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(watch)
+
+audit = {
+    "schema_version": "2026-08-17-next-session-v1",
+    "generated_at": now.isoformat(),
+    "execution_mode": mode,
+    "attempted": attempted,
+    "executed_paper": executed,
+    "cancelled_or_no_trade": cancelled,
+    "retry_data_error": retries,
+    "remaining_pending": len(remaining),
+    "live_trading_enabled": False,
+    "attempts": attempts,
+}
+audit_path = work / "morning_execution_audit.json"
+audit_path.write_text(json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8")
+
+latest = "daily-alpha/execution-universe/latest"
+history = f"daily-alpha/execution-universe/history/{run_id}-morning"
+for path in (state_path, pending_path, watch_json, watch_csv, audit_path):
+    s3.upload_file(str(path), bucket, f"{latest}/{path.name}")
+    s3.upload_file(str(path), bucket, f"{history}/{path.name}")
+
+with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+    handle.write(f"attempted={attempted}\n")
+    handle.write(f"executed={executed}\n")
+    handle.write(f"cancelled={cancelled}\n")
+    handle.write(f"retries={retries}\n")
+    handle.write(f"remaining={len(remaining)}\n")
+
+print(json.dumps(audit, indent=2))
+
+      - name: Upload next-session execution audit
+        uses: actions/upload-artifact@v4
+        with:
+name: daily-alpha-next-session-${{ github.run_id }}
+path: data/execution-universe-morning/*
+if-no-files-found: error
+retention-days: 30
+
+      - name: Summarize next-session paper execution
+        shell: bash
+        run: |
+{
+  echo "## Daily Alpha next-session paper execution"
+  echo "- Window: ${{ needs.gate.outputs.mode }}"
+  echo "- Pending actions attempted: ${{ steps.execute.outputs.attempted }}"
+  echo "- Paper actions executed: ${{ steps.execute.outputs.executed }}"
+  echo "- Cancelled / no-trade: ${{ steps.execute.outputs.cancelled }}"
+  echo "- DATA_ERROR retries: ${{ steps.execute.outputs.retries }}"
+  echo "- Remaining pending: ${{ steps.execute.outputs.remaining }}"
+  echo "- Entry revalidation: breakout must remain valid and price must remain below +1 ATR add level"
+  echo "- ORATS underlying and option data: refreshed before execution"
+  echo "- Live trading: DISABLED"
+} >> "$GITHUB_STEP_SUMMARY"
+

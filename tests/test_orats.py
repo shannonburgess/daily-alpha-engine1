@@ -18,6 +18,7 @@ def payload(updated_at="2026-08-15T16:00:00Z"):
                 "expirDate": "2026-10-16",
                 "dte": 62,
                 "strike": 250,
+                "stockPrice": 220.25,
                 "callBidPrice": 5.0,
                 "callAskPrice": 5.4,
                 "callOpenInterest": 900,
@@ -54,6 +55,7 @@ def test_delayed_chain_uses_standard_strikes_and_is_normalized():
     )
 
     assert chain.ticker == "AAPL"
+    assert chain.stock_price == 220.25
     assert len(chain.candidates) == 2
     assert {item.option_type for item in chain.candidates} == {"CALL", "PUT"}
     deltas = sorted(item.delta for item in chain.candidates if item.delta is not None)
