@@ -9,7 +9,6 @@ import argparse
 import json
 import os
 import statistics
-from dataclasses import asdict
 from datetime import date, timedelta
 from typing import Any
 from urllib.parse import urlencode
