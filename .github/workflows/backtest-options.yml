@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: orats-research
+  queue: max
+
 jobs:
   options:
     name: ORATS 45-75 DTE option layer
