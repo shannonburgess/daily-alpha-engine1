@@ -58,7 +58,22 @@ def engine_result(*, instrument="OPTION"):
     }
 
 
-def exit_signal():
+def runner_signal(action, signal_id, stage, price, minute):
+    return {
+        "signal_id": signal_id,
+        "symbol": "AAPL",
+        "action": action,
+        "strategy": "DAILY_ALPHA_PINE",
+        "strategy_version": "staging-v1",
+        "timeframe": "1D",
+        "price": price,
+        "bar_time": (NOW + timedelta(minutes=minute)).isoformat(),
+        "position_fraction": 0.25,
+        "runner_stage": stage,
+    }
+
+
+def exit_signal(minute=9):
     return {
         "signal_id": "signal-aapl-exit",
         "symbol": "AAPL",
@@ -67,11 +82,11 @@ def exit_signal():
         "strategy_version": "staging-v1",
         "timeframe": "1D",
         "price": 225.0,
-        "bar_time": (NOW + timedelta(minutes=9)).isoformat(),
+        "bar_time": (NOW + timedelta(minutes=minute)).isoformat(),
     }
 
 
-def test_option_decision_opens_idempotently_at_conservative_ask(tmp_path):
+def test_option_decision_opens_50pct_starter_at_conservative_ask(tmp_path):
     ledger = PaperLedger(tmp_path)
     event = {"operation": "OPEN_FROM_DECISION", "engine_result": engine_result()}
     opened = process_paper_event(event, ledger)
@@ -80,7 +95,9 @@ def test_option_decision_opens_idempotently_at_conservative_ask(tmp_path):
     assert opened["status"] == "OPENED"
     assert opened["trade"]["instrument"] == "OPTION"
     assert opened["trade"]["entry_price"] == 5.2
-    assert opened["trade"]["quantity"] == 9
+    assert opened["trade"]["quantity"] == 4
+    assert opened["trade"]["target_quantity"] == 8
+    assert opened["trade"]["runner_stage"] == "STARTER"
     assert opened["pricing_source"] == "SELECTED_OPTION_ASK"
     assert opened["paper_trade_written"] is True
     assert opened["live_trading_enabled"] is False
@@ -108,19 +125,99 @@ def test_stock_fallback_requires_explicit_fill_and_stop(tmp_path):
         ledger,
     )
     assert opened["trade"]["instrument"] == "STOCK"
+    assert opened["trade"]["quantity"] == 44
+    assert opened["trade"]["target_quantity"] == 88
     assert opened["pricing_source"] == "EXPLICIT_STOCK_PAPER_FILL_AND_STOP"
 
 
-def test_exit_signal_closes_selected_instrument_and_get_open_is_empty(tmp_path):
+def test_full_runner_lifecycle_updates_weighted_cost_and_realized_pnl(tmp_path):
     ledger = PaperLedger(tmp_path)
     process_paper_event(
         {"operation": "OPEN_FROM_DECISION", "engine_result": engine_result()}, ledger
     )
-    before = process_paper_event(
+
+    add1_signal = runner_signal("ADD", "signal-add-1", "ADD_1_ATR", 230, 1)
+    add1 = process_paper_event(
+        {
+            "operation": "ADD_FROM_SIGNAL",
+            "signal": add1_signal,
+            "pricing": {"option_fill_price": 5.5},
+        },
+        ledger,
+        now=NOW + timedelta(minutes=2),
+    )
+    trade = add1["updated_trades"][0]
+    assert trade["quantity"] == 6
+    assert trade["entry_price"] == pytest.approx(5.3)
+    assert trade["runner_stage"] == "ADD_1_ATR"
+
+    repeated = process_paper_event(
+        {
+            "operation": "ADD_FROM_SIGNAL",
+            "signal": add1_signal,
+            "pricing": {"option_fill_price": 5.5},
+        },
+        ledger,
+        now=NOW + timedelta(minutes=2),
+    )
+    assert repeated["updated_trades"][0]["quantity"] == 6
+
+    add2 = process_paper_event(
+        {
+            "operation": "ADD_FROM_SIGNAL",
+            "signal": runner_signal(
+                "ADD", "signal-add-2", "ADD_2_ATR", 240, 3
+            ),
+            "pricing": {"option_fill_price": 6.0},
+        },
+        ledger,
+        now=NOW + timedelta(minutes=4),
+    )
+    trade = add2["updated_trades"][0]
+    assert trade["quantity"] == 8
+    assert trade["entry_price"] == pytest.approx(5.475)
+    assert trade["runner_stage"] == "ADD_2_ATR"
+
+    partial = process_paper_event(
+        {
+            "operation": "PARTIAL_FROM_SIGNAL",
+            "signal": runner_signal(
+                "PARTIAL", "signal-harvest", "HARVEST_3_ATR", 250, 5
+            ),
+            "pricing": {"option_fill_price": 6.5},
+        },
+        ledger,
+        now=NOW + timedelta(minutes=6),
+    )
+    trade = partial["updated_trades"][0]
+    assert trade["quantity"] == 6
+    assert trade["runner_stage"] == "HARVEST_3_ATR"
+    assert trade["realized_pnl"] == pytest.approx(205.0)
+
+    closed = process_paper_event(
+        {
+            "operation": "CLOSE_FROM_SIGNAL",
+            "signal": exit_signal(7),
+            "pricing": {"option_exit_price": 6.0},
+        },
+        ledger,
+        now=NOW + timedelta(minutes=8),
+    )
+    closed_trade = closed["closed_trades"][0]
+    assert closed_trade["state"] == TradeState.CLOSED.value
+    assert closed_trade["realized_pnl"] == pytest.approx(520.0)
+
+    after = process_paper_event(
         {"operation": "GET_OPEN", "symbol": "AAPL"}, ledger
     )
-    assert before["count"] == 1
+    assert after["count"] == 0
 
+
+def test_exit_from_starter_closes_only_deployed_half_position(tmp_path):
+    ledger = PaperLedger(tmp_path)
+    process_paper_event(
+        {"operation": "OPEN_FROM_DECISION", "engine_result": engine_result()}, ledger
+    )
     closed = process_paper_event(
         {
             "operation": "CLOSE_FROM_SIGNAL",
@@ -130,15 +227,7 @@ def test_exit_signal_closes_selected_instrument_and_get_open_is_empty(tmp_path):
         ledger,
         now=NOW + timedelta(minutes=10),
     )
-    assert closed["status"] == "CLOSED"
-    assert closed["closed_trades"][0]["state"] == TradeState.CLOSED.value
-    assert closed["closed_trades"][0]["realized_pnl"] == 450.0
-
-    after = process_paper_event(
-        {"operation": "GET_OPEN", "symbol": "AAPL"}, ledger
-    )
-    assert after["count"] == 0
-    assert after["status"] == "NO_OPEN_POSITION"
+    assert closed["closed_trades"][0]["realized_pnl"] == pytest.approx(200.0)
 
 
 def test_paper_runtime_rechecks_engine_safety_boundaries(tmp_path):
