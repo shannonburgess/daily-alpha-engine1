@@ -13,7 +13,8 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from .backtest import Bar, indicators
 from .signals import SignalAction, parse_pine_signal
@@ -42,7 +43,7 @@ class ScannerState:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ScannerState":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ScannerState:
         return cls(
             symbol=str(payload["symbol"]).upper(),
             entry_date=str(payload["entry_date"]),
@@ -82,7 +83,7 @@ def load_state(path: str | Path) -> dict[str, ScannerState]:
         return {}
     payload = json.loads(target.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("Execution-universe state must be an object")
+        raise TypeError("Execution-universe state must be an object")
     return {
         str(symbol).upper(): ScannerState.from_dict(value)
         for symbol, value in payload.items()
@@ -396,12 +397,16 @@ def build_scanner_ingress(signal: Mapping[str, Any], *, received_at: datetime) -
                 "earnings_relative_volume",
             ):
                 float(payload[key])
-    if parsed.action == SignalAction.ADD:
-        if parsed.runner_stage not in {"ADD_1_ATR", "ADD_2_ATR"} or parsed.position_fraction != 0.25:
-            raise ValueError("Scanner ADD runner contract is invalid")
-    if parsed.action == SignalAction.PARTIAL:
-        if parsed.runner_stage != "HARVEST_3_ATR" or parsed.position_fraction != 0.25:
-            raise ValueError("Scanner PARTIAL runner contract is invalid")
+    if parsed.action == SignalAction.ADD and (
+        parsed.runner_stage not in {"ADD_1_ATR", "ADD_2_ATR"}
+        or parsed.position_fraction != 0.25
+    ):
+        raise ValueError("Scanner ADD runner contract is invalid")
+    if parsed.action == SignalAction.PARTIAL and (
+        parsed.runner_stage != "HARVEST_3_ATR"
+        or parsed.position_fraction != 0.25
+    ):
+        raise ValueError("Scanner PARTIAL runner contract is invalid")
 
     return {
         "schema_version": "2026-08-17-scanner-v1",
