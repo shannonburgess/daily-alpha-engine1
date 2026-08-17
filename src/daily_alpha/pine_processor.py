@@ -1,8 +1,8 @@
 """Fail-closed processor boundary for normalized Pine ingress events.
 
-The processor deliberately does not create, resize, or close paper positions yet.
-It validates the execution-boundary contract and durably holds each event until the
-missing portfolio, ORATS pricing, risk, and open-position context is available.
+The processor validates the execution-boundary contract, durably records each
+received signal, and can hand the validated event to a paper-only executor. Live
+brokerage execution is never authorized by this module.
 """
 
 from __future__ import annotations
@@ -48,8 +48,8 @@ CANONICAL_TIMEFRAMES = {"D", "1D"}
 CANONICAL_ADD_STAGES = {"ADD_1_ATR", "ADD_2_ATR"}
 CANONICAL_PARTIAL_STAGE = "HARVEST_3_ATR"
 CANONICAL_RUNNER_FRACTION = 0.25
-INGRESS_SCHEMA_VERSION = "2026-08-16-v2"
-PROCESSOR_SCHEMA_VERSION = "2026-08-16-v1"
+INGRESS_SCHEMA_VERSIONS = {"2026-08-16-v2", "2026-08-16-v3"}
+PROCESSOR_SCHEMA_VERSION = "2026-08-16-v2"
 
 
 def process_ingress_record(
@@ -65,7 +65,7 @@ def process_ingress_record(
         raise PineProcessorError("PINE_PROCESSOR_RECORD_MUST_BE_OBJECT")
     if "webhook_secret" in payload:
         raise PineProcessorError("PINE_PROCESSOR_SECRET_MUST_NOT_BE_PRESENT")
-    if str(payload.get("schema_version", "")) != INGRESS_SCHEMA_VERSION:
+    if str(payload.get("schema_version", "")) not in INGRESS_SCHEMA_VERSIONS:
         raise PineProcessorError("PINE_PROCESSOR_SCHEMA_UNSUPPORTED")
     if str(payload.get("source", "")) != "TRADINGVIEW_PINE":
         raise PineProcessorError("PINE_PROCESSOR_SOURCE_INVALID")
@@ -108,6 +108,7 @@ def process_sqs_batch(
     event: Mapping[str, Any],
     store: Any,
     *,
+    executor: Any | None = None,
     now: datetime | None = None,
     max_queue_age_minutes: int = 30,
 ) -> dict[str, list[dict[str, str]]]:
@@ -132,6 +133,9 @@ def process_sqs_batch(
                 max_queue_age_minutes=max_queue_age_minutes,
             )
             store.persist(body, result)
+            if executor is not None:
+                execution = executor.execute(body, now=now)
+                store.mark_execution(result.signal_id, execution)
         except Exception:
             if message_id:
                 failures.append({"itemIdentifier": message_id})
@@ -141,7 +145,7 @@ def process_sqs_batch(
 
 
 class DynamoPineEventStore:
-    """Idempotent durable holding store for accepted processor events."""
+    """Idempotent durable event/audit store for processor outcomes."""
 
     DEFAULT_TABLE_NAME = "daily-alpha-paper-ledger-staging"
     DEFAULT_ACCOUNT_ID = "paper-staging"
@@ -210,6 +214,43 @@ class DynamoPineEventStore:
                 return False
             raise PineProcessorError("PINE_PROCESSOR_DYNAMODB_WRITE_FAILED") from exc
         return True
+
+    def mark_execution(
+        self,
+        signal_id: str,
+        execution: Mapping[str, Any],
+    ) -> None:
+        """Attach the latest idempotent paper-execution outcome to the signal."""
+        disposition = str(execution.get("disposition", "")).strip()
+        reason = str(execution.get("reason", "")).strip()
+        if not disposition or not reason:
+            raise PineProcessorError("PINE_EXECUTION_OUTCOME_INVALID")
+        try:
+            self.client.update_item(
+                TableName=self.table_name,
+                Key={
+                    "pk": {
+                        "S": f"ACCOUNT#{self.account_id}#PINE_EVENT#{signal_id}"
+                    },
+                    "sk": {"S": "RECEIVED"},
+                },
+                UpdateExpression=(
+                    "SET disposition = :disposition, reason = :reason, "
+                    "execution_json = :execution"
+                ),
+                ExpressionAttributeValues={
+                    ":disposition": {"S": disposition},
+                    ":reason": {"S": reason},
+                    ":execution": {
+                        "S": json.dumps(
+                            dict(execution), sort_keys=True, separators=(",", ":")
+                        )
+                    },
+                },
+                ConditionExpression="attribute_exists(pk)",
+            )
+        except Exception as exc:
+            raise PineProcessorError("PINE_PROCESSOR_EXECUTION_WRITE_FAILED") from exc
 
 
 def _signal_from_ingress(
