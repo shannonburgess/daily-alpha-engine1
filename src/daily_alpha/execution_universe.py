@@ -12,8 +12,8 @@ import csv
 import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
-from pathlib import Path
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from .backtest import Bar, indicators
