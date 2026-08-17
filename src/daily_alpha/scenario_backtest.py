@@ -11,7 +11,7 @@ import argparse
 import json
 import math
 import os
-from concurrent.futures import as_completed, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -19,7 +19,6 @@ from statistics import mean, pstdev
 from typing import Any
 
 from .backtest import Bar, fetch_orats_history, indicators
-
 
 DEFAULT_STOCKS = (
     "AAPL,MSFT,NVDA,AMD,AVGO,MU,QCOM,MRVL,ARM,INTC,AMZN,GOOGL,META,NFLX,"
