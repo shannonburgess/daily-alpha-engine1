@@ -1,0 +1,73 @@
+name: Full morning newsletter recovery 2026-08-17
+
+on:
+  push:
+    branches: [agent/full-morning-newsletter-20260817]
+    paths: [.github/workflows/full-morning-newsletter-20260817.yml]
+
+permissions:
+  contents: read
+
+env:
+  OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
+  ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+  STOCKDATA_API_KEY: ${{ secrets.STOCKDATA_API_KEY }}
+
+jobs:
+  recover:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require data secrets
+        shell: bash
+        run: |
+          test -n "$ORATS_TOKEN" || (echo 'ORATS_TOKEN missing' >&2; exit 1)
+          test -n "$STOCKDATA_API_KEY" || (echo 'STOCKDATA_API_KEY missing' >&2; exit 1)
+      - name: Install tools
+        run: python -m pip install --disable-pip-version-check . gdown==5.2.0
+      - name: Download OVTLYR history
+        run: |
+          mkdir -p data/incoming
+          gdown --folder --remaining-ok "$OVTLYR_FOLDER_URL" -O data/incoming
+      - name: Build full 8/17 research packet
+        shell: python
+        run: |
+          from datetime import UTC, datetime
+          from daily_alpha.orats import OratsClient
+          from daily_alpha.research_shortlist import build_research_shortlist, discover_daily_pair, write_research_shortlist_outputs
+          from daily_alpha.smart_money import rank_congressional_acquisitions, rank_institutional_acquisitions
+          from daily_alpha.sources import OratsBatchSource
+          from daily_alpha.stockdata_smart_money import StockDataSmartMoneyClient
+          from daily_alpha.trump_policy import rank_trump_policy_companies
+          from daily_alpha.white_house_policy import fetch_white_house_investments
+
+          previous, current = discover_daily_pair('data/incoming')
+          now = datetime.now(UTC)
+          smart_client = StockDataSmartMoneyClient()
+          congress_trades = smart_client.fetch_congressional_purchases(days=90, limit=500)
+          congressional = rank_congressional_acquisitions(congress_trades, as_of=now.date(), lookback_days=90, limit=5)
+          current_13f, previous_13f, coverage = smart_client.fetch_institutional_holdings_pair(as_of=now.date(), institution_limit=25, portfolio_limit=500)
+          institutional = rank_institutional_acquisitions(current_13f, previous_13f, limit=5)
+          policy = rank_trump_policy_companies(fetch_white_house_investments(limit=50), limit=10)
+          source = OratsBatchSource(OratsClient(mode='delayed', max_age_minutes=72*60))
+          result = build_research_shortlist(previous, current, as_of=now, orats_source=source, request_limit=20, congressional=congressional, institutional=institutional, trump_policy=policy)
+          write_research_shortlist_outputs('data/shortlist', result)
+          print(f'PAIR {result.previous_file} -> {result.current_file}')
+          print('SUMMARY', result.summary)
+          print('CONGRESS_TOP', ','.join(x.symbol for x in congressional))
+          print('INSTITUTION_TOP', ','.join((x.symbol or x.cusip) for x in institutional))
+          print('13F_PERIODS', coverage.previous_period, '->', coverage.current_period)
+          print('TRUMP_POLICY_TOP', ','.join(x.symbol for x in policy))
+          print('TOP20')
+          for rank, item in enumerate(result.items[:20], 1):
+              print(rank, item.symbol, item.display_label, f'score={item.score:.2f}', f'smart={item.smart_money_bonus:.2f}', f'policy={item.trump_policy_bonus:.2f}', item.orats_reason, item.selected_expiration, item.selected_strike, item.selected_option_type)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: full-morning-newsletter-data-20260817
+          path: data/shortlist
+          retention-days: 2
