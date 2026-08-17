@@ -30,10 +30,11 @@ def test_add_ingress_record_is_sanitized_and_never_authorizes_trading():
         received_at=NOW,
     ).to_dict()
 
-    assert record["schema_version"] == "2026-08-16-v3"
+    assert record["schema_version"] == "2026-08-16-v4"
     assert record["action"] == "ADD"
     assert record["position_fraction"] == 0.25
     assert record["runner_stage"] == "ADD_1_ATR"
+    assert record["entry_type"] is None
     assert record["trading_authorized"] is False
     assert record["paper_execution_triggered"] is False
     assert record["live_trading_enabled"] is False
@@ -48,8 +49,10 @@ def test_partial_ingress_record_preserves_harvest_metadata_only():
         received_at=NOW,
     ).to_dict()
 
+    assert record["schema_version"] == "2026-08-16-v4"
     assert record["action"] == "PARTIAL"
     assert record["position_fraction"] == 0.25
     assert record["runner_stage"] == "HARVEST_3_ATR"
+    assert record["entry_type"] is None
     assert record["trading_authorized"] is False
     assert record["paper_execution_triggered"] is False
