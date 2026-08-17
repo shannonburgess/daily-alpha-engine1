@@ -24,6 +24,7 @@ jobs:
           python-version: "3.11"
       - name: Run integrated daily NAV test
         run: |
+          set -o pipefail
           test -n "$ORATS_TOKEN"
           PYTHONPATH=src python -m daily_alpha.portfolio_options_backtest \
             --start 2024-01-01 --end 2026-08-14 \
