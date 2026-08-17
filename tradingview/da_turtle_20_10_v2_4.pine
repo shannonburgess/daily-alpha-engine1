@@ -1,0 +1,324 @@
+//@version=6
+//@strategy_alert_message {{strategy.order.alert_message}}
+
+strategy("DA Turtle 20/10 + Adaptive Trend v2.4 Earnings Gap Sleeve", shorttitle="DA-T20/10-EARN24", overlay=true, pyramiding=3, initial_capital=1250000, process_orders_on_close=true, calc_on_every_tick=false, calc_on_order_fills=false)
+
+// ===== TURTLE =====
+groupTurtle = "01 - Turtle 20/10"
+entryLen = input.int(20, "Entry Channel", minval=2, group=groupTurtle)
+exitLen = input.int(10, "Exit Channel", minval=2, group=groupTurtle)
+breakoutMode = input.string("Close", "Breakout Confirmation", options=["Close", "High"], group=groupTurtle)
+
+// ===== ADAPTIVE TREND =====
+groupTrend = "02 - Adaptive Trend"
+atrLen = input.int(10, "ATR Length", minval=2, group=groupTrend)
+minFactor = input.float(2.0, "Fast Trend Factor", minval=0.5, step=0.25, group=groupTrend)
+maxFactor = input.float(4.0, "Slow Trend Factor", minval=0.5, step=0.25, group=groupTrend)
+efficiencyLen = input.int(20, "Trend Efficiency Lookback", minval=2, group=groupTrend)
+requireFreshBullFlip = input.bool(false, "Require Recent Bullish Trend Flip", group=groupTrend)
+maxBullFlipAge = input.int(5, "Max Bars Since Bullish Flip", minval=0, group=groupTrend)
+minPriorBullBars = input.int(2, "Normal Entry: Completed Bull Bars Before Breakout", minval=1, maxval=10, group=groupTrend)
+useTrendExit = input.bool(true, "Exit On Bearish Trend Flip", group=groupTrend)
+
+// ===== RSI ENTRY CONTROL =====
+groupRSI = "03 - RSI Entry Control"
+useRsiCap = input.bool(true, "Use RSI Entry Cap", group=groupRSI)
+rsiLen = input.int(14, "RSI Length", minval=2, group=groupRSI)
+maxEntryRsi = input.float(80.0, "Maximum RSI For Normal Entry", minval=50.0, maxval=100.0, step=0.5, group=groupRSI)
+
+// ===== FAILED BREAKOUT CONTROL =====
+groupFailed = "04 - Failed Breakout Exit"
+useFailedBreakoutExit = input.bool(true, "Use Failed Breakout Exit", group=groupFailed)
+failedBreakoutBars = input.int(3, "Bars Allowed After Entry", minval=1, maxval=10, group=groupFailed)
+
+// ===== TRENDABILITY FILTER =====
+groupADX = "05 - Trendability"
+useAdxFilter = input.bool(true, "Require ADX For Normal Entry / Runner Adds", group=groupADX)
+adxDiLen = input.int(14, "DI Length", minval=2, group=groupADX)
+adxSmooth = input.int(14, "ADX Smoothing", minval=2, group=groupADX)
+minAdx = input.float(25.0, "Minimum ADX", minval=0.0, step=0.5, group=groupADX)
+
+// ===== TREND EFFICIENCY GATE =====
+groupEfficiency = "06 - Trend Efficiency"
+useEfficiencyGate = input.bool(true, "Require Minimum Trend Efficiency For Normal Entry", group=groupEfficiency)
+minTrendEfficiency = input.float(0.20, "Minimum Trend Efficiency", minval=0.0, maxval=1.0, step=0.05, group=groupEfficiency)
+
+// ===== UNDERLYING PRICE FLOOR =====
+groupPrice = "07 - Underlying Price Floor"
+usePriceFloor = input.bool(true, "Require Minimum Underlying Price", group=groupPrice)
+minUnderlyingPrice = input.float(25.0, "Minimum Stock Price", minval=1.0, step=1.0, group=groupPrice)
+
+// ===== EARNINGS GAP EVENT SLEEVE =====
+groupEarnings = "08 - Earnings Gap Sleeve"
+useEarningsGapSleeve = input.bool(true, "Enable Earnings Gap & Go Entries", group=groupEarnings)
+minEarningsGapPct = input.float(5.0, "Minimum Earnings Gap %", minval=0.0, step=0.5, group=groupEarnings)
+minEarningsGapAtr = input.float(1.5, "Minimum Earnings Gap ATR", minval=0.0, step=0.25, group=groupEarnings)
+minGapCloseLocation = input.float(0.75, "Gap & Go: Minimum Close Location", minval=0.0, maxval=1.0, step=0.05, group=groupEarnings)
+minGapRetention = input.float(0.70, "Gap & Go: Minimum Gap Retention", minval=0.0, maxval=2.0, step=0.05, group=groupEarnings)
+minGapRelativeVolume = input.float(1.5, "Gap & Go: Minimum Relative Volume", minval=0.0, step=0.25, group=groupEarnings)
+maxEarningsRsi = input.float(85.0, "Gap & Go: Maximum RSI", minval=50.0, maxval=100.0, step=0.5, group=groupEarnings)
+crapCloseLocation = input.float(0.50, "Gap & Crap: Weak Close Location", minval=0.0, maxval=1.0, step=0.05, group=groupEarnings)
+crapGapRetention = input.float(0.50, "Gap & Crap: Minimum Retention Before Reject", minval=0.0, maxval=1.0, step=0.05, group=groupEarnings)
+
+// ===== RUNNER MANAGEMENT =====
+groupRunner = "09 - Runner Management"
+useRunnerManagement = input.bool(true, "Use Runner Management", group=groupRunner)
+add1Atr = input.float(1.0, "Add #1 At +ATR", minval=0.25, step=0.25, group=groupRunner)
+add2Atr = input.float(2.0, "Add #2 At +ATR", minval=0.5, step=0.25, group=groupRunner)
+harvestAtr = input.float(3.0, "Take 25% Profit At +ATR", minval=1.0, step=0.25, group=groupRunner)
+useBreakEvenAfterHarvest = input.bool(true, "Break-Even Close Stop After Harvest", group=groupRunner)
+
+// ===== BACKTEST =====
+groupBacktest = "10 - Backtest"
+startDate = input.time(timestamp("01 Jan 2024 00:00 -0500"), "Backtest Start", group=groupBacktest)
+endDate = input.time(timestamp("31 Dec 2099 23:59 -0500"), "Backtest End", group=groupBacktest)
+inWindow = time >= startDate and time <= endDate
+
+// ===== WEBHOOK =====
+groupWebhook = "11 - Daily Alpha Webhook"
+webhookSecret = input.string("", "Webhook Secret", group=groupWebhook)
+enableWebhookOrders = input.bool(false, "Attach Daily Alpha Runner Webhook Messages", group=groupWebhook)
+
+// ===== DISPLAY =====
+groupDisplay = "12 - Display"
+showChannels = input.bool(true, "Show Turtle Channels", group=groupDisplay)
+showTrendStop = input.bool(true, "Show Adaptive Trend Stop", group=groupDisplay)
+showSignals = input.bool(true, "Show Entry / Exit Markers", group=groupDisplay)
+showEarningsClassification = input.bool(true, "Show Earnings Gap Classification", group=groupDisplay)
+
+// ===== TURTLE CHANNELS =====
+upper20 = ta.highest(high, entryLen)[1]
+lower10 = ta.lowest(low, exitLen)[1]
+
+breakoutNow = breakoutMode == "Close" ? close > upper20 : high > upper20
+breakoutPrev = breakoutMode == "Close" ? close[1] > upper20[1] : high[1] > upper20[1]
+freshLongBreakout = barstate.isconfirmed and not na(upper20) and breakoutNow and not breakoutPrev
+
+// ===== ADAPTIVE TREND FACTOR =====
+atr = ta.atr(atrLen)
+absChange = math.abs(ta.change(close))
+pathLength = ta.sma(absChange, efficiencyLen) * efficiencyLen
+direction = math.abs(close - close[efficiencyLen])
+efficiency = pathLength > 0 ? math.min(direction / pathLength, 1.0) : 0.0
+adaptiveFactor = maxFactor - efficiency * (maxFactor - minFactor)
+
+// ===== RSI ENTRY CONTROL =====
+rsiValue = ta.rsi(close, rsiLen)
+rsiEntryOK = not useRsiCap or rsiValue <= maxEntryRsi
+
+// ===== TRENDABILITY / ADX =====
+[plusDIEntry, minusDIEntry, adxEntry] = ta.dmi(adxDiLen, adxSmooth)
+adxEntryOK = not useAdxFilter or adxEntry >= minAdx
+averageDailyDollarVolume = ta.sma(close * nz(volume, 0), 20)
+averageVolume20Prior = ta.sma(nz(volume, 0), 20)[1]
+
+// ===== ADAPTIVE SUPERTREND-STYLE STATE =====
+basicUpper = hl2 + atr * adaptiveFactor
+basicLower = hl2 - atr * adaptiveFactor
+
+var float finalUpper = na
+var float finalLower = na
+var int trendState = 1
+
+finalUpper := na(finalUpper[1]) ? basicUpper : (basicUpper < finalUpper[1] or close[1] > finalUpper[1] ? basicUpper : finalUpper[1])
+finalLower := na(finalLower[1]) ? basicLower : (basicLower > finalLower[1] or close[1] < finalLower[1] ? basicLower : finalLower[1])
+
+prevTrend = nz(trendState[1], 1)
+trendState := prevTrend
+
+if prevTrend == -1 and close > finalUpper[1]
+    trendState := 1
+else if prevTrend == 1 and close < finalLower[1]
+    trendState := -1
+
+trendStop = trendState == 1 ? finalLower : finalUpper
+bullFlip = trendState == 1 and prevTrend == -1
+bearFlip = trendState == -1 and prevTrend == 1
+barsSinceBullFlip = ta.barssince(bullFlip)
+freshTrendOK = not requireFreshBullFlip or (not na(barsSinceBullFlip) and barsSinceBullFlip <= maxBullFlipAge)
+
+var int bullishTrendBars = 0
+bullishTrendBars := trendState == 1 ? nz(bullishTrendBars[1]) + 1 : 0
+normalTrendMature = nz(bullishTrendBars[1]) >= minPriorBullBars
+
+// ===== EARNINGS GAP CLASSIFICATION =====
+// TradingView returns the reported earnings value only on the publication bar when
+// barmerge.gaps_on is used. We accept the current or immediately prior daily bar to
+// cover both pre-market and after-hours reports without lookahead.
+earningsActual = request.earnings(syminfo.tickerid, earnings.actual, gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+earningsEventWindow = timeframe.isdaily and (not na(earningsActual) or not na(earningsActual[1]))
+previousClose = close[1]
+previousAtr = atr[1]
+gapDollars = open - previousClose
+gapPct = previousClose > 0 ? gapDollars / previousClose * 100.0 : 0.0
+gapAtr = previousAtr > 0 ? gapDollars / previousAtr : 0.0
+dayRange = high - low
+closeLocation = dayRange > 0 ? (close - low) / dayRange : 0.0
+gapRetention = gapDollars > 0 ? (close - previousClose) / gapDollars : 0.0
+relativeVolume = averageVolume20Prior > 0 ? volume / averageVolume20Prior : 0.0
+
+isEarningsUpsideGap = useEarningsGapSleeve and earningsEventWindow and gapDollars > 0 and (gapPct >= minEarningsGapPct or gapAtr >= minEarningsGapAtr)
+earningsBreakout = not na(upper20) and close > upper20
+earningsGapGoQuality = close >= open and closeLocation >= minGapCloseLocation and gapRetention >= minGapRetention and relativeVolume >= minGapRelativeVolume and rsiValue <= maxEarningsRsi and trendState == 1 and earningsBreakout
+earningsGapGo = barstate.isconfirmed and isEarningsUpsideGap and earningsGapGoQuality
+earningsGapCrap = barstate.isconfirmed and isEarningsUpsideGap and not earningsGapGo and (close < previousClose or gapRetention < crapGapRetention or (close < open and closeLocation < crapCloseLocation))
+earningsWait = barstate.isconfirmed and isEarningsUpsideGap and not earningsGapGo and not earningsGapCrap
+
+// ===== ENTRY / EXIT / RUNNER MANAGEMENT =====
+var float entryBreakoutLevel = na
+var int entrySignalBar = na
+var float runnerBaseEntry = na
+var float runnerBaseAtr = na
+var bool add1Done = false
+var bool add2Done = false
+var bool harvestDone = false
+var int add1Bar = na
+var int add2Bar = na
+var float breakEvenLevel = na
+var string activeEntryType = "NONE"
+
+priceEntryOK = not usePriceFloor or close >= minUnderlyingPrice
+efficiencyEntryOK = not useEfficiencyGate or efficiency >= minTrendEfficiency
+
+// Normal Turtle entries now require the trend to exist BEFORE the breakout and do
+// not consume earnings-gap bars. Earnings gaps are handled by the event sleeve.
+normalBaseLongSetup = inWindow and strategy.position_size == 0 and freshLongBreakout and not isEarningsUpsideGap and trendState == 1 and normalTrendMature and freshTrendOK
+normalLongEntry = normalBaseLongSetup and priceEntryOK and efficiencyEntryOK and rsiEntryOK and adxEntryOK
+
+// Earnings Gap & Go intentionally bypasses prior ADX / trend-efficiency because the
+// event itself can reprice the stock. Initial size is still 50%; runner adds require
+// the normal ADX trendability gate before exposure scales further.
+earningsGapGoEntry = inWindow and strategy.position_size == 0 and earningsGapGo and freshLongBreakout and priceEntryOK
+longEntry = normalLongEntry or earningsGapGoEntry
+entryType = earningsGapGoEntry ? "EARNINGS_GAP_GO" : normalLongEntry ? "NORMAL_BREAKOUT" : "NONE"
+earningsGapClass = earningsGapGo ? "EARNINGS_GAP_GO" : earningsGapCrap ? "EARNINGS_GAP_CRAP" : earningsWait ? "EARNINGS_WAIT" : "NONE"
+
+priceBlockedEntry = normalBaseLongSetup and not priceEntryOK
+efficiencyBlockedEntry = normalBaseLongSetup and priceEntryOK and not efficiencyEntryOK
+rsiBlockedEntry = normalBaseLongSetup and priceEntryOK and efficiencyEntryOK and not rsiEntryOK
+adxBlockedEntry = normalBaseLongSetup and priceEntryOK and efficiencyEntryOK and rsiEntryOK and not adxEntryOK
+trendMaturityBlockedEntry = inWindow and strategy.position_size == 0 and freshLongBreakout and not isEarningsUpsideGap and trendState == 1 and not normalTrendMature
+
+if longEntry
+    entryBreakoutLevel := upper20
+    entrySignalBar := bar_index
+    runnerBaseEntry := close
+    runnerBaseAtr := atr
+    activeEntryType := entryType
+    add1Done := false
+    add2Done := false
+    harvestDone := false
+    add1Bar := na
+    add2Bar := na
+    breakEvenLevel := na
+
+barsSinceEntrySignal = not na(entrySignalBar) ? bar_index - entrySignalBar : na
+
+failedBreakoutExit = barstate.isconfirmed and strategy.position_size > 0 and useFailedBreakoutExit and not na(entryBreakoutLevel) and not na(barsSinceEntrySignal) and barsSinceEntrySignal >= 1 and barsSinceEntrySignal <= failedBreakoutBars and close < entryBreakoutLevel
+runnerTrendOK = trendState == 1 and (not useAdxFilter or adxEntry >= minAdx)
+
+add1Signal = barstate.isconfirmed and useRunnerManagement and strategy.position_size > 0 and not add1Done and not na(runnerBaseEntry) and not na(runnerBaseAtr) and runnerTrendOK and close >= runnerBaseEntry + runnerBaseAtr * add1Atr
+if add1Signal
+    add1Done := true
+    add1Bar := bar_index
+
+add2Signal = barstate.isconfirmed and useRunnerManagement and strategy.position_size > 0 and add1Done and not add2Done and not na(add1Bar) and bar_index > add1Bar and runnerTrendOK and close >= runnerBaseEntry + runnerBaseAtr * add2Atr
+if add2Signal
+    add2Done := true
+    add2Bar := bar_index
+
+harvestSignal = barstate.isconfirmed and useRunnerManagement and strategy.position_size > 0 and add2Done and not harvestDone and not na(add2Bar) and bar_index > add2Bar and close >= runnerBaseEntry + runnerBaseAtr * harvestAtr
+if harvestSignal
+    breakEvenLevel := strategy.position_avg_price
+    harvestDone := true
+
+breakEvenExit = barstate.isconfirmed and strategy.position_size > 0 and useRunnerManagement and useBreakEvenAfterHarvest and harvestDone and not na(breakEvenLevel) and close <= breakEvenLevel
+turtleExit = barstate.isconfirmed and strategy.position_size > 0 and not na(lower10) and close < lower10
+trendExit = barstate.isconfirmed and strategy.position_size > 0 and useTrendExit and bearFlip
+longExit = inWindow and (breakEvenExit or failedBreakoutExit or turtleExit or trendExit)
+
+// ===== DAILY ALPHA WEBHOOK JSON =====
+barTimeIso = str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+signalBase = syminfo.ticker + "-" + str.tostring(time_close)
+
+entryMessage = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-ENTRY_LONG\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"ENTRY_LONG\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"2.4\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\",\"entry_type\":\"" + entryType + "\",\"earnings_gap_class\":\"" + earningsGapClass + "\",\"earnings_gap_pct\":" + str.tostring(gapPct) + ",\"earnings_gap_atr\":" + str.tostring(gapAtr) + ",\"earnings_close_location\":" + str.tostring(closeLocation) + ",\"earnings_gap_retention\":" + str.tostring(gapRetention) + ",\"earnings_relative_volume\":" + str.tostring(relativeVolume) + ",\"stock_stop_price\":" + str.tostring(lower10) + ",\"average_daily_dollar_volume\":" + str.tostring(averageDailyDollarVolume) + "}"
+add1Message = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-ADD_1_ATR\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"ADD\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"2.4\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\",\"entry_type\":\"" + activeEntryType + "\",\"position_fraction\":0.25,\"runner_stage\":\"ADD_1_ATR\"}"
+add2Message = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-ADD_2_ATR\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"ADD\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"2.4\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\",\"entry_type\":\"" + activeEntryType + "\",\"position_fraction\":0.25,\"runner_stage\":\"ADD_2_ATR\"}"
+partialMessage = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-HARVEST_3_ATR\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"PARTIAL\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"2.4\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\",\"entry_type\":\"" + activeEntryType + "\",\"position_fraction\":0.25,\"runner_stage\":\"HARVEST_3_ATR\"}"
+exitMessage = "{\"webhook_secret\":\"" + webhookSecret + "\",\"signal_id\":\"" + signalBase + "-EXIT\",\"symbol\":\"" + syminfo.ticker + "\",\"action\":\"EXIT\",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\",\"strategy_version\":\"2.4\",\"timeframe\":\"" + timeframe.period + "\",\"price\":" + str.tostring(close) + ",\"bar_time\":\"" + barTimeIso + "\",\"entry_type\":\"" + activeEntryType + "\"}"
+
+if longEntry
+    strategy.entry("L", strategy.long, qty=2, comment=entryType, alert_message=enableWebhookOrders ? entryMessage : "")
+if add1Signal
+    strategy.entry("L", strategy.long, qty=1, comment=activeEntryType + " ADD1", alert_message=enableWebhookOrders ? add1Message : "")
+if add2Signal
+    strategy.entry("L", strategy.long, qty=1, comment=activeEntryType + " ADD2", alert_message=enableWebhookOrders ? add2Message : "")
+if harvestSignal
+    strategy.close("L", qty=1, comment=activeEntryType + " HARVEST", alert_message=enableWebhookOrders ? partialMessage : "")
+
+if longExit
+    strategy.close("L", comment=activeEntryType + " EXIT", alert_message=enableWebhookOrders ? exitMessage : "")
+    entryBreakoutLevel := na
+    entrySignalBar := na
+    runnerBaseEntry := na
+    runnerBaseAtr := na
+    add1Done := false
+    add2Done := false
+    harvestDone := false
+    add1Bar := na
+    add2Bar := na
+    breakEvenLevel := na
+
+if time > endDate and strategy.position_size > 0
+    strategy.close("L", comment=activeEntryType + " END", alert_message=enableWebhookOrders ? exitMessage : "")
+    entryBreakoutLevel := na
+    entrySignalBar := na
+    runnerBaseEntry := na
+    runnerBaseAtr := na
+    add1Done := false
+    add2Done := false
+    harvestDone := false
+    add1Bar := na
+    add2Bar := na
+    breakEvenLevel := na
+
+if strategy.position_size == 0 and not longEntry and not na(entrySignalBar) and bar_index > entrySignalBar + failedBreakoutBars
+    entryBreakoutLevel := na
+    entrySignalBar := na
+    runnerBaseEntry := na
+    runnerBaseAtr := na
+    add1Done := false
+    add2Done := false
+    harvestDone := false
+    add1Bar := na
+    add2Bar := na
+    breakEvenLevel := na
+    activeEntryType := "NONE"
+
+// ===== PLOTS =====
+plot(showChannels ? upper20 : na, "Turtle 20-Bar Entry", color=color.new(color.green, 0), linewidth=2, style=plot.style_linebr)
+plot(showChannels ? lower10 : na, "Turtle 10-Bar Exit", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
+plot(showTrendStop ? trendStop : na, "Adaptive Trend Stop", color=trendState == 1 ? color.teal : color.orange, linewidth=2, style=plot.style_linebr)
+plot(showTrendStop and strategy.position_size > 0 and useRunnerManagement and not na(runnerBaseEntry) and not na(runnerBaseAtr) ? runnerBaseEntry + runnerBaseAtr * add1Atr : na, "Add #1 Level", color=color.new(color.blue, 30), linewidth=1, style=plot.style_linebr)
+plot(showTrendStop and strategy.position_size > 0 and useRunnerManagement and not na(runnerBaseEntry) and not na(runnerBaseAtr) ? runnerBaseEntry + runnerBaseAtr * add2Atr : na, "Add #2 Level", color=color.new(color.blue, 0), linewidth=1, style=plot.style_linebr)
+plot(showTrendStop and strategy.position_size > 0 and useRunnerManagement and not na(runnerBaseEntry) and not na(runnerBaseAtr) ? runnerBaseEntry + runnerBaseAtr * harvestAtr : na, "Harvest Level", color=color.new(color.purple, 0), linewidth=1, style=plot.style_linebr)
+plot(showTrendStop and harvestDone and not na(breakEvenLevel) ? breakEvenLevel : na, "Runner Break-Even", color=color.new(color.yellow, 0), linewidth=2, style=plot.style_linebr)
+
+plotshape(showSignals and normalLongEntry, title="NORMAL BREAKOUT ENTRY", text="ENTRY\nNORMAL", style=shape.labelup, location=location.belowbar, color=color.green, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and earningsGapGoEntry, title="EARNINGS GAP GO ENTRY", text="ENTRY\nGAP GO", style=shape.labelup, location=location.belowbar, color=color.aqua, textcolor=color.black, size=size.tiny)
+plotshape(showEarningsClassification and earningsGapCrap, title="EARNINGS GAP CRAP", text="PASS\nGAP CRAP", style=shape.labeldown, location=location.abovebar, color=color.red, textcolor=color.white, size=size.tiny)
+plotshape(showEarningsClassification and earningsWait, title="EARNINGS WAIT", text="WAIT\nEARNINGS", style=shape.labeldown, location=location.abovebar, color=color.yellow, textcolor=color.black, size=size.tiny)
+plotshape(showSignals and trendMaturityBlockedEntry, title="TREND NOT MATURE", text="WAIT\nTREND AGE", style=shape.labeldown, location=location.abovebar, color=color.gray, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and priceBlockedEntry, title="PRICE BELOW FLOOR", text="WAIT\n<$25", style=shape.labeldown, location=location.abovebar, color=color.gray, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and efficiencyBlockedEntry, title="LOW TREND EFFICIENCY", text="WAIT\nLOW EFF", style=shape.labeldown, location=location.abovebar, color=color.orange, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and add1Signal, title="ADD 1", text="+25%\n+1ATR", style=shape.labelup, location=location.belowbar, color=color.blue, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and add2Signal, title="ADD 2", text="+25%\n+2ATR", style=shape.labelup, location=location.belowbar, color=color.navy, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and harvestSignal, title="HARVEST", text="TAKE 25%\n+3ATR", style=shape.labeldown, location=location.abovebar, color=color.purple, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and breakEvenExit, title="BREAK EVEN EXIT", text="BE\nEXIT", style=shape.labeldown, location=location.abovebar, color=color.yellow, textcolor=color.black, size=size.tiny)
+plotshape(showSignals and rsiBlockedEntry, title="RSI EXTENDED", text="WAIT\nRSI>80", style=shape.labeldown, location=location.abovebar, color=color.yellow, textcolor=color.black, size=size.tiny)
+plotshape(showSignals and adxBlockedEntry, title="ADX TOO LOW", text="WAIT\nADX<25", style=shape.labeldown, location=location.abovebar, color=color.gray, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and failedBreakoutExit, title="FAILED BREAKOUT EXIT", text="FB\nEXIT", style=shape.labeldown, location=location.abovebar, color=color.fuchsia, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and turtleExit, title="TURTLE EXIT", text="T-EXIT", style=shape.labeldown, location=location.abovebar, color=color.red, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and trendExit, title="TREND EXIT", text="ST-EXIT", style=shape.labeldown, location=location.abovebar, color=color.orange, textcolor=color.white, size=size.tiny)
+plotshape(showSignals and bullFlip, title="BULL TREND FLIP", text="BULL", style=shape.circle, location=location.belowbar, color=color.teal, size=size.tiny)
+plotshape(showSignals and bearFlip, title="BEAR TREND FLIP", text="BEAR", style=shape.circle, location=location.abovebar, color=color.orange, size=size.tiny)
