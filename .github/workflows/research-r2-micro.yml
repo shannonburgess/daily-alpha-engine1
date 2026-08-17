@@ -1,0 +1,27 @@
+name: Research R2 micro grid
+on:
+  push:
+    branches: [agent/r2-model-search]
+    paths:
+      - .github/workflows/research-r2-micro.yml
+permissions:
+  contents: read
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check .
+      - run: python research/run_r2_micro.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-r2-micro
+          path: r2-micro.json
+          if-no-files-found: error
+          retention-days: 30
