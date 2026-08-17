@@ -1,6 +1,7 @@
 name: Validate execution-universe branch
 
 on:
+  workflow_dispatch:
   push:
     branches: [agent/server-side-execution-universe]
     paths:
