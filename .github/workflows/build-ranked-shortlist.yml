@@ -2,6 +2,9 @@ name: Build Daily Alpha ranked shortlist
 
 on:
   workflow_dispatch:
+  schedule:
+    # Covers PST/PDT. Gate job permits 06:00 and 15:00 America/Los_Angeles.
+    - cron: "0 13,14,22,23 * * 1-5"
 
 permissions:
   contents: read
@@ -12,15 +15,49 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.schedule.outputs.run }}
+      session: ${{ steps.schedule.outputs.session }}
+    steps:
+      - name: Resolve Pacific publishing session
+        id: schedule
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "session=MANUAL" >> "$GITHUB_OUTPUT"
+          else
+            python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from datetime import UTC, datetime
+          from zoneinfo import ZoneInfo
+
+          local = datetime.now(UTC).astimezone(ZoneInfo("America/Los_Angeles"))
+          if local.hour == 6:
+              print("run=true")
+              print("session=MORNING")
+          elif local.hour == 15:
+              print("run=true")
+              print("session=POST_MARKET")
+          else:
+              print("run=false")
+              print("session=SKIP")
+          PY
+          fi
+
   shortlist:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     environment: staging
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
       ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
       STOCKDATA_API_KEY: ${{ secrets.STOCKDATA_API_KEY }}
       STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
+      REPORT_SESSION: ${{ needs.gate.outputs.session }}
 
     steps:
       - uses: actions/checkout@v4
@@ -101,9 +138,8 @@ jobs:
               limit=10,
           )
 
-          # Research data may legitimately be Friday's close during a weekend or
-          # Monday premarket. Execution remains governed by runtime.py's strict
-          # 25-minute delayed-data gate before any paper trade can be authorized.
+          # Research may legitimately use Friday's close on Monday premarket.
+          # Paper execution still applies the strict 25-minute ORATS gate.
           source = OratsBatchSource(
               OratsClient(mode="delayed", max_age_minutes=72 * 60)
           )
@@ -206,11 +242,35 @@ jobs:
           done
           echo "Published ranked shortlist to ${PREFIX}/latest/"
 
-      - name: Upload ranked shortlist artifact
+      - name: Publish newsletter and CSV bundle
+        shell: bash
+        run: |
+          aws lambda invoke \
+            --function-name daily-alpha-report \
+            --cli-binary-format raw-in-base64-out \
+            --payload "{\"operation\":\"PUBLISH_STAGING_REPORT\",\"session\":\"${REPORT_SESSION}\",\"run_id\":\"${GITHUB_RUN_ID}\"}" \
+            /tmp/daily-alpha-report.json >/tmp/daily-alpha-report-meta.json
+          cat /tmp/daily-alpha-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("/tmp/daily-alpha-report.json").read_text())
+          if result.get("ok") is not True or result.get("status") != "PUBLISHED":
+              raise SystemExit(f"Daily Alpha report publish failed: {result}")
+          print(
+              "Published Daily Alpha output bundle: "
+              + ", ".join(sorted(result.get("outputs", {}).values()))
+          )
+          PY
+
+      - name: Upload validated output artifacts
         uses: actions/upload-artifact@v4
         with:
           name: daily-alpha-ranked-shortlist-${{ github.run_id }}
-          path: data/shortlist/*
+          path: |
+            data/shortlist/*
+            /tmp/daily-alpha-report.json
           if-no-files-found: error
           retention-days: 30
 
@@ -218,7 +278,8 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Daily Alpha ranked shortlist"
+            echo "## Daily Alpha ranked shortlist + staging publication"
+            echo "- Session: ${REPORT_SESSION}"
             echo "- Previous OVTLYR: ${{ steps.shortlist.outputs.previous_file }}"
             echo "- Current OVTLYR: ${{ steps.shortlist.outputs.current_file }}"
             echo "- Actionable ranked candidates: ${{ steps.shortlist.outputs.ranked_count }}"
@@ -230,7 +291,7 @@ jobs:
             echo "- 13F comparison: ${{ steps.shortlist.outputs.previous_13f_period }} -> ${{ steps.shortlist.outputs.current_13f_period }}"
             echo "- ORATS exclusions with no 45-75 DTE chain: ${{ steps.shortlist.outputs.orats_no_dte_count }}"
             echo "- Qualified 45-75 DTE option setups in ORATS-enriched top 20: ${{ steps.shortlist.outputs.qualified_count }}"
-            echo "- Confirmation weights: Congress max +5, institutions max +10, Trump policy watch max +5."
-            echo "- Policy-watch rows are not presented as President Trump stock recommendations."
-            echo "- Research only: no paper or live trade was authorized by this workflow."
+            echo "- Outputs: newsletter HTML, research shortlist CSV, paper ledger CSV, sector rotation CSV, report manifest JSON."
+            echo "- Latest S3 prefix: s3://${STAGING_BUCKET}/daily-alpha/outputs/latest/"
+            echo "- Research/paper only; live trading remains disabled."
           } >> "$GITHUB_STEP_SUMMARY"
