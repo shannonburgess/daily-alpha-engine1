@@ -1,0 +1,43 @@
+name: Verify Pine staging transport
+
+on:
+  push:
+    branches: [agent/verify-pine-transport]
+    paths: [.github/workflows/verify-pine-transport.yml]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-pine-transport-verify
+          aws-region: us-east-2
+      - name: Check ingress configuration without exposing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Ingress environment keys:'
+          aws lambda get-function-configuration --function-name daily-alpha-pine-ingress --query 'keys(Environment.Variables)'
+          echo 'Queue configured:'
+          aws lambda get-function-configuration --function-name daily-alpha-pine-ingress --query 'Environment.Variables.PINE_INGRESS_QUEUE_URL' --output text | sed 's#https://sqs\..*/#SQS_QUEUE/#'
+          echo 'Secret id configured:'
+          test "$(aws lambda get-function-configuration --function-name daily-alpha-pine-ingress --query 'Environment.Variables.PINE_WEBHOOK_SECRET_ID' --output text)" != 'None'
+          echo 'Processor event-source mappings:'
+          aws lambda list-event-source-mappings --function-name daily-alpha-pine-processor --query 'EventSourceMappings[].{State:State,EventSourceArn:EventSourceArn,LastProcessingResult:LastProcessingResult}'
+      - name: Discover public ingress endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Lambda Function URL:'
+          aws lambda get-function-url-config --function-name daily-alpha-pine-ingress --query '{FunctionUrl:FunctionUrl,AuthType:AuthType}' 2>/dev/null || echo 'NO_LAMBDA_FUNCTION_URL'
+          echo 'HTTP APIs (if permitted):'
+          aws apigatewayv2 get-apis --query 'Items[].{Name:Name,ApiEndpoint:ApiEndpoint,ProtocolType:ProtocolType}' 2>/dev/null || echo 'APIGATEWAY_QUERY_NOT_PERMITTED'
