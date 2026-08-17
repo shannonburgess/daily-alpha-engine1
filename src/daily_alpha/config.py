@@ -18,4 +18,4 @@ class OptionQualityRules:
 @dataclass(frozen=True)
 class StockFallbackRules:
     min_price: float = 5.0
-    min_average_daily_dollar_volume: float = 20_000_000.0
+    min_average_daily_dollar_volume: float = 50_000_000.0
