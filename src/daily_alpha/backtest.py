@@ -13,9 +13,9 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+
+from .orats_historical_transport import HistoricalOratsHttpError, request_json
 
 
 @dataclass
@@ -54,20 +54,9 @@ def _number(value: Any) -> float:
 
 
 def _request_json(url: str, *, token: str, header_auth: bool) -> Any:
-    headers = {"Accept": "application/json"}
-    if header_auth:
-        headers["Authorization"] = token
-    request = Request(url, headers=headers)
-    try:
-        with urlopen(request, timeout=45) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        body = exc.read(400).decode("utf-8", errors="replace")
-        raise RuntimeError(f"ORATS HTTP {exc.code}: {body[:200]}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"ORATS network error: {type(exc.reason).__name__}") from exc
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("ORATS returned invalid JSON") from exc
+    """Compatibility wrapper around the hardened historical ORATS transport."""
+
+    return request_json(url, token=token, header_auth=header_auth)
 
 
 def _rows(payload: Any) -> list[dict[str, Any]]:
@@ -108,8 +97,12 @@ def fetch_orats_history(
             f"{base}/hist/earnings?{earnings_query}", token=token, header_auth=True
         )
         source = "ORATS_DATA_API"
-    except RuntimeError:
-        # Compatibility fallback for accounts provisioned on the datav2 route.
+    except HistoricalOratsHttpError as exc:
+        if exc.status_code not in {400, 404, 405, 422}:
+            raise
+        # Compatibility fallback only for an endpoint/provisioning mismatch.
+        # Rate limits, auth failures, network exhaustion, and malformed data
+        # preserve their original failure classification and never fall through.
         base2 = "https://api.orats.io/datav2"
         daily_query2 = urlencode(
             {
