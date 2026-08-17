@@ -1,8 +1,9 @@
 """Earnings-gap classification for Daily Alpha event-driven entries.
 
 The core Turtle strategy remains the baseline. This module classifies confirmed
-earnings-linked upside gaps into GAP_GO, GAP_CRAP, or WAIT so the event sleeve can
-be measured separately from normal breakouts.
+earnings-linked upside gaps into full GAP_GO entries, research-only GAP_GO_EARLY
+watches, GAP_CRAP rejections, or WAIT so each event regime can be measured
+separately from normal breakouts.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from enum import StrEnum
 class EarningsGapClass(StrEnum):
     NONE = "NONE"
     EARNINGS_GAP_GO = "EARNINGS_GAP_GO"
+    EARNINGS_GAP_GO_EARLY = "EARNINGS_GAP_GO_EARLY"
     EARNINGS_GAP_CRAP = "EARNINGS_GAP_CRAP"
     EARNINGS_WAIT = "EARNINGS_WAIT"
 
@@ -22,7 +24,8 @@ class EarningsGapClass(StrEnum):
 class EarningsGapConfig:
     min_gap_pct: float = 5.0
     min_gap_atr: float = 1.5
-    min_close_location: float = 0.75
+    min_close_location: float = 0.70
+    min_early_close_location: float = 0.60
     min_gap_retention: float = 0.70
     min_relative_volume: float = 1.5
     max_rsi: float = 85.0
@@ -64,13 +67,18 @@ def classify_earnings_gap(
 ) -> EarningsGapResult:
     """Classify one daily earnings-linked upside gap.
 
-    GAP_GO is an event-driven entry candidate and intentionally does not require
-    the normal ADX/trend-efficiency gates. It does require a bullish trend state
-    by the close, a 20-day breakout, strong close location, gap retention, and
-    volume confirmation. GAP_CRAP is an explicit rejection. Intermediate cases
-    are WAIT and can be studied for next-day confirmation separately.
+    GAP_GO is an event-driven paper-entry candidate and intentionally does not
+    require the normal ADX/trend-efficiency gates. It does require a bullish
+    trend state by the close, a 20-day breakout, strong close location, gap
+    retention, and volume confirmation.
+
+    GAP_GO_EARLY uses the same quality requirements but a 60%-70% close-location
+    band. It is research/watch only in v2.4 and never authorizes an entry. This
+    preserves the newly observed opportunity for validation without promoting a
+    small-sample rule directly into paper execution.
     """
     cfg = config or EarningsGapConfig()
+    _validate_config(cfg)
     _validate_observation(observation)
 
     previous_close = observation.previous_close
@@ -106,17 +114,24 @@ def classify_earnings_gap(
             eligible_entry=False,
         )
 
-    gap_go = (
+    common_quality = (
         observation.close >= observation.open
-        and close_location >= cfg.min_close_location
         and gap_retention >= cfg.min_gap_retention
         and relative_volume >= cfg.min_relative_volume
         and observation.rsi <= cfg.max_rsi
         and observation.bullish_trend_state
         and breakout
     )
+    gap_go = common_quality and close_location >= cfg.min_close_location
+    gap_go_early = (
+        common_quality
+        and cfg.min_early_close_location <= close_location < cfg.min_close_location
+    )
+
     if gap_go:
         classification = EarningsGapClass.EARNINGS_GAP_GO
+    elif gap_go_early:
+        classification = EarningsGapClass.EARNINGS_GAP_GO_EARLY
     else:
         obvious_failure = (
             observation.close < previous_close
@@ -142,6 +157,13 @@ def classify_earnings_gap(
         breakout=breakout,
         eligible_entry=classification == EarningsGapClass.EARNINGS_GAP_GO,
     )
+
+
+def _validate_config(config: EarningsGapConfig) -> None:
+    if not 0.0 <= config.min_early_close_location < config.min_close_location <= 1.0:
+        raise ValueError(
+            "close-location thresholds must satisfy 0 <= early < full <= 1"
+        )
 
 
 def _validate_observation(observation: EarningsGapObservation) -> None:
