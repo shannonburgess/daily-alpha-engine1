@@ -1,0 +1,27 @@
+name: Research R2 quick48
+on:
+  push:
+    branches: [agent/r2-model-search]
+    paths:
+      - .github/workflows/research-r2-quick48.yml
+permissions:
+  contents: read
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check .
+      - run: python research/run_r2_quick48.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-r2-quick48
+          path: r2-quick48.json
+          if-no-files-found: error
+          retention-days: 30
