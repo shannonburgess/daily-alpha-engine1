@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,10 +38,20 @@ def contract_history(
             "strike": strike, "tradeDate": f"{start.isoformat()},{end.isoformat()}",
         }
     )
-    payload = _request_json(
-        f"https://api.orats.io/datav2/hist/strikes/options?{query}",
-        token=token, header_auth=False,
-    )
+    url = f"https://api.orats.io/datav2/hist/strikes/options?{query}"
+    error: RuntimeError | None = None
+    for attempt in range(4):
+        try:
+            payload = _request_json(url, token=token, header_auth=False)
+            break
+        except RuntimeError as exc:
+            error = exc
+            if "HTTP 502" not in str(exc) or attempt == 3:
+                raise
+            time.sleep(2**attempt)
+    else:
+        assert error is not None
+        raise error
     return _rows(payload)
 
 
