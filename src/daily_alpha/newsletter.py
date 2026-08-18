@@ -40,6 +40,20 @@ class _FlowRow:
     classification: str
 
 
+@dataclass(frozen=True)
+class _OptionEntryRow:
+    symbol: str
+    signal_label: str
+    contract: str
+    bid: float
+    ask: float
+    target_limit: float
+    max_debit: float
+    spread_pct: float
+    volume: int
+    open_interest: int
+
+
 class NewsletterRenderer:
     """Render fluid pages; never shrink text to force content into boxes."""
 
@@ -57,6 +71,12 @@ class NewsletterRenderer:
                 "<section><h2>No publishable candidates</h2>"
                 "<p>The research engine produced no eligible records for this run.</p></section>"
             )
+
+        option_entries = self._option_entry_records(packet.candidates)
+        if option_entries:
+            sections.append("OPTION_ENTRY_PLANS")
+            content.append(self._option_entry_section(option_entries))
+
         sections.append("UNUSUAL_OPTIONS_ACTIVITY")
         content.append(self._unusual_options_section(packet.candidates))
 
@@ -128,6 +148,74 @@ class NewsletterRenderer:
             "Congressional disclosures may lag transaction dates; 13F holdings are "
             "quarter-end snapshots and are not trade-timing signals.</p>"
             f"{congress_table}{institution_table}</section>"
+        )
+
+    @staticmethod
+    def _option_entry_records(
+        candidates: tuple[ResearchCandidate, ...],
+    ) -> tuple[_OptionEntryRow, ...]:
+        rows: list[_OptionEntryRow] = []
+        for candidate in candidates:
+            if (
+                candidate.instrument.value != "OPTION"
+                or not candidate.option_contract
+                or candidate.data_status != "PASS"
+                or candidate.option_bid is None
+                or candidate.option_ask is None
+            ):
+                continue
+            bid = float(candidate.option_bid)
+            ask = float(candidate.option_ask)
+            if bid <= 0 or ask < bid:
+                continue
+            spread = ask - bid
+            midpoint = (bid + ask) / 2.0
+            if midpoint <= 0:
+                continue
+            target_limit = round(midpoint, 2)
+            max_debit = round(min(ask, midpoint + 0.25 * spread), 2)
+            rows.append(
+                _OptionEntryRow(
+                    symbol=candidate.symbol,
+                    signal_label=candidate.signal_label,
+                    contract=candidate.option_contract,
+                    bid=bid,
+                    ask=ask,
+                    target_limit=target_limit,
+                    max_debit=max_debit,
+                    spread_pct=spread / midpoint,
+                    volume=candidate.option_volume,
+                    open_interest=candidate.option_open_interest,
+                )
+            )
+        return tuple(rows)
+
+    @staticmethod
+    def _option_entry_section(rows: tuple[_OptionEntryRow, ...]) -> str:
+        rendered_rows = "".join(
+            "<tr>"
+            f"<td><strong>{escape(item.symbol)}</strong><br><small>{escape(item.signal_label)}</small></td>"
+            f"<td>{escape(item.contract)}</td>"
+            f"<td>${item.bid:.2f} / ${item.ask:.2f}</td>"
+            f"<td><strong>${item.target_limit:.2f}</strong></td>"
+            f"<td><strong>${item.max_debit:.2f}</strong></td>"
+            f"<td>{item.spread_pct:.1%}</td>"
+            f"<td>{item.open_interest:,} / {item.volume:,}</td>"
+            "</tr>"
+            for item in rows
+        )
+        return (
+            '<section class="report-section option-entry-plan">'
+            "<h2>Trade Setups — Option Entry Plan</h2>"
+            '<p class="section-note"><strong>Execution guide:</strong> the Target Limit is the '
+            "rule-based optimal starting limit at the current ORATS midpoint. The Max Debit / "
+            "No-Chase price is midpoint plus 25% of the quoted spread, capped at the ask. "
+            "Start at or below the target and do not chase above the max debit. Quotes can move; "
+            "refresh ORATS before any decision. Research and paper-trading use only.</p>"
+            '<div class="table-wrap"><table><thead><tr>'
+            "<th>Symbol / Setup</th><th>Exact Option Contract</th><th>ORATS Bid / Ask</th>"
+            "<th>Target Limit</th><th>Max Debit / No-Chase</th><th>Spread</th><th>OI / Volume</th>"
+            f"</tr></thead><tbody>{rendered_rows}</tbody></table></div></section>"
         )
 
     @staticmethod
@@ -385,6 +473,9 @@ footer {{ border-top: 1px solid #c9d1dc; margin-top: 24px; padding-top: 12px; fo
             warnings.append("TEXT_TOO_SMALL")
         if "Unusual Options Activity" not in html:
             warnings.append("UNUSUAL_OPTIONS_SECTION_MISSING")
+        option_entry_observed = bool(NewsletterRenderer._option_entry_records(packet.candidates))
+        if option_entry_observed and "Trade Setups — Option Entry Plan" not in html:
+            warnings.append("OPTION_ENTRY_PLAN_MISSING")
         flow_observed = any(
             candidate.option_flow_evidence or candidate.flow_classification is not None
             for candidate in packet.candidates
