@@ -1,4 +1,9 @@
-from daily_alpha.sectors import is_verified_sector, normalize_sector, resolve_sector
+from daily_alpha.sectors import (
+    is_verified_sector,
+    normalize_sector,
+    resolve_sector,
+)
+
 
 def test_sector_aliases_are_canonicalized():
     assert normalize_sector("Tech") == "Information Technology"
