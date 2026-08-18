@@ -18,6 +18,7 @@ import csv
 import hashlib
 import io
 import json
+import time
 from datetime import date
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -26,14 +27,31 @@ import run_r2_downside_overlay as base
 
 from daily_alpha.backtest import Bar
 
-FRED_DGS3MO_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS3MO"
+FRED_DGS3MO_CSV = (
+    "https://fred.stlouisfed.org/graph/fredgraph.csv?"
+    "id=DGS3MO&cosd=2021-01-01&coed=2026-07-31"
+)
 SGOV_EXPENSE_RATIO = 0.0009
 
 
 def fetch_dgs3mo() -> tuple[dict[date, float], str]:
     request = Request(FRED_DGS3MO_CSV, headers={"User-Agent": "DailyAlphaResearch/1.0"})
-    with urlopen(request, timeout=45) as response:
-        raw = response.read()
+    raw: bytes | None = None
+    last_error: OSError | None = None
+    for attempt, delay in enumerate((0, 2, 5), start=1):
+        if delay:
+            time.sleep(delay)
+        try:
+            with urlopen(request, timeout=30) as response:
+                raw = response.read()
+            break
+        except (OSError, TimeoutError) as exc:
+            last_error = exc
+            if attempt == 3:
+                raise RuntimeError("FRED DGS3MO fetch failed after bounded retries") from exc
+    if raw is None:
+        raise RuntimeError("FRED DGS3MO fetch returned no bytes") from last_error
+
     digest = hashlib.sha256(raw).hexdigest()
     text = raw.decode("utf-8")
     rows = csv.DictReader(io.StringIO(text))
