@@ -423,6 +423,7 @@ class DynamoPaperLedger:
             "instrument": {"S": trade.instrument.value},
             "state": {"S": trade.state.value},
             "runner_stage": {"S": trade.runner_stage},
+            "sector": {"S": trade.sector},
             "trade_json": {"S": json.dumps(trade.to_dict(), sort_keys=True)},
         }
 
