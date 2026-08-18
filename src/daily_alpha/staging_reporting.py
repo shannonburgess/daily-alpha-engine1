@@ -299,6 +299,28 @@ def _packet_from_shortlist(
                 data_status=data_status,
                 sector=str(raw.get("sector") or "UNKNOWN"),
                 option_contract=contract,
+                flow_classification=(
+                    "UNUSUAL_CONFIRMATION"
+                    if raw.get("unusual_options_activity") is True
+                    else ("NORMAL" if orats_status == "ENRICHED" else None)
+                ),
+                option_volume=int(raw.get("selected_volume", 0) or 0),
+                option_open_interest=int(raw.get("selected_open_interest", 0) or 0),
+                option_volume_oi_ratio=(
+                    round(
+                        float(raw.get("selected_volume", 0) or 0)
+                        / float(raw.get("selected_open_interest", 0) or 1),
+                        4,
+                    )
+                    if int(raw.get("selected_open_interest", 0) or 0) > 0
+                    else None
+                ),
+                option_bid=(
+                    float(raw.get("selected_bid", 0) or 0) if has_option else None
+                ),
+                option_ask=(
+                    float(raw.get("selected_ask", 0) or 0) if has_option else None
+                ),
             )
         )
 
