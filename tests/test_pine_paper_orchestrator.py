@@ -242,7 +242,7 @@ def test_early_emerging_sizes_below_confirmed_leader(tmp_path):
     early_trade = early.ledger.find_open("AAPL")[0]
     leader_trade = leader.ledger.find_open("AAPL")[0]
     assert early_trade.target_quantity < leader_trade.target_quantity
-    assert early_trade.planned_loss < leader_trade.planned_loss
+    assert early_trade.quantity < leader_trade.quantity
 
 
 def test_option_add_rejected_when_position_is_not_profitable(tmp_path):
