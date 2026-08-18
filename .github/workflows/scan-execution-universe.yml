@@ -155,6 +155,7 @@ jobs:
           rank_by_symbol = {}
           label_by_symbol = {}
           sector_by_symbol = {}
+          lifecycle_by_symbol = {}
           for row in shortlist_rows:
               symbol = str(row.get("symbol", "")).upper()
               if not symbol:
@@ -162,6 +163,7 @@ jobs:
               rank_by_symbol[symbol] = row.get("rank", "")
               label_by_symbol[symbol] = row.get("display_label", "")
               sector_by_symbol[symbol] = row.get("sector", "")
+              lifecycle_by_symbol[symbol] = row.get("ovtlyr_status", "")
 
           symbols = select_execution_universe(
               shortlist,
@@ -224,6 +226,7 @@ jobs:
                   )
                   if decision.signal is not None:
                       decision.signal["sector"] = sector_by_symbol.get(symbol, "")
+                      decision.signal["lifecycle"] = lifecycle_by_symbol.get(symbol, "")
                       emitted += 1
                       pending_item = build_pending_action(
                           symbol=symbol,
