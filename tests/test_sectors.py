@@ -9,6 +9,9 @@ def test_sector_aliases_are_canonicalized():
     assert normalize_sector("Tech") == "Information Technology"
     assert normalize_sector("Consumer Cyclical") == "Consumer Discretionary"
     assert normalize_sector("Basic Materials") == "Materials"
+    assert normalize_sector("Discretionary") == "Consumer Discretionary"
+    assert normalize_sector("Staples") == "Consumer Staples"
+    assert normalize_sector("Communication") == "Communication Services"
 
 def test_reviewed_symbol_override_wins_over_bad_vendor_sector():
     assert resolve_sector("META", "Information Technology") == "Communication Services"
