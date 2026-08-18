@@ -219,15 +219,19 @@ def test_extended_leader_is_not_chased(tmp_path):
     assert fake_orats.calls == []
 
 
-def test_missing_lifecycle_is_blocked(tmp_path):
-    fake_orats = FakeOrats()
-    service = executor(tmp_path, fake_orats)
+def test_missing_lifecycle_uses_smallest_paper_starter(tmp_path):
+    unknown_orats = FakeOrats()
+    unknown = executor(tmp_path / "unknown", unknown_orats)
+    early_orats = FakeOrats()
+    early = executor(tmp_path / "early", early_orats)
 
-    result = service.execute(ingress(lifecycle=""), now=NOW)
+    result = unknown.execute(ingress(lifecycle=""), now=NOW)
+    early.execute(ingress(lifecycle="EARLY_EMERGING"), now=NOW)
 
-    assert result["disposition"] == "NO_TRADE"
-    assert result["reason"] == "LIFECYCLE_DATA_UNVERIFIED"
-    assert service.ledger.find_open("AAPL") == []
+    assert result["disposition"] == "EXECUTED_PAPER"
+    unknown_trade = unknown.ledger.find_open("AAPL")[0]
+    early_trade = early.ledger.find_open("AAPL")[0]
+    assert unknown_trade.target_quantity == early_trade.target_quantity
 
 
 def test_early_emerging_sizes_below_confirmed_leader(tmp_path):
