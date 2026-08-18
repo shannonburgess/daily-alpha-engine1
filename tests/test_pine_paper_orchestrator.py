@@ -207,16 +207,19 @@ def test_paper_entry_is_automatic_without_human_approval(tmp_path):
 
 
 
-def test_extended_leader_is_not_chased(tmp_path):
-    fake_orats = FakeOrats()
-    service = executor(tmp_path, fake_orats)
+def test_extended_leader_gets_small_momentum_starter(tmp_path):
+    extended_orats = FakeOrats()
+    extended = executor(tmp_path / "extended", extended_orats)
+    leader_orats = FakeOrats()
+    leader = executor(tmp_path / "leader", leader_orats)
 
-    result = service.execute(ingress(lifecycle="EXTENDED_LEADER"), now=NOW)
+    result = extended.execute(ingress(lifecycle="EXTENDED_LEADER"), now=NOW)
+    leader.execute(ingress(lifecycle="CONFIRMED_LEADER"), now=NOW)
 
-    assert result["disposition"] == "NO_TRADE"
-    assert result["reason"] == "LIFECYCLE_EXTENDED_NO_CHASE"
-    assert service.ledger.find_open("AAPL") == []
-    assert fake_orats.calls == []
+    assert result["disposition"] == "EXECUTED_PAPER"
+    extended_trade = extended.ledger.find_open("AAPL")[0]
+    leader_trade = leader.ledger.find_open("AAPL")[0]
+    assert extended_trade.target_quantity < leader_trade.target_quantity
 
 
 def test_missing_lifecycle_uses_smallest_paper_starter(tmp_path):

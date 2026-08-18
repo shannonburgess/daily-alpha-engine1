@@ -32,7 +32,7 @@ _POLICIES = {
     "FRESH_CROSS": LifecycleSizingPolicy("FRESH_CROSS", 0.50, True),
     "ENTRY_WATCH": LifecycleSizingPolicy("ENTRY_WATCH", 0.50, True),
     "CONFIRMED_LEADER": LifecycleSizingPolicy("CONFIRMED_LEADER", 1.00, True),
-    "EXTENDED_LEADER": LifecycleSizingPolicy("EXTENDED_LEADER", 0.00, False),
+    "EXTENDED_LEADER": LifecycleSizingPolicy("EXTENDED_LEADER", 0.25, True),
 }
 
 
