@@ -157,7 +157,7 @@ def evaluate_latest_v24(
     price_ok = bar.close >= 25.0
     eff_ok = row["efficiency"] is not None and float(row["efficiency"]) >= 0.20
     rsi_ok = row["rsi"] is not None and float(row["rsi"]) <= 80.0
-    adx_ok = row["adx"] is not None and float(row["adx"]) >= 25.0
+    adx_ok = row["adx"] is not None and float(row["adx"]) >= 17.0
     avg_dollar_volume = _average_dollar_volume(bars)
 
     if state is None:
@@ -466,7 +466,7 @@ def _entry_wait_reason(row: Mapping[str, Any], price_ok: bool, eff_ok: bool, rsi
     if not rsi_ok:
         return "WAIT_RSI_EXTENDED"
     if not adx_ok:
-        return "WAIT_ADX_BELOW_25"
+        return "WAIT_ADX_BELOW_17"
     return "WAIT_V24_ENTRY_NOT_CONFIRMED"
 
 
