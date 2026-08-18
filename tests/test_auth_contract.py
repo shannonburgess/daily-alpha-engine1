@@ -6,7 +6,6 @@ from daily_alpha.auth_contract import (
     authorize_session,
 )
 
-
 NOW = dt.datetime(2026, 8, 18, 5, 0, tzinfo=dt.UTC)
 
 
