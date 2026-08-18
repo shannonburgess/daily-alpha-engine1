@@ -118,6 +118,54 @@ class NewsletterRenderer:
         )
 
     @staticmethod
+    def _option_side(candidate: ResearchCandidate) -> str:
+        contract = f" {candidate.option_contract or ''} ".upper()
+        if " CALL " in contract:
+            return "CALL"
+        if " PUT " in contract:
+            return "PUT"
+        return "UNKNOWN"
+
+    @staticmethod
+    def _flow_rows(candidates: tuple[ResearchCandidate, ...]) -> str:
+        return "".join(
+            "<tr>"
+            f"<td><strong>{escape(item.symbol)}</strong></td>"
+            f"<td>{escape(item.option_contract or 'Contract unavailable')}</td>"
+            f"<td>{item.option_volume:,}</td>"
+            f"<td>{item.option_open_interest:,}</td>"
+            f"<td>{item.option_volume_oi_ratio:.2f}x</td>"
+            f"<td>{item.option_bid:.2f} / {item.option_ask:.2f}</td>"
+            f"<td>{escape(item.flow_classification or '')}</td>"
+            "</tr>"
+            for item in candidates
+            if item.option_volume_oi_ratio is not None
+            and item.option_bid is not None
+            and item.option_ask is not None
+        )
+
+    @staticmethod
+    def _flow_table(
+        heading: str,
+        candidates: tuple[ResearchCandidate, ...],
+        *,
+        empty_message: str,
+    ) -> str:
+        rows = NewsletterRenderer._flow_rows(candidates)
+        if not rows:
+            return (
+                f"<h3>{escape(heading)}</h3>"
+                f'<p class="section-note">{escape(empty_message)}</p>'
+            )
+        return (
+            f"<h3>{escape(heading)}</h3>"
+            '<div class="table-wrap"><table><thead><tr>'
+            "<th>Company</th><th>Contract</th><th>Volume</th><th>Open interest</th>"
+            "<th>Volume/OI</th><th>Bid / Ask</th><th>Classification</th>"
+            f"</tr></thead><tbody>{rows}</tbody></table></div>"
+        )
+
+    @staticmethod
     def _unusual_options_section(
         candidates: tuple[ResearchCandidate, ...],
     ) -> str:
@@ -127,43 +175,74 @@ class NewsletterRenderer:
             if item.flow_classification == "UNUSUAL_CONFIRMATION"
         )
         flow_observed = any(item.flow_classification is not None for item in candidates)
+
         if unusual:
-            rows = "".join(
-                "<tr>"
-                f"<td><strong>{escape(item.symbol)}</strong></td>"
-                f"<td>{escape(item.option_contract or 'Contract unavailable')}</td>"
-                f"<td>{item.option_volume:,}</td>"
-                f"<td>{item.option_open_interest:,}</td>"
-                f"<td>{item.option_volume_oi_ratio:.2f}x</td>"
-                f"<td>{item.option_bid:.2f} / {item.option_ask:.2f}</td>"
-                f"<td>{escape(item.flow_classification or '')}</td>"
-                "</tr>"
+            calls = tuple(
+                item
                 for item in unusual
-                if item.option_volume_oi_ratio is not None
-                and item.option_bid is not None
-                and item.option_ask is not None
+                if NewsletterRenderer._option_side(item) == "CALL"
             )
-            body = (
-                '<div class="table-wrap"><table><thead><tr>'
-                "<th>Symbol</th><th>Contract</th><th>Volume</th><th>Open interest</th>"
-                "<th>Volume/OI</th><th>Bid / Ask</th><th>Classification</th>"
-                f"</tr></thead><tbody>{rows}</tbody></table></div>"
+            puts = tuple(
+                item
+                for item in unusual
+                if NewsletterRenderer._option_side(item) == "PUT"
             )
+            unknown = tuple(
+                item
+                for item in unusual
+                if NewsletterRenderer._option_side(item) == "UNKNOWN"
+            )
+            body = NewsletterRenderer._flow_table(
+                "Unusual CALL Activity",
+                calls,
+                empty_message=(
+                    "No shortlisted CALL contract met the unusual-activity threshold "
+                    "for this report."
+                ),
+            )
+            body += NewsletterRenderer._flow_table(
+                "Unusual PUT Activity",
+                puts,
+                empty_message=(
+                    "No shortlisted PUT contract met the unusual-activity threshold "
+                    "for this report."
+                ),
+            )
+            if unknown:
+                body += NewsletterRenderer._flow_table(
+                    "Unclassified Option-Side Activity",
+                    unknown,
+                    empty_message="",
+                )
         elif flow_observed:
-            body = (
-                '<p class="section-note">No shortlisted option contract met the '
-                "unusual-activity threshold for this report.</p>"
+            body = NewsletterRenderer._flow_table(
+                "Unusual CALL Activity",
+                (),
+                empty_message=(
+                    "No shortlisted CALL contract met the unusual-activity threshold "
+                    "for this report."
+                ),
+            )
+            body += NewsletterRenderer._flow_table(
+                "Unusual PUT Activity",
+                (),
+                empty_message=(
+                    "No shortlisted PUT contract met the unusual-activity threshold "
+                    "for this report."
+                ),
             )
         else:
             body = (
                 '<p class="data-warning"><strong>ORATS flow data unavailable.</strong> '
                 "No unusual-options conclusion is reported for this run.</p>"
             )
+
         return (
             '<section class="report-section unusual-options">'
-            "<h2>Unusual Options Activity</h2>"
+            "<h2>Unusual Options Activity — Calls &amp; Puts</h2>"
             '<p class="section-note">Confirmation evidence only; options flow cannot '
-            "authorize a trade by itself.</p>"
+            "authorize a trade by itself. CALL and PUT identify the contract side, not "
+            "whether the observed volume was buyer- or seller-initiated.</p>"
             f"{body}</section>"
         )
 
@@ -266,6 +345,14 @@ footer {{ border-top: 1px solid #c9d1dc; margin-top: 24px; padding-top: 12px; fo
             warnings.append("TEXT_TOO_SMALL")
         if "Unusual Options Activity" not in html:
             warnings.append("UNUSUAL_OPTIONS_SECTION_MISSING")
+        if "Unusual CALL Activity" not in html and any(
+            candidate.flow_classification is not None for candidate in packet.candidates
+        ):
+            warnings.append("UNUSUAL_CALL_SECTION_MISSING")
+        if "Unusual PUT Activity" not in html and any(
+            candidate.flow_classification is not None for candidate in packet.candidates
+        ):
+            warnings.append("UNUSUAL_PUT_SECTION_MISSING")
         if any(escape(candidate.symbol) not in html for candidate in packet.candidates):
             warnings.append("CANDIDATE_CONTENT_MISSING")
         if any(escape(item) not in html for item in packet.disclosures):
