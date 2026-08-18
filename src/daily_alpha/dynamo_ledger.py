@@ -71,6 +71,7 @@ class DynamoPaperLedger:
         option_type: str | None = None,
         target_quantity: int | None = None,
         runner_stage: str = "STARTER",
+        sector: str = "Unknown",
     ) -> PaperTrade:
         if instrument not in {InstrumentSelected.OPTION, InstrumentSelected.STOCK}:
             raise ValueError("Paper trade instrument must be OPTION or STOCK")
@@ -102,6 +103,7 @@ class DynamoPaperLedger:
             option_type=option_type,
             target_quantity=target,
             runner_stage=runner_stage,
+            sector=sector,
         )
         current = self._current_item(trade)
         audit = self._audit_item("OPEN", trade, entry_time, event_signal_id=signal_id)
@@ -394,6 +396,7 @@ class DynamoPaperLedger:
             "instrument": {"S": trade.instrument.value},
             "state": {"S": trade.state.value},
             "runner_stage": {"S": trade.runner_stage},
+            "sector": {"S": trade.sector},
             "trade_json": {"S": json.dumps(trade.to_dict(), sort_keys=True)},
         }
 
