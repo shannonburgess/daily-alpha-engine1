@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from .dynamo_ledger import DynamoPaperLedger, _trade_from_json
 from .ledger import PaperTrade
+from .lifecycle_sizing import lifecycle_risk_fraction, resolve_lifecycle_sizing
 from .models import DecisionStatus, InstrumentSelected
 from .orats import OratsClient, OratsError
 from .paper_runtime import PaperRuntimeError, process_paper_event
@@ -84,6 +85,21 @@ class AwsPinePaperExecutor:
             raise PinePaperExecutionError("PINE_ACTION_UNSUPPORTED")
         symbol = _required_text(ingress.get("symbol"), "symbol").upper()
         if action == "ENTRY_LONG":
+            lifecycle = resolve_lifecycle_sizing(ingress.get("lifecycle"))
+            if lifecycle is None:
+                return _execution_result(
+                    disposition="NO_TRADE",
+                    reason="LIFECYCLE_DATA_UNVERIFIED",
+                    action=action,
+                    symbol=symbol,
+                )
+            if not lifecycle.entry_allowed:
+                return _execution_result(
+                    disposition="NO_TRADE",
+                    reason="LIFECYCLE_EXTENDED_NO_CHASE",
+                    action=action,
+                    symbol=symbol,
+                )
             sector = resolve_sector(symbol, str(ingress.get("sector", "")))
             if not is_verified_sector(sector):
                 return _execution_result(
@@ -158,7 +174,10 @@ class AwsPinePaperExecutor:
             if isinstance(approval, Mapping)
             else 0.0
         )
-        proposed_loss = self.paper_nav * approved_risk_fraction
+        lifecycle_fraction = lifecycle_risk_fraction(
+            ingress.get("lifecycle"), approved_risk_fraction
+        )
+        proposed_loss = self.paper_nav * lifecycle_fraction
 
         stock_stop = _optional_positive_float(
             ingress.get("stock_stop_price"), "stock_stop_price"
@@ -259,6 +278,7 @@ class AwsPinePaperExecutor:
                     "operation": "OPEN_FROM_DECISION",
                     "engine_result": engine_result,
                     "pricing": pricing,
+                    "sizing": {"risk_per_trade_pct": lifecycle_fraction},
                 },
                 self.ledger,
                 now=now,
@@ -295,12 +315,26 @@ class AwsPinePaperExecutor:
         if trade.instrument == InstrumentSelected.OPTION:
             quote = self._option_quote(trade, now)
             if action == "ADD":
+                if quote.bid <= trade.entry_price:
+                    return _execution_result(
+                        disposition="NO_TRADE",
+                        reason="ADD_REJECTED_POSITION_NOT_PROFITABLE",
+                        action=action,
+                        symbol=symbol,
+                    )
                 pricing["option_fill_price"] = quote.ask
             elif action == "PARTIAL":
                 pricing["option_fill_price"] = quote.bid
             else:
                 pricing["option_exit_price"] = quote.bid
         else:
+            if action == "ADD" and float(ingress["price"]) <= trade.entry_price:
+                return _execution_result(
+                    disposition="NO_TRADE",
+                    reason="ADD_REJECTED_POSITION_NOT_PROFITABLE",
+                    action=action,
+                    symbol=symbol,
+                )
             if action in {"ADD", "PARTIAL"}:
                 pricing["stock_fill_price"] = float(ingress["price"])
             else:
