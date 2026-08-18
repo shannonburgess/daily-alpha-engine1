@@ -32,6 +32,7 @@ class PaperTradingPipeline:
         signal: PineSignal,
         decision: Decision,
         pricing: EntryPricing,
+        sector: str = "Unknown",
     ) -> PaperTrade:
         if signal.action != SignalAction.ENTRY_LONG:
             raise ValueError("process_entry requires an ENTRY_LONG signal")
@@ -59,6 +60,7 @@ class PaperTradingPipeline:
                 option_strike=contract.strike,
                 option_type=contract.option_type,
                 runner_stage="STARTER",
+                sector=sector,
             )
 
         if decision.instrument_selected == InstrumentSelected.STOCK:
@@ -80,6 +82,7 @@ class PaperTradingPipeline:
                 entry_time=signal.received_at,
                 fallback_reason=decision.fallback_reason,
                 runner_stage="STARTER",
+                sector=sector,
             )
 
         raise ValueError("Unsupported instrument decision")

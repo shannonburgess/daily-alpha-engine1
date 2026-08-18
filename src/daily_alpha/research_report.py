@@ -32,6 +32,11 @@ class ResearchCandidate:
     planned_loss_nav: float | None = None
     expected_move_pct: float | None = None
     flow_classification: str | None = None
+    option_volume: int = 0
+    option_open_interest: int = 0
+    option_volume_oi_ratio: float | None = None
+    option_bid: float | None = None
+    option_ask: float | None = None
     standalone_flow_signal: bool = False
 
     def __post_init__(self) -> None:
@@ -41,6 +46,10 @@ class ResearchCandidate:
             raise ValueError("at least one explainable reason is required")
         if self.standalone_flow_signal:
             raise ValueError("options flow cannot be a standalone signal")
+        if self.option_volume < 0 or self.option_open_interest < 0:
+            raise ValueError("option flow counts cannot be negative")
+        if self.option_volume_oi_ratio is not None and self.option_volume_oi_ratio < 0:
+            raise ValueError("option_volume_oi_ratio cannot be negative")
         if self.disposition == ResearchDisposition.DATA_ERROR:
             if self.instrument != InstrumentSelected.NONE:
                 raise ValueError("DATA_ERROR cannot select an instrument")

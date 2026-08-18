@@ -39,6 +39,14 @@ class NewsletterRenderer:
             sections.append("SMART_MONEY")
             content.append(self._smart_money_section(packet.smart_money))
 
+        if not packet.candidates:
+            content.append(
+                "<section><h2>No publishable candidates</h2>"
+                "<p>The research engine produced no eligible records for this run.</p></section>"
+            )
+        sections.append("UNUSUAL_OPTIONS_ACTIVITY")
+        content.append(self._unusual_options_section(packet.candidates))
+
         for disposition in ResearchDisposition:
             candidates = tuple(
                 candidate
@@ -107,6 +115,56 @@ class NewsletterRenderer:
             "Congressional disclosures may lag transaction dates; 13F holdings are "
             "quarter-end snapshots and are not trade-timing signals.</p>"
             f"{congress_table}{institution_table}</section>"
+        )
+
+    @staticmethod
+    def _unusual_options_section(
+        candidates: tuple[ResearchCandidate, ...],
+    ) -> str:
+        unusual = tuple(
+            item
+            for item in candidates
+            if item.flow_classification == "UNUSUAL_CONFIRMATION"
+        )
+        flow_observed = any(item.flow_classification is not None for item in candidates)
+        if unusual:
+            rows = "".join(
+                "<tr>"
+                f"<td><strong>{escape(item.symbol)}</strong></td>"
+                f"<td>{escape(item.option_contract or 'Contract unavailable')}</td>"
+                f"<td>{item.option_volume:,}</td>"
+                f"<td>{item.option_open_interest:,}</td>"
+                f"<td>{item.option_volume_oi_ratio:.2f}x</td>"
+                f"<td>{item.option_bid:.2f} / {item.option_ask:.2f}</td>"
+                f"<td>{escape(item.flow_classification or '')}</td>"
+                "</tr>"
+                for item in unusual
+                if item.option_volume_oi_ratio is not None
+                and item.option_bid is not None
+                and item.option_ask is not None
+            )
+            body = (
+                '<div class="table-wrap"><table><thead><tr>'
+                "<th>Symbol</th><th>Contract</th><th>Volume</th><th>Open interest</th>"
+                "<th>Volume/OI</th><th>Bid / Ask</th><th>Classification</th>"
+                f"</tr></thead><tbody>{rows}</tbody></table></div>"
+            )
+        elif flow_observed:
+            body = (
+                '<p class="section-note">No shortlisted option contract met the '
+                "unusual-activity threshold for this report.</p>"
+            )
+        else:
+            body = (
+                '<p class="data-warning"><strong>ORATS flow data unavailable.</strong> '
+                "No unusual-options conclusion is reported for this run.</p>"
+            )
+        return (
+            '<section class="report-section unusual-options">'
+            "<h2>Unusual Options Activity</h2>"
+            '<p class="section-note">Confirmation evidence only; options flow cannot '
+            "authorize a trade by itself.</p>"
+            f"{body}</section>"
         )
 
     @staticmethod
@@ -206,6 +264,8 @@ footer {{ border-top: 1px solid #c9d1dc; margin-top: 24px; padding-top: 12px; fo
             warnings.append("FIXED_HEIGHT_LAYOUT_DETECTED")
         if "font-size: 8" in html or "font-size: 7" in html:
             warnings.append("TEXT_TOO_SMALL")
+        if "Unusual Options Activity" not in html:
+            warnings.append("UNUSUAL_OPTIONS_SECTION_MISSING")
         if any(escape(candidate.symbol) not in html for candidate in packet.candidates):
             warnings.append("CANDIDATE_CONTENT_MISSING")
         if any(escape(item) not in html for item in packet.disclosures):

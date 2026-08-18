@@ -8,6 +8,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from .sectors import resolve_sector
+
 
 class OvtlyrStatus(StrEnum):
     NEW_BUY = "NEW_BUY"
@@ -116,8 +118,9 @@ def load_ovtlyr_csv(path: str | Path) -> list[OvtlyrRecord]:
                         "signal_start_date",
                         "overlay_start_date",
                     ),
-                    sector=_value(row, columns, "sector", "sector_index")
-                    or "Unknown",
+                    sector=resolve_sector(
+                        symbol, _value(row, columns, "sector", "sector_index")
+                    ),
                     industry=_value(row, columns, "industry"),
                     trend=_value(
                         row,

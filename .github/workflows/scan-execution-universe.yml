@@ -154,12 +154,14 @@ jobs:
               shortlist_rows = list(csv.DictReader(handle))
           rank_by_symbol = {}
           label_by_symbol = {}
+          sector_by_symbol = {}
           for row in shortlist_rows:
               symbol = str(row.get("symbol", "")).upper()
               if not symbol:
                   continue
               rank_by_symbol[symbol] = row.get("rank", "")
               label_by_symbol[symbol] = row.get("display_label", "")
+              sector_by_symbol[symbol] = row.get("sector", "")
 
           symbols = select_execution_universe(
               shortlist,
@@ -221,6 +223,7 @@ jobs:
                       history_meta[0].get("source") if history_meta else "ORATS"
                   )
                   if decision.signal is not None:
+                      decision.signal["sector"] = sector_by_symbol.get(symbol, "")
                       emitted += 1
                       pending_item = build_pending_action(
                           symbol=symbol,

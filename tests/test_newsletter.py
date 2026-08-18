@@ -90,7 +90,12 @@ def packet(*, include_smart_money=False):
 def test_renderer_includes_all_candidates_sections_and_disclosures():
     result = NewsletterRenderer().render(packet())
     assert result.candidate_count == 3
-    assert result.sections == ("PAPER_CANDIDATE", "WATCHLIST", "NO_TRADE")
+    assert result.sections == (
+        "UNUSUAL_OPTIONS_ACTIVITY",
+        "PAPER_CANDIDATE",
+        "WATCHLIST",
+        "NO_TRADE",
+    )
     assert all(symbol in result.html for symbol in ("AAPL", "MSFT", "TSLA"))
     assert "No live order execution is authorized." in result.html
     assert result.quality_passed is True
@@ -98,7 +103,7 @@ def test_renderer_includes_all_candidates_sections_and_disclosures():
 
 def test_renderer_includes_smart_money_confirmation_section():
     result = NewsletterRenderer().render(packet(include_smart_money=True))
-    assert result.sections[0] == "SMART_MONEY"
+    assert result.sections[:2] == ("SMART_MONEY", "UNUSUAL_OPTIONS_ACTIVITY")
     assert "Smart Money Accumulation" in result.html
     assert "Congressional accumulation" in result.html
     assert "Institutional accumulation" in result.html
@@ -106,6 +111,47 @@ def test_renderer_includes_smart_money_confirmation_section():
     assert "MPWR" in result.html
     assert "not trade-timing signals" in result.html
     assert result.quality_passed is True
+
+
+def test_renderer_reports_unusual_options_and_flow_evidence():
+    unusual = ResearchCandidate(
+        symbol="AAPL",
+        disposition=ResearchDisposition.WATCHLIST,
+        instrument=InstrumentSelected.OPTION,
+        signal_label="ENTRY_WATCH",
+        thesis="Research confirmation only.",
+        reasons=("ORATS_FLOW",),
+        risk_status="WATCH",
+        data_status="PASS",
+        sector="Information Technology",
+        option_contract="2026-10-16 CALL 250",
+        flow_classification="UNUSUAL_CONFIRMATION",
+        option_volume=1200,
+        option_open_interest=600,
+        option_volume_oi_ratio=2.0,
+        option_bid=4.8,
+        option_ask=5.0,
+    )
+    base = packet()
+    result = NewsletterRenderer().render(
+        DailyResearchPacket(
+            base.report_date,
+            base.run_id,
+            base.methodology_version,
+            base.generated_at,
+            base.market_regime,
+            (unusual,),
+        )
+    )
+    assert "Unusual Options Activity" in result.html
+    assert "1,200" in result.html
+    assert "2.00x" in result.html
+    assert "4.80 / 5.00" in result.html
+
+
+def test_renderer_explicitly_reports_unavailable_flow_data():
+    result = NewsletterRenderer().render(packet())
+    assert "ORATS flow data unavailable" in result.html
 
 
 def test_renderer_escapes_untrusted_candidate_text():

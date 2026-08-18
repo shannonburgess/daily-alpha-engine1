@@ -46,7 +46,7 @@ def test_loads_real_ovtlyr_export_headers(tmp_path):
     assert record.symbol == "AAA"
     assert record.signal == "BUY"
     assert record.signal_date == "Aug 14 2026"
-    assert record.sector == "Technology"
+    assert record.sector == "Information Technology"
     assert record.trend == "UPTREND"
     assert record.momentum == "MOVING UP"
     assert record.price == 125.50

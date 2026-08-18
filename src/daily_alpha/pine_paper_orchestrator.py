@@ -22,6 +22,7 @@ from .models import DecisionStatus, InstrumentSelected
 from .orats import OratsClient, OratsError
 from .paper_runtime import PaperRuntimeError, process_paper_event
 from .runtime import RuntimeInputError, evaluate_entry_event
+from .sectors import is_verified_sector, resolve_sector
 
 
 class PinePaperExecutionError(RuntimeError):
@@ -82,6 +83,15 @@ class AwsPinePaperExecutor:
         if action not in {"ENTRY_LONG", "ADD", "PARTIAL", "EXIT"}:
             raise PinePaperExecutionError("PINE_ACTION_UNSUPPORTED")
         symbol = _required_text(ingress.get("symbol"), "symbol").upper()
+        if action == "ENTRY_LONG":
+            sector = resolve_sector(symbol, str(ingress.get("sector", "")))
+            if not is_verified_sector(sector):
+                return _execution_result(
+                    disposition="NO_TRADE",
+                    reason="SECTOR_DATA_UNVERIFIED",
+                    action=action,
+                    symbol=symbol,
+                )
         if action in {"ENTRY_LONG", "ADD"}:
             approval = ingress.get("human_approval")
             valid_approval = (
@@ -117,6 +127,14 @@ class AwsPinePaperExecutor:
 
     def _entry(self, ingress: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         symbol = _required_text(ingress.get("symbol"), "symbol").upper()
+        sector = resolve_sector(symbol, str(ingress.get("sector", "")))
+        if not is_verified_sector(sector):
+            return _execution_result(
+                disposition="NO_TRADE",
+                reason="SECTOR_DATA_UNVERIFIED",
+                action="ENTRY_LONG",
+                symbol=symbol,
+            )
         if self.ledger.find_open(symbol):
             return _execution_result(
                 disposition="NO_TRADE",
@@ -131,8 +149,8 @@ class AwsPinePaperExecutor:
             raise PinePaperExecutionError(f"ORATS_DATA_ERROR:{exc}") from exc
 
         open_trades = _all_open_trades(self.ledger)
-        total_risk, daily_risk, new_today, cluster_risk = _paper_risk_state(
-            open_trades, now=now
+        total_risk, daily_risk, new_today, cluster_risk, sector_risk = (
+            _paper_risk_state(open_trades, now=now)
         )
         approval = ingress.get("human_approval")
         approved_risk_fraction = float(
@@ -179,13 +197,13 @@ class AwsPinePaperExecutor:
                 "beta_exposure": 0.0,
                 "delta_exposure": 0.0,
                 "cluster_risk": cluster_risk,
-                "sector_risk": [["UNKNOWN", total_risk]] if total_risk else [],
+                "sector_risk": sector_risk,
             },
             "proposed_trade": {
                 "decision_id": str(ingress.get("signal_id", "")),
                 "planned_loss": proposed_loss,
                 "cluster_id": symbol,
-                "sector": "UNKNOWN",
+                "sector": sector,
                 "beta_exposure": 0.0,
                 "delta_exposure": 0.0,
                 "event_risk": False,
@@ -426,16 +444,18 @@ def _paper_risk_state(
     trades: list[PaperTrade],
     *,
     now: datetime,
-) -> tuple[float, float, int, list[list[Any]]]:
+) -> tuple[float, float, int, list[list[Any]], list[list[Any]]]:
     total = 0.0
     daily = 0.0
     new_today = 0
     by_symbol: dict[str, float] = {}
+    by_sector: dict[str, float] = {}
     for trade in trades:
         multiplier = 100 if trade.instrument == InstrumentSelected.OPTION else 1
         amount = trade.quantity * trade.entry_price * multiplier
         total += amount
         by_symbol[trade.symbol] = by_symbol.get(trade.symbol, 0.0) + amount
+        by_sector[trade.sector] = by_sector.get(trade.sector, 0.0) + amount
         try:
             entered = datetime.fromisoformat(trade.entry_time)
             entered = _aware(entered)
@@ -445,7 +465,8 @@ def _paper_risk_state(
             daily += amount
             new_today += 1
     clusters = [[symbol, amount] for symbol, amount in sorted(by_symbol.items())]
-    return total, daily, new_today, clusters
+    sectors = [[sector, amount] for sector, amount in sorted(by_sector.items())]
+    return total, daily, new_today, clusters, sectors
 
 
 def _signal_payload(ingress: Mapping[str, Any]) -> dict[str, Any]:

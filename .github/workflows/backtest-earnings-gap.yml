@@ -95,7 +95,7 @@ jobs:
               --start 2024-01-01 \
               --end 2026-08-14 \
               --json-out "pilot/${ticker}.json" > "pilot/${ticker}.txt"; then
-              tail -n +1 "pilot/${ticker}.txt" | head -n 6
+              sed -n '1,6p' "pilot/${ticker}.txt"
             else
               echo "$ticker" | tee -a pilot/failures.txt
             fi
