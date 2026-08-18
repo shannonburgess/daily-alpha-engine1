@@ -1,0 +1,48 @@
+name: One-time ORATS backtest wiring
+
+on:
+  push:
+    branches:
+      - agent/orats-history-fallback-refresh
+    paths:
+      - .github/workflows/orats-backtest-wiring.yml
+
+permissions:
+  contents: write
+
+jobs:
+  wire-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/orats-history-fallback-refresh
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply strict history wiring
+        run: python scripts/apply_orats_backtest_wiring.py
+      - name: Install package
+        run: python -m pip install --disable-pip-version-check .
+      - name: Run focused ORATS history tests
+        run: >-
+          pytest -q
+          tests/test_orats_historical_transport.py
+          tests/test_orats_history_route.py
+          tests/test_orats_history_fetch.py
+          tests/test_backtest_orats_history_wiring.py
+      - name: Run full test suite
+        run: pytest -q
+      - name: Commit tested wiring and remove helper
+        run: |
+          rm .github/workflows/orats-backtest-wiring.yml scripts/apply_orats_backtest_wiring.py
+          git config user.name "Daily Alpha Research Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/daily_alpha/backtest.py tests/test_backtest_orats_history_wiring.py .github/workflows/orats-backtest-wiring.yml scripts/apply_orats_backtest_wiring.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Wire strict ORATS history adapter into backtest"
+          git push origin HEAD:agent/orats-history-fallback-refresh
