@@ -13,11 +13,7 @@ from datetime import date
 from typing import Any
 from urllib.parse import urlencode
 
-from daily_alpha.orats_history_route import (
-    HistoricalRouteResult,
-    request_with_compatibility_fallback,
-)
-
+from .orats_history_route import HistoricalRouteResult, request_with_compatibility_fallback
 
 HistoricalRouter = Callable[..., HistoricalRouteResult]
 
