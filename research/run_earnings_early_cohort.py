@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import math
 import os
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
@@ -29,7 +28,7 @@ from daily_alpha.earnings_early_research import (
 )
 
 SYMBOLS = [
-    "AAPL","MSFT","NVDA","AMZN","META","GOOGL","AVGO","AMD","QCOM","TXN",
+    "AAPL","MSFT","NVDA","AMZN","META","GOOGL","AVGO","MRVL","AMD","QCOM","TXN",
     "AMAT","KLAC","CRM","NOW","ORCL","IBM","CSCO","PANW","JPM","BAC","WFC",
     "GS","MS","AXP","SCHW","UNH","LLY","ABBV","TMO","DHR","ISRG","AMGN",
     "CAT","DE","GE","RTX","HON","ETN","EMR","PWR","XOM","CVX","COP","EOG",
@@ -154,7 +153,11 @@ def exclusion_views(events: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "all": summarize(events),
         "without_best_20d_event": {
-            "excluded": {"symbol": best20["symbol"], "date": best20["date"], "return_20d_pct": best20["return_20d_pct"]},
+            "excluded": {
+                "symbol": best20["symbol"],
+                "date": best20["date"],
+                "return_20d_pct": best20["return_20d_pct"],
+            },
             "summary": summarize(without_best),
         },
         "without_mrvl": summarize(without_mrvl),
@@ -175,7 +178,7 @@ def main() -> None:
             symbol = futures[future]
             try:
                 events.extend(future.result())
-            except Exception as exc:  # research runner preserves complete failure evidence
+            except RuntimeError as exc:
                 failures[symbol] = f"{type(exc).__name__}: {exc}"
 
     events.sort(key=lambda e: (e["date"], e["symbol"]))
