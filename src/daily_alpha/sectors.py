@@ -10,12 +10,15 @@ CANONICAL_SECTORS = frozenset({
 
 _SECTOR_ALIASES = {
     "basic materials": "Materials",
+    "communication": "Communication Services",
     "communications": "Communication Services",
     "communication services": "Communication Services",
     "consumer cyclical": "Consumer Discretionary",
     "consumer discretionary": "Consumer Discretionary",
+    "discretionary": "Consumer Discretionary",
     "consumer defensive": "Consumer Staples",
     "consumer staples": "Consumer Staples",
+    "staples": "Consumer Staples",
     "energy": "Energy",
     "financial": "Financials",
     "financial services": "Financials",
