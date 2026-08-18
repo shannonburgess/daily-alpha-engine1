@@ -21,28 +21,28 @@ def _source(source_id: str = "OVTLYR") -> SourceEvidence:
 
 
 def _manifest(**overrides):
-    values = dict(
-        report_id="daily-alpha-2026-08-17-eod",
-        report_type="EOD_BRIEF",
-        generated_at="2026-08-17T20:20:00-04:00",
-        source_as_of_at="2026-08-17T20:00:00-04:00",
-        strategy_version="v2.4",
-        model_version="ranker-3",
-        methodology_version="perf-1",
-        ranking_schema_version="rank-2",
-        entitlement_tier="RESEARCH_PLUS",
-        environment="staging",
-        git_commit="abc123",
-        build_id="build-99",
-        config_hash="cfg-123",
-        performance_basis="PAPER",
-        benchmark_id="SPY_TOTAL_RETURN",
-        cost_model_version="cost-1",
-        option_mark_policy="EXECUTABLE_SIDE_V1",
-        archive_locator="s3://reports/2026-08-17/eod.json",
-        delivery_correlation_id="delivery-123",
-        sources=(_source("ORATS"), _source("OVTLYR")),
-    )
+    values = {
+        "report_id": "daily-alpha-2026-08-17-eod",
+        "report_type": "EOD_BRIEF",
+        "generated_at": "2026-08-17T20:20:00-04:00",
+        "source_as_of_at": "2026-08-17T20:00:00-04:00",
+        "strategy_version": "v2.4",
+        "model_version": "ranker-3",
+        "methodology_version": "perf-1",
+        "ranking_schema_version": "rank-2",
+        "entitlement_tier": "RESEARCH_PLUS",
+        "environment": "staging",
+        "git_commit": "abc123",
+        "build_id": "build-99",
+        "config_hash": "cfg-123",
+        "performance_basis": "PAPER",
+        "benchmark_id": "SPY_TOTAL_RETURN",
+        "cost_model_version": "cost-1",
+        "option_mark_policy": "EXECUTABLE_SIDE_V1",
+        "archive_locator": "s3://reports/2026-08-17/eod.json",
+        "delivery_correlation_id": "delivery-123",
+        "sources": (_source("ORATS"), _source("OVTLYR")),
+    }
     values.update(overrides)
     return ReportProvenanceManifest(**values)
 
