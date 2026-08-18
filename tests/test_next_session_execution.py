@@ -105,29 +105,68 @@ def _pending_doc():
         state_before=None,
         state_after=state,
     )
-    pending["human_approval"] = {
-        "status": "APPROVED",
-        "approval_id": "test-approval-1",
-        "approved_risk_fraction": 0.005,
-    }
     return {"schema_version": "2026-08-17-pending-v1", "actions": [pending]}
 
 
-def _s3_with_pending():
+def _pending_add_doc():
+    before = ScannerState(
+        symbol="MU",
+        entry_date="2026-08-17",
+        runner_base_entry=100.0,
+        runner_base_atr=5.0,
+        entry_breakout_level=98.0,
+        runner_stage="STARTER",
+    )
+    after = ScannerState(
+        symbol="MU",
+        entry_date="2026-08-17",
+        runner_base_entry=100.0,
+        runner_base_atr=5.0,
+        entry_breakout_level=98.0,
+        runner_stage="ADD_1_ATR",
+        add1_price=105.0,
+    )
+    pending = build_pending_action(
+        symbol="MU",
+        action="ADD",
+        reason="ADD_1_ATR",
+        signal={
+            "source": "DAILY_ALPHA_SCANNER",
+            "signal_id": "DA-SCAN-MU-2026-08-17-ADD",
+            "symbol": "MU",
+            "action": "ADD",
+            "strategy": "DA_TURTLE_ADAPTIVE_TREND",
+            "strategy_version": "2.4",
+            "timeframe": "D",
+            "price": 105.0,
+            "bar_time": "2026-08-17T20:20:00+00:00",
+            "runner_stage": "ADD_1_ATR",
+        },
+        market_date="2026-08-17",
+        created_at=datetime(2026, 8, 17, 20, 20, tzinfo=UTC),
+        state_before=before,
+        state_after=after,
+    )
+    return {"schema_version": "2026-08-17-pending-v1", "actions": [pending]}
+
+
+def _s3_with_doc(doc, *, watch=None, state="{}"):
     return FakeS3(
         {
-            "daily-alpha/execution-universe/latest/pending_actions.json": json.dumps(
-                _pending_doc()
-            ),
-            "daily-alpha/execution-universe/latest/state.json": "{}",
+            "daily-alpha/execution-universe/latest/pending_actions.json": json.dumps(doc),
+            "daily-alpha/execution-universe/latest/state.json": state,
             "daily-alpha/execution-universe/latest/active_watch.json": json.dumps(
-                [{"rank": "1", "symbol": "MU", "position": "FLAT"}]
+                watch if watch is not None else [{"rank": "1", "symbol": "MU", "position": "FLAT"}]
             ),
         }
     )
 
 
-def test_valid_next_session_entry_routes_to_paper_processor(tmp_path):
+def _s3_with_pending():
+    return _s3_with_doc(_pending_doc())
+
+
+def test_valid_next_session_entry_routes_to_paper_processor_without_approval(tmp_path):
     s3 = _s3_with_pending()
     lamb = FakeLambda()
     orats = FakeOrats(stock_price=101.0)
@@ -145,17 +184,81 @@ def test_valid_next_session_entry_routes_to_paper_processor(tmp_path):
     )
 
     assert audit["executed_paper"] == 1
+    assert audit["paper_execution_mode"] == "AUTONOMOUS_PAPER_ONLY"
     assert audit["live_trading_enabled"] is False
+    assert audit["attempts"][0]["execution_authority"] == "AUTONOMOUS_PAPER_ONLY"
     assert len(lamb.calls) == 1
     payload = json.loads(lamb.calls[0]["Payload"].decode("utf-8"))
     assert payload["operation"] == "EXECUTE_SCANNER_SIGNAL"
     assert payload["signal"]["price"] == 101.0
+    assert "human_approval" not in payload["signal"]
+    assert "approved_risk_fraction" not in payload["signal"]
     pending = json.loads(
         s3.uploads["daily-alpha/execution-universe/latest/pending_actions.json"]
     )
     assert pending["actions"] == []
     state = json.loads(s3.uploads["daily-alpha/execution-universe/latest/state.json"])
     assert state["MU"]["runner_stage"] == "STARTER"
+
+
+def test_add_routes_without_human_approval_when_trigger_remains_valid(tmp_path):
+    s3 = _s3_with_doc(_pending_add_doc())
+    lamb = FakeLambda()
+    orats = FakeOrats(stock_price=106.0)
+
+    audit = run_next_session_execution(
+        mode="morning_primary",
+        bucket="test",
+        token="token",
+        workdir=tmp_path,
+        now=NOW,
+        s3_client=s3,
+        lambda_client=lamb,
+        orats_client=orats,
+    )
+
+    assert audit["executed_paper"] == 1
+    assert len(lamb.calls) == 1
+    payload = json.loads(lamb.calls[0]["Payload"].decode("utf-8"))
+    assert payload["signal"]["action"] == "ADD"
+    assert payload["signal"]["price"] == 106.0
+    assert "human_approval" not in payload["signal"]
+    state = json.loads(s3.uploads["daily-alpha/execution-universe/latest/state.json"])
+    assert state["MU"]["runner_stage"] == "ADD_1_ATR"
+
+
+def test_legacy_human_approval_status_is_normalized_and_not_forwarded(tmp_path):
+    doc = _pending_doc()
+    doc["actions"][0]["status"] = "PENDING_HUMAN_APPROVAL"
+    doc["actions"][0]["human_approval"] = {
+        "status": "DENIED",
+        "approval_id": "legacy-only",
+        "approved_risk_fraction": 1.0,
+    }
+    doc["actions"][0]["signal"]["human_approval"] = {"status": "DENIED"}
+    doc["actions"][0]["signal"]["approved_risk_fraction"] = 1.0
+    s3 = _s3_with_doc(doc, watch=[])
+    lamb = FakeLambda()
+    orats = FakeOrats(stock_price=101.0)
+
+    audit = run_next_session_execution(
+        mode="morning_primary",
+        bucket="test",
+        token="token",
+        workdir=tmp_path,
+        now=NOW,
+        s3_client=s3,
+        lambda_client=lamb,
+        orats_client=orats,
+    )
+
+    assert audit["executed_paper"] == 1
+    assert audit["attempts"][0]["legacy_status_normalized"] == "PENDING_HUMAN_APPROVAL"
+    assert len(orats.calls) == 1
+    assert len(lamb.calls) == 1
+    payload = json.loads(lamb.calls[0]["Payload"].decode("utf-8"))
+    assert "human_approval" not in payload["signal"]
+    assert "approved_risk_fraction" not in payload["signal"]
 
 
 def test_orats_data_error_is_deferred_not_filled(tmp_path):
@@ -204,36 +307,3 @@ def test_unsafe_live_enabled_processor_response_fails_hard(tmp_path):
             lambda_client=lamb,
             orats_client=FakeOrats(stock_price=101.0),
         )
-
-
-def test_unapproved_entry_remains_pending_without_market_or_processor_calls(tmp_path):
-    doc = _pending_doc()
-    doc["actions"][0].pop("human_approval")
-    s3 = FakeS3(
-        {
-            "daily-alpha/execution-universe/latest/pending_actions.json": json.dumps(doc),
-            "daily-alpha/execution-universe/latest/state.json": "{}",
-            "daily-alpha/execution-universe/latest/active_watch.json": "[]",
-        }
-    )
-    lamb = FakeLambda()
-    orats = FakeOrats(stock_price=101.0)
-
-    audit = run_next_session_execution(
-        mode="morning_primary",
-        bucket="test",
-        token="token",
-        workdir=tmp_path,
-        now=NOW,
-        s3_client=s3,
-        lambda_client=lamb,
-        orats_client=orats,
-    )
-
-    assert audit["executed_paper"] == 0
-    assert lamb.calls == []
-    assert orats.calls == []
-    pending = json.loads(
-        s3.uploads["daily-alpha/execution-universe/latest/pending_actions.json"]
-    )
-    assert pending["actions"][0]["status"] == "PENDING_HUMAN_APPROVAL"
