@@ -13,6 +13,7 @@ from typing import Any
 
 from .execution_queue import (
     CANCEL_STATUS,
+    PENDING_STATUS,
     RETRY_STATUS,
     WAIT_STATUS,
     prepare_next_session_signal,
@@ -22,6 +23,7 @@ from .orats import OratsClient, OratsError
 
 DEFAULT_BUCKET = "daily-alpha-staging-490809405132-us-east-2"
 LATEST_PREFIX = "daily-alpha/execution-universe/latest"
+LEGACY_HUMAN_APPROVAL_STATUS = "PENDING_HUMAN_APPROVAL"
 
 
 class UnsafeExecutionError(RuntimeError):
@@ -90,7 +92,8 @@ def run_next_session_execution(
     remaining: list[dict[str, Any]] = []
     attempts: list[dict[str, Any]] = []
 
-    for item in actions:
+    for raw_item in actions:
+        item = dict(raw_item)
         symbol = str(item.get("symbol", "")).strip().upper()
         action = str(item.get("action", "")).strip().upper()
         if not symbol or not action:
@@ -101,36 +104,16 @@ def run_next_session_execution(
             "action": action,
             "origin_market_date": item.get("market_date"),
             "mode": mode,
+            "execution_authority": "AUTONOMOUS_PAPER_ONLY",
         }
-        approval = item.get("human_approval")
-        if action in {"ENTRY_LONG", "ADD"}:
-            valid_approval = (
-                isinstance(approval, dict)
-                and str(approval.get("status", "")).upper() == "APPROVED"
-                and bool(str(approval.get("approval_id", "")).strip())
-            )
-            try:
-                approved_risk_fraction = float(
-                    approval.get("approved_risk_fraction", 0.0)
-                    if isinstance(approval, dict)
-                    else 0.0
-                )
-            except (TypeError, ValueError):
-                approved_risk_fraction = 0.0
-            if not valid_approval or not 0.0 < approved_risk_fraction <= 0.005:
-                pending_item = dict(item)
-                pending_item["status"] = "PENDING_HUMAN_APPROVAL"
-                remaining.append(pending_item)
-                record["final_status"] = "PENDING_HUMAN_APPROVAL"
-                record["reason"] = "ENTRY_OR_ADD_REQUIRES_VALID_HUMAN_APPROVAL"
-                attempts.append(record)
-                _update_watch(
-                    watch_by_symbol,
-                    symbol,
-                    scanner_status="PENDING_HUMAN_APPROVAL",
-                    execution="NO_ACTION",
-                )
-                continue
+
+        # Compatibility migration for actions stamped by the former manual-approval
+        # gate. Paper execution is autonomous; the downstream paper executor owns
+        # the hard 0.50% NAV ceiling plus lifecycle sizing and portfolio-risk gates.
+        if str(item.get("status", "")).upper() == LEGACY_HUMAN_APPROVAL_STATUS:
+            item["status"] = PENDING_STATUS
+            record["legacy_status_normalized"] = LEGACY_HUMAN_APPROVAL_STATUS
+
         try:
             chain = orats.fetch_chain(symbol, as_of=timestamp)
             stock_price = float(chain.stock_price)
@@ -163,9 +146,11 @@ def run_next_session_execution(
                 continue
 
             executable_signal = dict(prepared.signal or {})
-            if action in {"ENTRY_LONG", "ADD"}:
-                executable_signal["human_approval"] = dict(approval)
-                executable_signal["approved_risk_fraction"] = approved_risk_fraction
+            # Do not forward obsolete manual-approval metadata. Sizing and risk are
+            # derived by the autonomous paper executor from configured NAV, lifecycle,
+            # portfolio state, and fresh market data.
+            executable_signal.pop("human_approval", None)
+            executable_signal.pop("approved_risk_fraction", None)
             outcome = _invoke_processor(lambda_client, executable_signal)
             record["processor"] = outcome
             if outcome.get("ok") is not True:
@@ -245,6 +230,7 @@ def run_next_session_execution(
         "schema_version": "2026-08-17-next-session-v1",
         "generated_at": timestamp.isoformat(),
         "execution_mode": mode,
+        "paper_execution_mode": "AUTONOMOUS_PAPER_ONLY",
         "attempted": attempted,
         "executed_paper": executed,
         "cancelled_or_no_trade": cancelled,
