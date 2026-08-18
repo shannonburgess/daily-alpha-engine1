@@ -133,10 +133,10 @@ jobs:
           aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
 
-      - name: Rehearse paper processor fail-closed approval gate
+      - name: Rehearse paper processor fail-closed safety gate
         shell: bash
         run: |
-          python - <<'PY' >/tmp/unapproved-entry.json
+          python - <<'PY' >/tmp/fail-closed-entry.json
           import json
           from datetime import UTC, datetime
 
@@ -145,7 +145,7 @@ jobs:
               "operation": "EXECUTE_SCANNER_SIGNAL",
               "signal": {
                   "source": "DAILY_ALPHA_SCANNER",
-                  "signal_id": "STAGING-READINESS-SPY-UNAPPROVED",
+                  "signal_id": "STAGING-READINESS-SPY-UNVERIFIED-SECTOR",
                   "symbol": "SPY",
                   "action": "ENTRY_LONG",
                   "strategy": "DA_TURTLE_ADAPTIVE_TREND",
@@ -154,6 +154,7 @@ jobs:
                   "price": 100.0,
                   "bar_time": now,
                   "entry_type": "NORMAL_BREAKOUT",
+                  "sector": "Unknown",
                   "stock_stop_price": 95.0,
                   "average_daily_dollar_volume": 1000000000.0
               }
@@ -162,9 +163,9 @@ jobs:
           aws lambda invoke \
             --function-name daily-alpha-pine-processor \
             --cli-binary-format raw-in-base64-out \
-            --payload file:///tmp/unapproved-entry.json \
-            /tmp/unapproved-result.json
-          cat /tmp/unapproved-result.json
+            --payload file:///tmp/fail-closed-entry.json \
+            /tmp/fail-closed-result.json
+          cat /tmp/fail-closed-result.json
 
       - name: Validate paper-only readiness response
         shell: python
@@ -172,12 +173,15 @@ jobs:
           import json
           from pathlib import Path
 
-          result = json.loads(Path("/tmp/unapproved-result.json").read_text())
+          result = json.loads(Path("/tmp/fail-closed-result.json").read_text())
           assert result["ok"] is True
+          assert result["trading_authorized"] is False
           assert result["live_trading_enabled"] is False
           execution = result["execution"]
           assert execution["disposition"] == "NO_TRADE"
-          assert execution["reason"] == "HUMAN_APPROVAL_REQUIRED"
+          assert execution["reason"] == "SECTOR_DATA_UNVERIFIED"
           assert execution["paper_execution_triggered"] is False
-          print("Staging readiness passed: unapproved ENTRY was blocked without a paper fill.")
-
+          print(
+              "Staging readiness passed: autonomous paper execution remains live-disabled "
+              "and fails closed on unverified sector data without a paper fill."
+          )
