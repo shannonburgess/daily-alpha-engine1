@@ -42,6 +42,7 @@ def engine_result(*, instrument="OPTION"):
             "status": "APPROVED",
             "policy_version": "2026-08-15-v2",
             "nav": 1_000_000.0,
+            "risk_snapshot": {"proposed": {"sector": "Technology"}},
         },
         "decision": {
             "symbol": "AAPL",
