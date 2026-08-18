@@ -46,6 +46,10 @@ def resolve_lifecycle_sizing(value: object) -> LifecycleSizingPolicy | None:
 def lifecycle_risk_fraction(value: object, approved_risk_fraction: float) -> float:
     """Apply lifecycle sizing without ever exceeding the human-approved risk."""
     policy = resolve_lifecycle_sizing(value)
-    if policy is None or not policy.entry_allowed:
+    # Missing classification must not suppress a valid paper signal. Use the
+    # smallest starter allocation until lifecycle data becomes available.
+    if policy is None:
+        return approved_risk_fraction * 0.25
+    if not policy.entry_allowed:
         return 0.0
     return approved_risk_fraction * policy.risk_multiplier
