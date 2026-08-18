@@ -86,14 +86,7 @@ class AwsPinePaperExecutor:
         symbol = _required_text(ingress.get("symbol"), "symbol").upper()
         if action == "ENTRY_LONG":
             lifecycle = resolve_lifecycle_sizing(ingress.get("lifecycle"))
-            if lifecycle is None:
-                return _execution_result(
-                    disposition="NO_TRADE",
-                    reason="LIFECYCLE_DATA_UNVERIFIED",
-                    action=action,
-                    symbol=symbol,
-                )
-            if not lifecycle.entry_allowed:
+            if lifecycle is not None and not lifecycle.entry_allowed:
                 return _execution_result(
                     disposition="NO_TRADE",
                     reason="LIFECYCLE_EXTENDED_NO_CHASE",
