@@ -2,6 +2,14 @@ name: Deploy Daily Alpha staging Lambdas
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/daily_alpha/**"
+      - "lambda_handlers/**"
+      - "pyproject.toml"
+      - ".github/workflows/deploy-staging-lambdas.yml"
 
 permissions:
   contents: read
