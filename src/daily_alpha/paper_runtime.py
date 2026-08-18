@@ -13,6 +13,7 @@ from .models import (
     OptionCandidate,
 )
 from .pipeline import EntryPricing, PaperTradingPipeline
+from .sectors import is_verified_sector, resolve_sector
 from .signals import SignalAction, parse_pine_signal
 from .sizing import PortfolioLimits
 
@@ -92,11 +93,17 @@ def _open_from_decision(event: Mapping[str, Any], ledger: Any) -> dict[str, Any]
     )
     pricing_payload = _as_mapping(event.get("pricing", {}), "pricing")
     pricing, pricing_source = _entry_pricing(decision, pricing_payload)
+    risk_snapshot = _as_mapping(risk.get("risk_snapshot", {}), "risk.risk_snapshot")
+    proposed = _as_mapping(risk_snapshot.get("proposed", {}), "risk.proposed")
+    sector = resolve_sector(signal.symbol, str(proposed.get("sector", "")))
+    if not is_verified_sector(sector):
+        raise PaperRuntimeError("SECTOR_DATA_UNVERIFIED")
 
     trade = PaperTradingPipeline(ledger, limits).process_entry(
         signal=signal,
         decision=decision,
         pricing=pricing,
+        sector=sector,
     )
     result = _trade_result(
         "OPEN_FROM_DECISION",
