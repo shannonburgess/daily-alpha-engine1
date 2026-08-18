@@ -17,6 +17,8 @@ class FakeSecrets:
 class FakeOrats:
     def __init__(self):
         self.calls = []
+        self.bid = 2.0
+        self.ask = 2.2
 
     def fetch_chain(self, ticker, *, as_of=None, dte_min=45, dte_max=75):
         self.calls.append((ticker, as_of, dte_min, dte_max))
@@ -29,8 +31,8 @@ class FakeOrats:
                     strike=100.0,
                     option_type="CALL",
                     dte=60,
-                    bid=2.0,
-                    ask=2.2,
+                    bid=self.bid,
+                    ask=self.ask,
                     open_interest=500,
                     volume=100,
                     delta=0.50,
@@ -48,6 +50,7 @@ def ingress(action="ENTRY_LONG", **overrides):
         "signal_id": f"AAPL-{action}",
         "symbol": "AAPL",
         "sector": "Technology",
+        "lifecycle": "CONFIRMED_LEADER",
         "action": action,
         "strategy": "DA_TURTLE_ADAPTIVE_TREND",
         "strategy_version": "1.9",
@@ -102,6 +105,8 @@ def test_option_runner_add_uses_same_contract_orats_ask(tmp_path):
     service = executor(tmp_path, fake_orats)
     service.execute(ingress(), now=NOW)
     before = service.ledger.find_open("AAPL")[0]
+    fake_orats.bid = 2.4
+    fake_orats.ask = 2.5
 
     result = service.execute(
         ingress(
@@ -206,3 +211,62 @@ def test_entry_without_human_approval_is_blocked(tmp_path):
     assert result["reason"] == "HUMAN_APPROVAL_REQUIRED"
     assert service.ledger.find_open("AAPL") == []
     assert fake_orats.calls == []
+
+
+
+def test_extended_leader_is_not_chased(tmp_path):
+    fake_orats = FakeOrats()
+    service = executor(tmp_path, fake_orats)
+
+    result = service.execute(ingress(lifecycle="EXTENDED_LEADER"), now=NOW)
+
+    assert result["disposition"] == "NO_TRADE"
+    assert result["reason"] == "LIFECYCLE_EXTENDED_NO_CHASE"
+    assert service.ledger.find_open("AAPL") == []
+    assert fake_orats.calls == []
+
+
+def test_missing_lifecycle_is_blocked(tmp_path):
+    fake_orats = FakeOrats()
+    service = executor(tmp_path, fake_orats)
+
+    result = service.execute(ingress(lifecycle=""), now=NOW)
+
+    assert result["disposition"] == "NO_TRADE"
+    assert result["reason"] == "LIFECYCLE_DATA_UNVERIFIED"
+    assert service.ledger.find_open("AAPL") == []
+
+
+def test_early_emerging_sizes_below_confirmed_leader(tmp_path):
+    early_orats = FakeOrats()
+    early = executor(tmp_path / "early", early_orats)
+    leader_orats = FakeOrats()
+    leader = executor(tmp_path / "leader", leader_orats)
+
+    early.execute(ingress(lifecycle="EARLY_EMERGING"), now=NOW)
+    leader.execute(ingress(lifecycle="CONFIRMED_LEADER"), now=NOW)
+
+    early_trade = early.ledger.find_open("AAPL")[0]
+    leader_trade = leader.ledger.find_open("AAPL")[0]
+    assert early_trade.target_quantity < leader_trade.target_quantity
+    assert early_trade.planned_loss < leader_trade.planned_loss
+
+
+def test_option_add_rejected_when_position_is_not_profitable(tmp_path):
+    fake_orats = FakeOrats()
+    service = executor(tmp_path, fake_orats)
+    service.execute(ingress(), now=NOW)
+
+    result = service.execute(
+        ingress(
+            "ADD",
+            signal_id="AAPL-ADD-LOSER",
+            position_fraction=0.25,
+            runner_stage="ADD_1_ATR",
+        ),
+        now=NOW,
+    )
+
+    assert result["disposition"] == "NO_TRADE"
+    assert result["reason"] == "ADD_REJECTED_POSITION_NOT_PROFITABLE"
+    assert service.ledger.find_open("AAPL")[0].runner_stage == "STARTER"
