@@ -8,6 +8,13 @@ on:
       - "research/run_r2_downside_overlay.py"
       - ".github/workflows/research-r2-downside-overlay.yml"
       - "src/daily_alpha/backtest.py"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "research/run_r2_downside_overlay.py"
+      - ".github/workflows/research-r2-downside-overlay.yml"
+      - "src/daily_alpha/backtest.py"
   workflow_dispatch:
 
 concurrency:
