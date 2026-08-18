@@ -271,10 +271,7 @@ def _seed_staging_s3(client):
       {"sector":"Technology","new_buys":3,"leaders":5,"net_score":8},
       {"sector":"Industrials","new_buys":1,"leaders":2,"net_score":3}
     ]'''
-    client.objects["ovtlyr/shortlist/latest/shortlist.csv"] = b"rank,symbol
-1,AAPL
-2,XYZ
-"
+    client.objects["ovtlyr/shortlist/latest/shortlist.csv"] = b"rank,symbol\n1,AAPL\n2,XYZ\n"
 
 
 def test_staging_publisher_writes_newsletter_csvs_and_manifest():
