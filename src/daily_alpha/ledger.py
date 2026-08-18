@@ -40,6 +40,7 @@ class PaperTrade:
     add1_signal_id: str | None = None
     add2_signal_id: str | None = None
     harvest_signal_id: str | None = None
+    sector: str = "Unknown"
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -70,6 +71,7 @@ class PaperLedger:
         option_type: str | None = None,
         target_quantity: int | None = None,
         runner_stage: str = "STARTER",
+        sector: str = "Unknown",
     ) -> PaperTrade:
         if instrument not in {InstrumentSelected.OPTION, InstrumentSelected.STOCK}:
             raise ValueError("Paper trade instrument must be OPTION or STOCK")
@@ -95,6 +97,7 @@ class PaperLedger:
             option_type=option_type,
             target_quantity=target,
             runner_stage=runner_stage,
+            sector=sector,
         )
         self._append(
             instrument,
