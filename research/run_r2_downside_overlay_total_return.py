@@ -22,7 +22,7 @@ from datetime import date
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-import research.run_r2_downside_overlay as base
+import run_r2_downside_overlay as base
 from daily_alpha.backtest import Bar
 
 FRED_DGS3MO_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS3MO"
