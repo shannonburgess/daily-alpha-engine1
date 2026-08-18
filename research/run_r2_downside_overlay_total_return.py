@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections import defaultdict
 from datetime import date
@@ -167,7 +168,7 @@ def simulate_with_sgov_distributions(
 
 
 def main() -> None:
-    token = base.os.environ.get("ORATS_TOKEN", "").strip()
+    token = os.environ.get("ORATS_TOKEN", "").strip()
     if not token:
         raise SystemExit("ORATS_TOKEN is required")
     dividends, digest = fetch_sgov_dividends(token)
