@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable
+from typing import Any
 
 _ALLOWED_BASES = {"NONE", "ACTUAL", "PAPER", "BACKTEST", "HYPOTHETICAL"}
 _ALLOWED_ENVIRONMENTS = {"research", "staging", "production"}
@@ -101,9 +102,7 @@ class ReportProvenanceManifest:
     def canonical_dict(self) -> dict[str, Any]:
         self.validate()
         payload = asdict(self)
-        payload["sources"] = [
-            asdict(source) for source in sorted(self.sources)
-        ]
+        payload["sources"] = [asdict(source) for source in sorted(self.sources)]
         return payload
 
     def canonical_json(self) -> str:
@@ -119,17 +118,10 @@ class ReportProvenanceManifest:
 
     def immutable_identity(self) -> str:
         """Stable idempotency key for one report/build/evidence combination."""
-        raw = "|".join(
-            (
-                self.report_id,
-                self.report_type,
-                self.strategy_version,
-                self.model_version,
-                self.methodology_version,
-                self.git_commit,
-                self.build_id,
-                self.evidence_hash(),
-            )
+        raw = (
+            f"{self.report_id}|{self.report_type}|{self.strategy_version}|"
+            f"{self.model_version}|{self.methodology_version}|{self.git_commit}|"
+            f"{self.build_id}|{self.evidence_hash()}"
         )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
