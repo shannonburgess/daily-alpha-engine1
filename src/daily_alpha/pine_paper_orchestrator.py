@@ -108,28 +108,6 @@ class AwsPinePaperExecutor:
                     action=action,
                     symbol=symbol,
                 )
-        if action in {"ENTRY_LONG", "ADD"}:
-            approval = ingress.get("human_approval")
-            valid_approval = (
-                isinstance(approval, Mapping)
-                and str(approval.get("status", "")).upper() == "APPROVED"
-                and bool(str(approval.get("approval_id", "")).strip())
-            )
-            try:
-                approved_risk_fraction = float(
-                    approval.get("approved_risk_fraction", 0.0)
-                    if isinstance(approval, Mapping)
-                    else 0.0
-                )
-            except (TypeError, ValueError):
-                approved_risk_fraction = 0.0
-            if not valid_approval or not 0.0 < approved_risk_fraction <= 0.005:
-                return _execution_result(
-                    disposition="NO_TRADE",
-                    reason="HUMAN_APPROVAL_REQUIRED",
-                    action=action,
-                    symbol=symbol,
-                )
         if not _regular_execution_window(timestamp):
             return _execution_result(
                 disposition="NO_TRADE",
@@ -168,12 +146,9 @@ class AwsPinePaperExecutor:
         total_risk, daily_risk, new_today, cluster_risk, sector_risk = (
             _paper_risk_state(open_trades, now=now)
         )
-        approval = ingress.get("human_approval")
-        approved_risk_fraction = float(
-            approval.get("approved_risk_fraction", 0.0)
-            if isinstance(approval, Mapping)
-            else 0.0
-        )
+        # Paper trading is autonomous by design. Lifecycle policy may reduce this
+        # ceiling, but no paper entry may exceed 0.50% of configured NAV.
+        approved_risk_fraction = 0.005
         lifecycle_fraction = lifecycle_risk_fraction(
             ingress.get("lifecycle"), approved_risk_fraction
         )
