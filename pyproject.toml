@@ -29,5 +29,6 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint.per-file-ignores]
+"research/run_r2_downside_overlay.py" = ["BLE001"]
 "src/daily_alpha/backtest.py" = ["FURB105", "I001"]
 "src/daily_alpha/backtest_sensitivity.py" = ["BLE001"]
