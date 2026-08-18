@@ -58,10 +58,11 @@ Current state:
 - heavy research workflows are serialized;
 - standard ORATS client has bounded 429/transient retry and distinct rate-limit classification;
 - refreshed historical transport on current `main` distinguishes RATE_LIMITED / AUTH / REQUEST / HTTP / malformed-data failures and is green;
-- strict compatibility-route helper now allows a legacy-route fallback only on explicit endpoint incompatibility, never on 429, 401/403, network exhaustion, malformed data or ordinary bad requests.
+- strict compatibility-route helper allows a legacy-route fallback only on explicit endpoint incompatibility, never on 429, 401/403, network exhaustion, malformed data or ordinary bad requests;
+- draft PR #137 now also contains a strict historical daily/earnings fetch adapter with tests proving RATE_LIMITED cannot be reinterpreted as compatibility fallback or missing data; latest CI is green.
 
 Remaining:
-- wire `fetch_orats_history()` itself to the strict transport/route helper;
+- switch legacy `fetch_orats_history()` in `backtest.py` to the new daily/earnings adapter and preserve route/source provenance;
 - update historical option callers after reconciling older stacked PR #110;
 - add safe per-run caching/batching where it materially reduces duplicate historical requests;
 - preserve `DATA_ERROR` / `RATE_LIMITED` / `NO_QUALIFIED_OPTION` as distinct states end-to-end.
@@ -82,7 +83,7 @@ Current leading research hypothesis:
 Current result is promising but still research-only. The weak 2025 validation regime remains the key falsification/stability problem; do not promote by optimizing 2025 thresholds after the fact.
 
 ### Portfolio construction / downside research
-Track: PR #127, #114, #115, #133.
+Track: PR #127, #114, #115, #133, #142 / draft PR #143.
 
 Required independent attribution tests:
 - R2 shares-only baseline;
@@ -97,13 +98,20 @@ Required independent attribution tests:
 Important early result from PR #127: the prototype SGOV reserve improved the tested R2 portfolio, while the first drawdown-throttle schedule did not. Those results are not promotion-grade because the prototype still needs the corrected ADX17 and 55-day Long-Runner signal lifecycle plus point-in-time universe cleanup.
 
 ### Instrument hierarchy to test
+Track: #142 / draft PR #143; current CI is green.
+
 1. qualified long-duration R2 signal → shares as core trend vehicle;
 2. exceptional liquid long-dated option structure → optional accelerator within the same trade-risk budget;
 3. no qualifying stock but broad sector leadership → research selective 2x/3x sector ETF shares at risk-normalized size;
-4. unallocated investable cash → SGOV treasury reserve, excluding a small operational cash buffer;
+4. unallocated unborrowed investable cash → SGOV treasury reserve, excluding a small operational cash buffer;
 5. stale/failed data → cash / no trade, never automatic leverage or silent substitution.
 
-No item in this hierarchy is promoted into paper/live execution by this document.
+The research-only classifier hard-locks 3x sector expression behind an explicit experiment enable, defaults long-call eligibility to a 90–150 DTE research window, and includes a common-risk-budget splitter so shares plus options cannot silently double planned risk. No item in this hierarchy is promoted into paper/live execution by this document.
+
+### Valuation-extreme trend-reversal regime
+Track: #146.
+
+A new challenger, motivated by June 2026 trend-following research, will test whether public point-in-time valuation and yield-curve extremes identify reversal regimes that matter incrementally for the R2 Long-Runner. The experiment must hold stock-level R2 rules fixed, cannot increase risk in favorable regimes, must report 2025 separately without tuning it away, and must prove value beyond information already embedded in trend/volatility state.
 
 ## Workstream C — Quant Research Challenger queue
 
@@ -125,7 +133,9 @@ Active research families include:
 - #115 shrinkage covariance + marginal-risk contribution;
 - #133 layered downside / beta / tail / SGOV overlay;
 - #138 state-dependent predictability / signal-confidence mosaic;
-- #139 mega-cap concentration-constraint / stock-vs-sector relative-value overlay.
+- #139 mega-cap concentration-constraint / stock-vs-sector relative-value overlay;
+- #142/#143 shares/options/sector-proxy/SGOV instrument-expression hierarchy;
+- #146 valuation-extreme trend-reversal regime gate.
 
 Challenger governance:
 - hypothesis and source before code;
@@ -138,7 +148,7 @@ Challenger governance:
 
 ## Workstream D — Institutional-scale portfolio readiness
 
-Track: #92, #105/#109, #114, #115, #118, #133, #138, #139.
+Track: #92, #105/#109, #114, #115, #118, #133, #138, #139, #142, #146.
 
 Before any claim that the strategy can scale toward $25M / $50M / $100M+ NAV, require:
 - order-to-ADV and days-to-liquidate estimates;
@@ -158,17 +168,39 @@ Master: #81. Long-term fund-readiness: #118.
 The initial marketable product remains a research/subscription product, not autonomous execution or personalized portfolio management.
 
 ### Identity, subscriptions, tiers and billing
-Track: #85 / PR #91, #88 / PR #101.
+Track: #85 / draft PR #145, #88 / PR #101.
 
-Required:
-- immutable customer/account ID;
-- server-side authentication and fail-closed entitlements;
-- tier boundaries and explicit exclusions;
-- subscription lifecycle: TRIAL / ACTIVE / PAST_DUE / CANCELED / EXPIRED / SUSPENDED;
-- provider-neutral billing adapter and webhook contract;
-- idempotency / replay protection / billing-entitlement reconciliation;
-- cancellation, reactivation, support and account-change paths;
+Current state:
+- PR #145 refreshes the provider-neutral subscription projection on current `main`;
+- duplicate/out-of-order billing events remain idempotent/fail-closed;
+- entitlements remain server-side and deny-by-default outside ACTIVE/TRIAL states;
+- privileged support/admin overrides are represented as auditable evidence and cannot grant access merely by existing;
+- the expanded beta-readiness gate now requires provenance/replay, performance methodology and claim controls, terms/privacy/support, retention, security/DR evidence and explicit live-execution disablement;
+- latest CI is green.
+
+Still required:
+- authentication/session/MFA provider adapter contract without selecting or purchasing a vendor;
+- tenant-isolation fixtures/tests for any persistence layer;
+- provider-neutral billing-webhook signature verification and reconciliation job contract;
+- account deletion/retention workflow and immutable audit-event schema;
 - no card/payment secrets stored unless explicitly required and reviewed.
+
+### Automated candidate / alert management
+Track: #89 / draft PR #144.
+
+Current state:
+- current-main dry-run desired-state planner is green;
+- deterministic CREATE / UPDATE / DISABLE / MIGRATE_STRATEGY / NO_CHANGE / DATA_ERROR diff;
+- stale/incomplete ranked-candidate sources fail closed;
+- strategy-version changes require explicit migration;
+- every plan is hard-locked to `dry_run=True` and `mutation_allowed=False`.
+
+Still required before any real alert mutation:
+- observed-state adapter contract;
+- immutable desired/observed diff audit artifact;
+- reconciliation/drift and future adapter rate-limit/retry policy;
+- proof the planner cannot mutate the paper ledger;
+- explicit user approval for the first real TradingView mutation.
 
 ### Customer-facing research outputs and delivery
 Track: #87 / PR #100 / PR #111, #116.
