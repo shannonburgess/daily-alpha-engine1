@@ -18,6 +18,34 @@ class ResearchDisposition(StrEnum):
 
 
 @dataclass(frozen=True)
+class OptionFlowEvidence:
+    """One quality-filtered unusual option-flow observation for newsletter use."""
+
+    option_type: str
+    contract: str
+    volume: int
+    open_interest: int
+    volume_oi_ratio: float
+    bid: float
+    ask: float
+    classification: str = "UNUSUAL_CONFIRMATION"
+
+    def __post_init__(self) -> None:
+        if self.option_type not in {"CALL", "PUT"}:
+            raise ValueError("option flow evidence must be CALL or PUT")
+        if not self.contract:
+            raise ValueError("option flow evidence requires contract identity")
+        if self.volume < 0 or self.open_interest < 0:
+            raise ValueError("option flow counts cannot be negative")
+        if self.volume_oi_ratio < 0:
+            raise ValueError("option flow ratio cannot be negative")
+        if self.bid < 0 or self.ask < self.bid:
+            raise ValueError("option flow quote is invalid")
+        if self.classification != "UNUSUAL_CONFIRMATION":
+            raise ValueError("side-specific flow evidence must be unusual confirmation")
+
+
+@dataclass(frozen=True)
 class ResearchCandidate:
     symbol: str
     disposition: ResearchDisposition
@@ -37,6 +65,7 @@ class ResearchCandidate:
     option_volume_oi_ratio: float | None = None
     option_bid: float | None = None
     option_ask: float | None = None
+    option_flow_evidence: tuple[OptionFlowEvidence, ...] = ()
     standalone_flow_signal: bool = False
 
     def __post_init__(self) -> None:
@@ -50,6 +79,9 @@ class ResearchCandidate:
             raise ValueError("option flow counts cannot be negative")
         if self.option_volume_oi_ratio is not None and self.option_volume_oi_ratio < 0:
             raise ValueError("option_volume_oi_ratio cannot be negative")
+        flow_sides = [item.option_type for item in self.option_flow_evidence]
+        if len(flow_sides) != len(set(flow_sides)):
+            raise ValueError("only one unusual flow observation per option side is allowed")
         if self.disposition == ResearchDisposition.DATA_ERROR:
             if self.instrument != InstrumentSelected.NONE:
                 raise ValueError("DATA_ERROR cannot select an instrument")

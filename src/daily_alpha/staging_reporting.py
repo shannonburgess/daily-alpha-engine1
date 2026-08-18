@@ -13,7 +13,12 @@ from zoneinfo import ZoneInfo
 
 from .models import InstrumentSelected
 from .newsletter import NewsletterRenderer
-from .research_report import DailyResearchPacket, ResearchCandidate, ResearchDisposition
+from .research_report import (
+    DailyResearchPacket,
+    OptionFlowEvidence,
+    ResearchCandidate,
+    ResearchDisposition,
+)
 from .sectors import resolve_sector
 
 
@@ -283,6 +288,14 @@ def _packet_from_shortlist(
                 f"{raw.get('selected_option_type')} "
                 f"{raw.get('selected_strike')}"
             )
+        selected_volume = int(raw.get("selected_volume", 0) or 0)
+        selected_open_interest = int(raw.get("selected_open_interest", 0) or 0)
+        selected_ratio = (
+            round(selected_volume / selected_open_interest, 4)
+            if selected_open_interest > 0
+            else None
+        )
+        flow_evidence = _flow_evidence_from_raw(raw)
         candidates.append(
             ResearchCandidate(
                 symbol=symbol,
@@ -302,26 +315,19 @@ def _packet_from_shortlist(
                 option_contract=contract,
                 flow_classification=(
                     "UNUSUAL_CONFIRMATION"
-                    if raw.get("unusual_options_activity") is True
+                    if selected_ratio is not None and selected_ratio >= 1.0
                     else ("NORMAL" if orats_status == "ENRICHED" else None)
                 ),
-                option_volume=int(raw.get("selected_volume", 0) or 0),
-                option_open_interest=int(raw.get("selected_open_interest", 0) or 0),
-                option_volume_oi_ratio=(
-                    round(
-                        float(raw.get("selected_volume", 0) or 0)
-                        / float(raw.get("selected_open_interest", 0) or 1),
-                        4,
-                    )
-                    if int(raw.get("selected_open_interest", 0) or 0) > 0
-                    else None
-                ),
+                option_volume=selected_volume,
+                option_open_interest=selected_open_interest,
+                option_volume_oi_ratio=selected_ratio,
                 option_bid=(
                     float(raw.get("selected_bid", 0) or 0) if has_option else None
                 ),
                 option_ask=(
                     float(raw.get("selected_ask", 0) or 0) if has_option else None
                 ),
+                option_flow_evidence=flow_evidence,
             )
         )
 
@@ -333,6 +339,37 @@ def _packet_from_shortlist(
         market_regime="RESEARCH_ONLY",
         candidates=tuple(candidates),
     )
+
+
+def _flow_evidence_from_raw(raw: Mapping[str, Any]) -> tuple[OptionFlowEvidence, ...]:
+    evidence: list[OptionFlowEvidence] = []
+    for side, prefix in (("CALL", "unusual_call"), ("PUT", "unusual_put")):
+        contract = str(raw.get(f"{prefix}_contract", "") or "").strip()
+        ratio_value = raw.get(f"{prefix}_volume_oi_ratio")
+        if not contract or ratio_value is None:
+            continue
+        try:
+            ratio = float(ratio_value)
+            volume = int(raw.get(f"{prefix}_volume", 0) or 0)
+            open_interest = int(raw.get(f"{prefix}_open_interest", 0) or 0)
+            bid = float(raw.get(f"{prefix}_bid", 0) or 0)
+            ask = float(raw.get(f"{prefix}_ask", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if ratio < 1.0:
+            continue
+        evidence.append(
+            OptionFlowEvidence(
+                option_type=side,
+                contract=contract,
+                volume=volume,
+                open_interest=open_interest,
+                volume_oi_ratio=ratio,
+                bid=bid,
+                ask=ask,
+            )
+        )
+    return tuple(evidence)
 
 
 def _rows_to_csv(

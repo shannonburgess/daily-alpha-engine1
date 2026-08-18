@@ -72,6 +72,18 @@ class ResearchShortlistItem:
     selected_open_interest: int = 0
     selected_volume: int = 0
     unusual_options_activity: bool = False
+    unusual_call_contract: str = ""
+    unusual_call_volume: int = 0
+    unusual_call_open_interest: int = 0
+    unusual_call_volume_oi_ratio: float | None = None
+    unusual_call_bid: float = 0.0
+    unusual_call_ask: float = 0.0
+    unusual_put_contract: str = ""
+    unusual_put_volume: int = 0
+    unusual_put_open_interest: int = 0
+    unusual_put_volume_oi_ratio: float | None = None
+    unusual_put_bid: float = 0.0
+    unusual_put_ask: float = 0.0
     smart_money_bonus: float = 0.0
     congressional_rank: int | None = None
     institutional_rank: int | None = None
@@ -213,6 +225,8 @@ def build_research_shortlist(
     qualified_count = 0
     data_error_count = 0
     excluded_orats_no_dte = 0
+    unusual_call_company_count = 0
+    unusual_put_company_count = 0
     for (
         classified,
         source,
@@ -225,6 +239,8 @@ def build_research_shortlist(
     ) in staged:
         symbol = source.symbol
         selected: OptionCandidate | None = None
+        unusual_call: OptionCandidate | None = None
+        unusual_put: OptionCandidate | None = None
         score = ranked_score
         if symbol not in requested_set:
             orats_status = "NOT_REQUESTED"
@@ -249,6 +265,12 @@ def build_research_shortlist(
             else:
                 optionable = True
                 selected = _best_qualified_option(chain.candidates, rules)
+                unusual_call = _most_unusual_option(chain.candidates, rules, "CALL")
+                unusual_put = _most_unusual_option(chain.candidates, rules, "PUT")
+                if unusual_call is not None:
+                    unusual_call_company_count += 1
+                if unusual_put is not None:
+                    unusual_put_company_count += 1
                 if selected is None:
                     orats_status = "ENRICHED"
                     orats_reason = "NO_OPTION_PASSED_QUALITY_FILTERS"
@@ -289,8 +311,32 @@ def build_research_shortlist(
                 selected_open_interest=selected.open_interest if selected else 0,
                 selected_volume=selected.volume if selected else 0,
                 unusual_options_activity=(
-                    selected is not None and selected.volume_to_open_interest >= 1.0
+                    unusual_call is not None or unusual_put is not None
                 ),
+                unusual_call_contract=_flow_contract(unusual_call),
+                unusual_call_volume=unusual_call.volume if unusual_call else 0,
+                unusual_call_open_interest=(
+                    unusual_call.open_interest if unusual_call else 0
+                ),
+                unusual_call_volume_oi_ratio=(
+                    round(unusual_call.volume_to_open_interest, 6)
+                    if unusual_call
+                    else None
+                ),
+                unusual_call_bid=unusual_call.bid if unusual_call else 0.0,
+                unusual_call_ask=unusual_call.ask if unusual_call else 0.0,
+                unusual_put_contract=_flow_contract(unusual_put),
+                unusual_put_volume=unusual_put.volume if unusual_put else 0,
+                unusual_put_open_interest=(
+                    unusual_put.open_interest if unusual_put else 0
+                ),
+                unusual_put_volume_oi_ratio=(
+                    round(unusual_put.volume_to_open_interest, 6)
+                    if unusual_put
+                    else None
+                ),
+                unusual_put_bid=unusual_put.bid if unusual_put else 0.0,
+                unusual_put_ask=unusual_put.ask if unusual_put else 0.0,
                 smart_money_bonus=smart_bonus,
                 congressional_rank=congress_rank,
                 institutional_rank=institution_rank,
@@ -318,6 +364,9 @@ def build_research_shortlist(
         "orats_request_limit": request_limit,
         "qualified_option_count": qualified_count,
         "orats_data_error_count": data_error_count,
+        "unusual_call_company_count": unusual_call_company_count,
+        "unusual_put_company_count": unusual_put_company_count,
+        "unusual_activity_threshold_volume_oi": 1.0,
         "optionability_authority": "ORATS_FOR_ENRICHED_SYMBOLS",
         "smart_money_congressional_count": len(congressional),
         "smart_money_institutional_count": len(institutional),
@@ -489,6 +538,38 @@ def _best_qualified_option(
         qualified,
         key=lambda item: (item.spread_pct, -item.open_interest, -item.volume),
     )
+
+
+def _most_unusual_option(
+    candidates: tuple[OptionCandidate, ...],
+    rules: OptionQualityRules,
+    option_type: str,
+) -> OptionCandidate | None:
+    unusual = [
+        item
+        for item in candidates
+        if item.option_type == option_type
+        and _option_passes(item, rules)
+        and item.open_interest > 0
+        and item.volume_to_open_interest >= 1.0
+    ]
+    if not unusual:
+        return None
+    return max(
+        unusual,
+        key=lambda item: (
+            item.volume_to_open_interest,
+            item.volume,
+            item.open_interest,
+            -item.spread_pct,
+        ),
+    )
+
+
+def _flow_contract(option: OptionCandidate | None) -> str:
+    if option is None:
+        return ""
+    return f"{option.expiration} {option.option_type} {option.strike:g}"
 
 
 def _option_passes(option: OptionCandidate, rules: OptionQualityRules) -> bool:

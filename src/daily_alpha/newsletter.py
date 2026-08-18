@@ -27,6 +27,19 @@ class RenderedNewsletter:
         return not self.quality_warnings
 
 
+@dataclass(frozen=True)
+class _FlowRow:
+    symbol: str
+    option_type: str
+    contract: str
+    volume: int
+    open_interest: int
+    volume_oi_ratio: float
+    bid: float
+    ask: float
+    classification: str
+
+
 class NewsletterRenderer:
     """Render fluid pages; never shrink text to force content into boxes."""
 
@@ -127,32 +140,70 @@ class NewsletterRenderer:
         return "UNKNOWN"
 
     @staticmethod
-    def _flow_rows(candidates: tuple[ResearchCandidate, ...]) -> str:
+    def _flow_records(candidates: tuple[ResearchCandidate, ...]) -> tuple[_FlowRow, ...]:
+        rows: list[_FlowRow] = []
+        for candidate in candidates:
+            if candidate.option_flow_evidence:
+                rows.extend(
+                    _FlowRow(
+                        symbol=candidate.symbol,
+                        option_type=item.option_type,
+                        contract=item.contract,
+                        volume=item.volume,
+                        open_interest=item.open_interest,
+                        volume_oi_ratio=item.volume_oi_ratio,
+                        bid=item.bid,
+                        ask=item.ask,
+                        classification=item.classification,
+                    )
+                    for item in candidate.option_flow_evidence
+                )
+                continue
+            if (
+                candidate.flow_classification == "UNUSUAL_CONFIRMATION"
+                and candidate.option_volume_oi_ratio is not None
+                and candidate.option_bid is not None
+                and candidate.option_ask is not None
+            ):
+                rows.append(
+                    _FlowRow(
+                        symbol=candidate.symbol,
+                        option_type=NewsletterRenderer._option_side(candidate),
+                        contract=candidate.option_contract or "Contract unavailable",
+                        volume=candidate.option_volume,
+                        open_interest=candidate.option_open_interest,
+                        volume_oi_ratio=candidate.option_volume_oi_ratio,
+                        bid=candidate.option_bid,
+                        ask=candidate.option_ask,
+                        classification=candidate.flow_classification,
+                    )
+                )
+        return tuple(rows)
+
+    @staticmethod
+    def _flow_rows(rows: tuple[_FlowRow, ...]) -> str:
         return "".join(
             "<tr>"
             f"<td><strong>{escape(item.symbol)}</strong></td>"
-            f"<td>{escape(item.option_contract or 'Contract unavailable')}</td>"
-            f"<td>{item.option_volume:,}</td>"
-            f"<td>{item.option_open_interest:,}</td>"
-            f"<td>{item.option_volume_oi_ratio:.2f}x</td>"
-            f"<td>{item.option_bid:.2f} / {item.option_ask:.2f}</td>"
-            f"<td>{escape(item.flow_classification or '')}</td>"
+            f"<td>{escape(item.contract)}</td>"
+            f"<td>{item.volume:,}</td>"
+            f"<td>{item.open_interest:,}</td>"
+            f"<td>{item.volume_oi_ratio:.2f}x</td>"
+            f"<td>{item.bid:.2f} / {item.ask:.2f}</td>"
+            f"<td>{escape(item.classification)}</td>"
             "</tr>"
-            for item in candidates
-            if item.option_volume_oi_ratio is not None
-            and item.option_bid is not None
-            and item.option_ask is not None
+            for item in rows
         )
 
     @staticmethod
     def _flow_table(
         heading: str,
-        candidates: tuple[ResearchCandidate, ...],
+        rows: tuple[_FlowRow, ...],
         *,
         empty_message: str,
     ) -> str:
-        rows = NewsletterRenderer._flow_rows(candidates)
-        if not rows:
+        rendered_rows = NewsletterRenderer._flow_rows(rows)
+        if not rendered_rows:
             return (
                 f"<h3>{escape(heading)}</h3>"
                 f'<p class="section-note">{escape(empty_message)}</p>'
@@ -162,35 +213,24 @@ class NewsletterRenderer:
             '<div class="table-wrap"><table><thead><tr>'
             "<th>Company</th><th>Contract</th><th>Volume</th><th>Open interest</th>"
             "<th>Volume/OI</th><th>Bid / Ask</th><th>Classification</th>"
-            f"</tr></thead><tbody>{rows}</tbody></table></div>"
+            f"</tr></thead><tbody>{rendered_rows}</tbody></table></div>"
         )
 
     @staticmethod
     def _unusual_options_section(
         candidates: tuple[ResearchCandidate, ...],
     ) -> str:
-        unusual = tuple(
-            item
+        unusual = NewsletterRenderer._flow_records(candidates)
+        flow_observed = any(
+            item.option_flow_evidence or item.flow_classification is not None
             for item in candidates
-            if item.flow_classification == "UNUSUAL_CONFIRMATION"
         )
-        flow_observed = any(item.flow_classification is not None for item in candidates)
 
         if unusual:
-            calls = tuple(
-                item
-                for item in unusual
-                if NewsletterRenderer._option_side(item) == "CALL"
-            )
-            puts = tuple(
-                item
-                for item in unusual
-                if NewsletterRenderer._option_side(item) == "PUT"
-            )
+            calls = tuple(item for item in unusual if item.option_type == "CALL")
+            puts = tuple(item for item in unusual if item.option_type == "PUT")
             unknown = tuple(
-                item
-                for item in unusual
-                if NewsletterRenderer._option_side(item) == "UNKNOWN"
+                item for item in unusual if item.option_type not in {"CALL", "PUT"}
             )
             body = NewsletterRenderer._flow_table(
                 "Unusual CALL Activity",
@@ -345,13 +385,13 @@ footer {{ border-top: 1px solid #c9d1dc; margin-top: 24px; padding-top: 12px; fo
             warnings.append("TEXT_TOO_SMALL")
         if "Unusual Options Activity" not in html:
             warnings.append("UNUSUAL_OPTIONS_SECTION_MISSING")
-        if "Unusual CALL Activity" not in html and any(
-            candidate.flow_classification is not None for candidate in packet.candidates
-        ):
+        flow_observed = any(
+            candidate.option_flow_evidence or candidate.flow_classification is not None
+            for candidate in packet.candidates
+        )
+        if "Unusual CALL Activity" not in html and flow_observed:
             warnings.append("UNUSUAL_CALL_SECTION_MISSING")
-        if "Unusual PUT Activity" not in html and any(
-            candidate.flow_classification is not None for candidate in packet.candidates
-        ):
+        if "Unusual PUT Activity" not in html and flow_observed:
             warnings.append("UNUSUAL_PUT_SECTION_MISSING")
         if any(escape(candidate.symbol) not in html for candidate in packet.candidates):
             warnings.append("CANDIDATE_CONTENT_MISSING")
