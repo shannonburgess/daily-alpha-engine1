@@ -6,6 +6,7 @@ on:
       - agent/r2-downside-overlay-phase1
     paths:
       - "research/run_r2_downside_overlay.py"
+      - "research/run_r2_downside_overlay_total_return.py"
       - ".github/workflows/research-r2-downside-overlay.yml"
       - "src/daily_alpha/backtest.py"
   pull_request:
@@ -13,6 +14,7 @@ on:
       - main
     paths:
       - "research/run_r2_downside_overlay.py"
+      - "research/run_r2_downside_overlay_total_return.py"
       - ".github/workflows/research-r2-downside-overlay.yml"
       - "src/daily_alpha/backtest.py"
   workflow_dispatch:
@@ -34,10 +36,10 @@ jobs:
           python-version: "3.11"
       - name: Install Daily Alpha
         run: python -m pip install --disable-pip-version-check .
-      - name: Compile research runner
-        run: python -m py_compile research/run_r2_downside_overlay.py
-      - name: Run downside overlay study
-        run: python research/run_r2_downside_overlay.py
+      - name: Compile research runners
+        run: python -m py_compile research/run_r2_downside_overlay.py research/run_r2_downside_overlay_total_return.py
+      - name: Run downside overlay study with treasury-reserve carry proxy
+        run: python research/run_r2_downside_overlay_total_return.py
       - name: Upload research result
         uses: actions/upload-artifact@v4
         with:
