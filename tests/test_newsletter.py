@@ -90,7 +90,12 @@ def packet(*, include_smart_money=False):
 def test_renderer_includes_all_candidates_sections_and_disclosures():
     result = NewsletterRenderer().render(packet())
     assert result.candidate_count == 3
-    assert result.sections == (\n        "UNUSUAL_OPTIONS_ACTIVITY",\n        "PAPER_CANDIDATE",\n        "WATCHLIST",\n        "NO_TRADE",\n    )
+    assert result.sections == (
+        "UNUSUAL_OPTIONS_ACTIVITY",
+        "PAPER_CANDIDATE",
+        "WATCHLIST",
+        "NO_TRADE",
+    )
     assert all(symbol in result.html for symbol in ("AAPL", "MSFT", "TSLA"))
     assert "No live order execution is authorized." in result.html
     assert result.quality_passed is True
@@ -266,7 +271,10 @@ def _seed_staging_s3(client):
       {"sector":"Technology","new_buys":3,"leaders":5,"net_score":8},
       {"sector":"Industrials","new_buys":1,"leaders":2,"net_score":3}
     ]'''
-    client.objects["ovtlyr/shortlist/latest/shortlist.csv"] = b"rank,symbol\n1,AAPL\n2,XYZ\n"
+    client.objects["ovtlyr/shortlist/latest/shortlist.csv"] = b"rank,symbol
+1,AAPL
+2,XYZ
+"
 
 
 def test_staging_publisher_writes_newsletter_csvs_and_manifest():
