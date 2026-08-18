@@ -1,49 +1,50 @@
-"""Run R2 downside study with distribution-aware SGOV reserve accounting.
+"""Run R2 downside study with a distribution-aware Treasury reserve proxy.
 
-ORATS daily OHLC bars for SGOV are price-only. This wrapper fetches ORATS dividend
-history and credits each SGOV cash distribution only to shares held before the
-ex-dividend open. That preserves the actual ETF price path while making the reserve
-sleeve economically total-return aware. No synthetic Treasury yield proxy is used.
+ORATS daily SGOV OHLC is price-only, while the current ORATS entitlement returns
+HTTP 403 for historical SGOV dividend data. Rather than understate reserve return
+or invent distributions, this research wrapper replaces the SGOV price path with
+a transparent 3-month U.S. Treasury carry proxy sourced from FRED DGS3MO, less the
+current 0.09% SGOV expense ratio.
 
-Research only. Any dividend-fetch/parse failure aborts rather than silently falling
-back to price-only SGOV.
+The proxy is deliberately conservative and is not exact SGOV shareholder total
+return. It uses only the latest Treasury yield observation strictly before each
+trading date, hashes the downloaded source, and aborts on fetch/parse/coverage
+failure. Research only; no execution path imports this module.
 """
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
-import os
 import time
-from collections import defaultdict
 from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import run_r2_downside_overlay as base
+from daily_alpha.backtest import Bar
 
-ORATS_DIVIDEND_ENDPOINT = "https://api.orats.io/data/hist/divs"
-ORATS_RETRY_DELAYS_SECONDS = (0, 2, 5)
+FRED_DGS3MO_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS3MO"
+FRED_RETRY_DELAYS_SECONDS = (0, 2, 5)
+SGOV_EXPENSE_RATIO = 0.0009
 
 
-def fetch_sgov_dividends(token: str) -> tuple[dict[date, float], str]:
-    query = urlencode(
-        {
-            "tickers": "SGOV",
-            "fields[divs]": "ticker,exDate,divAmt,declaredDate",
-        }
-    )
+def fetch_treasury_yields() -> tuple[dict[date, float], str]:
     request = Request(
-        f"{ORATS_DIVIDEND_ENDPOINT}?{query}",
-        headers={"Accept": "application/json", "Authorization": token},
+        FRED_DGS3MO_CSV,
+        headers={
+            "Accept": "text/csv",
+            "User-Agent": "DailyAlphaResearch/0.1 (+research-only)",
+        },
     )
     raw: bytes | None = None
     last_error: Exception | None = None
-    max_attempts = len(ORATS_RETRY_DELAYS_SECONDS)
-    for attempt, delay in enumerate(ORATS_RETRY_DELAYS_SECONDS, start=1):
+    max_attempts = len(FRED_RETRY_DELAYS_SECONDS)
+    for attempt, delay in enumerate(FRED_RETRY_DELAYS_SECONDS, start=1):
         if delay:
             time.sleep(delay)
         try:
@@ -54,134 +55,98 @@ def fetch_sgov_dividends(token: str) -> tuple[dict[date, float], str]:
             last_error = exc
             retryable = exc.code == 429 or 500 <= exc.code <= 599
             if not retryable or attempt == max_attempts:
-                raise RuntimeError(f"ORATS SGOV dividend HTTP {exc.code}") from exc
+                raise RuntimeError(f"FRED DGS3MO HTTP {exc.code}") from exc
         except (URLError, TimeoutError) as exc:
             last_error = exc
             if attempt == max_attempts:
-                raise RuntimeError("ORATS SGOV dividend fetch failed after retries") from exc
+                raise RuntimeError("FRED DGS3MO fetch failed after retries") from exc
     if raw is None:
-        raise RuntimeError("ORATS SGOV dividend fetch returned no bytes") from last_error
+        raise RuntimeError("FRED DGS3MO fetch returned no bytes") from last_error
 
     digest = hashlib.sha256(raw).hexdigest()
     try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("ORATS SGOV dividend response is not valid JSON") from exc
-    rows = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(rows, list):
-        raise RuntimeError("ORATS SGOV dividend response has unexpected shape")
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("FRED DGS3MO response is not UTF-8 CSV") from exc
 
-    dividends: defaultdict[date, float] = defaultdict(float)
+    rows = csv.DictReader(io.StringIO(text))
+    if rows.fieldnames is None or "DGS3MO" not in rows.fieldnames:
+        raise TypeError("FRED DGS3MO response has unexpected CSV columns")
+
+    yields: dict[date, float] = {}
     for row in rows:
-        if not isinstance(row, dict) or not row.get("exDate"):
+        raw_date = row.get("observation_date") or row.get("DATE")
+        raw_yield = row.get("DGS3MO")
+        if not raw_date or raw_yield in (None, "", "."):
             continue
-        ex_date = date.fromisoformat(str(row["exDate"])[:10])
-        if ex_date < base.START or ex_date > base.END:
+        try:
+            d = date.fromisoformat(raw_date[:10])
+            rate = float(raw_yield)
+        except (ValueError, TypeError):
             continue
-        amount = float(row.get("divAmt") or 0.0)
-        if amount > 0:
-            dividends[ex_date] += amount
-    if not dividends:
-        raise RuntimeError("ORATS returned no positive SGOV distributions in study window")
-    return dict(dividends), digest
+        if d <= base.END and rate >= 0:
+            yields[d] = rate
+
+    if not yields:
+        raise RuntimeError("FRED returned no usable DGS3MO observations")
+    if min(yields) > base.START:
+        raise RuntimeError("FRED DGS3MO history does not cover study start")
+    if max(yields) < base.END.replace(day=max(1, base.END.day - 10)):
+        raise RuntimeError("FRED DGS3MO history is stale for study end")
+    return yields, digest
 
 
-def simulate_with_sgov_distributions(
-    scenario: base.Scenario,
-    by_date: dict[str, dict[date, Any]],
-    states: dict[str, dict[date, base.SignalState]],
-    dates: list[date],
-    dividends: dict[date, float],
-) -> dict[str, Any]:
-    cash = base.INITIAL_NAV
-    shares: dict[str, float] = {}
-    nav_curve: list[tuple[date, float]] = []
-    turnover = 0.0
-    contrib: defaultdict[str, float] = defaultdict(float)
-    peak_nav = base.INITIAL_NAV
-    gross_series: list[float] = []
-    net_series: list[float] = []
+def treasury_proxy_bars(
+    dates: list[date], yields: dict[date, float]
+) -> dict[date, Bar]:
+    ordered_obs = sorted(yields)
+    obs_idx = 0
+    latest_rate: float | None = None
+    value = 100.0
+    previous_date: date | None = None
+    out: dict[date, Bar] = {}
 
-    for idx, d in enumerate(dates):
-        # A holder from the prior close is entitled to the ex-date distribution.
-        # Credit it before the opening rebalance; shares bought on the ex-date open
-        # do not receive the distribution.
-        if idx > 0 and "SGOV" in shares:
-            distribution = shares["SGOV"] * dividends.get(d, 0.0)
-            if distribution:
-                cash += distribution
-                contrib["SGOV_DISTRIBUTION"] += distribution
+    for d in dates:
+        # Strictly prior observation prevents same-day release timing from leaking
+        # into a return already accruing during that trading session.
+        while obs_idx < len(ordered_obs) and ordered_obs[obs_idx] < d:
+            latest_rate = yields[ordered_obs[obs_idx]]
+            obs_idx += 1
+        if latest_rate is None:
+            raise RuntimeError(f"No prior DGS3MO observation available for {d}")
 
-        signal_date = dates[idx - 1] if idx > 0 else None
-        decision_idx = idx - 1 if idx > 0 else None
-        open_nav = cash + sum(q * by_date[s][d].open for s, q in shares.items())
-        peak_nav = max(peak_nav, open_nav)
-        targets = base.target_weights(
-            scenario,
-            signal_date,
-            decision_idx,
-            states,
-            by_date,
-            dates,
-            open_nav,
-            peak_nav,
+        open_value = value
+        calendar_days = 1 if previous_date is None else max(1, (d - previous_date).days)
+        net_annual_yield = max(0.0, latest_rate / 100.0 - SGOV_EXPENSE_RATIO)
+        value = open_value * (1.0 + net_annual_yield * calendar_days / 365.0)
+        out[d] = Bar(
+            trade_date=d,
+            open=open_value,
+            high=max(open_value, value),
+            low=min(open_value, value),
+            close=value,
+            volume=0.0,
+            earnings_event=False,
         )
-
-        all_symbols = set(shares) | set(targets)
-        for symbol in sorted(all_symbols):
-            px = by_date[symbol][d].open
-            current = shares.get(symbol, 0.0) * px
-            target = open_nav * targets.get(symbol, 0.0)
-            trade = target - current
-            if abs(trade) < 1e-6:
-                continue
-            kind = base.classify_asset(symbol, targets.get(symbol, 0.0))
-            cost = abs(trade) * base.COST_BPS[kind] / 10_000.0
-            cash -= trade + cost
-            contrib[f"{kind}_COST"] -= cost
-            turnover += abs(trade)
-            new_q = target / px
-            if abs(new_q) < 1e-12:
-                shares.pop(symbol, None)
-            else:
-                shares[symbol] = new_q
-
-        close_nav = cash + sum(q * by_date[s][d].close for s, q in shares.items())
-        for symbol, q in shares.items():
-            fallback_weight = q * by_date[symbol][d].open / open_nav if open_nav else 0.0
-            kind = base.classify_asset(symbol, targets.get(symbol, fallback_weight))
-            contrib[kind] += q * (by_date[symbol][d].close - by_date[symbol][d].open)
-
-        gross_series.append(sum(abs(w) for s, w in targets.items() if s != "SGOV"))
-        net_series.append(sum(w for s, w in targets.items() if s != "SGOV"))
-        nav_curve.append((d, close_nav))
-        peak_nav = max(peak_nav, close_nav)
-
-    return base.summarize(
-        nav_curve,
-        gross_series,
-        net_series,
-        turnover,
-        contrib,
-        by_date,
-    )
+        previous_date = d
+    return out
 
 
 def main() -> None:
-    token = os.environ.get("ORATS_TOKEN", "").strip()
-    if not token:
-        raise SystemExit("ORATS_TOKEN is required")
-    dividends, digest = fetch_sgov_dividends(token)
+    yields, digest = fetch_treasury_yields()
     original_simulate = base.simulate
 
-    def patched_simulate(scenario, by_date, states, dates):
-        return simulate_with_sgov_distributions(
-            scenario,
-            by_date,
-            states,
-            dates,
-            dividends,
-        )
+    def patched_simulate(
+        scenario: base.Scenario,
+        by_date: dict[str, dict[date, Any]],
+        states: dict[str, dict[date, base.SignalState]],
+        dates: list[date],
+    ) -> dict[str, Any]:
+        if not scenario.use_sgov:
+            return original_simulate(scenario, by_date, states, dates)
+        patched = dict(by_date)
+        patched["SGOV"] = treasury_proxy_bars(dates, yields)
+        return original_simulate(scenario, patched, states, dates)
 
     base.simulate = patched_simulate
     try:
@@ -192,14 +157,21 @@ def main() -> None:
     path = Path("r2-downside-overlay.json")
     payload = json.loads(path.read_text())
     payload["methodology"]["treasury_reserve"] = {
-        "vehicle": "SGOV",
-        "return_basis": "ORATS price OHLC plus actual ORATS cash distributions",
-        "distribution_endpoint": ORATS_DIVIDEND_ENDPOINT,
-        "distribution_source_sha256": digest,
-        "distribution_count": len(dividends),
+        "intended_vehicle": "SGOV",
+        "research_return_proxy": "FRED DGS3MO carry less 0.09% annual expense ratio",
+        "fred_series": "DGS3MO",
+        "source_url": FRED_DGS3MO_CSV,
+        "source_sha256": digest,
+        "expense_ratio": SGOV_EXPENSE_RATIO,
+        "timing": "latest yield observation strictly before each trading date",
         "taxes": "excluded",
         "fail_closed": True,
-        "note": "Expense ratio is already reflected in SGOV NAV/price; distributions are credited only to prior-close holders.",
+        "exact_sgov_total_return": False,
+        "note": (
+            "Current ORATS entitlement returns HTTP 403 for historical SGOV dividends. "
+            "This proxy avoids price-only SGOV understatement but must be replaced by "
+            "distribution-adjusted or broker-grade SGOV total return before promotion."
+        ),
     }
     path.write_text(json.dumps(payload, indent=2))
     print(json.dumps(payload, indent=2))
