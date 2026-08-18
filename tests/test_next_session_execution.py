@@ -105,6 +105,11 @@ def _pending_doc():
         state_before=None,
         state_after=state,
     )
+    pending["human_approval"] = {
+        "status": "APPROVED",
+        "approval_id": "test-approval-1",
+        "approved_risk_fraction": 0.005,
+    }
     return {"schema_version": "2026-08-17-pending-v1", "actions": [pending]}
 
 
@@ -199,3 +204,36 @@ def test_unsafe_live_enabled_processor_response_fails_hard(tmp_path):
             lambda_client=lamb,
             orats_client=FakeOrats(stock_price=101.0),
         )
+
+
+def test_unapproved_entry_remains_pending_without_market_or_processor_calls(tmp_path):
+    doc = _pending_doc()
+    doc["actions"][0].pop("human_approval")
+    s3 = FakeS3(
+        {
+            "daily-alpha/execution-universe/latest/pending_actions.json": json.dumps(doc),
+            "daily-alpha/execution-universe/latest/state.json": "{}",
+            "daily-alpha/execution-universe/latest/active_watch.json": "[]",
+        }
+    )
+    lamb = FakeLambda()
+    orats = FakeOrats(stock_price=101.0)
+
+    audit = run_next_session_execution(
+        mode="morning_primary",
+        bucket="test",
+        token="token",
+        workdir=tmp_path,
+        now=NOW,
+        s3_client=s3,
+        lambda_client=lamb,
+        orats_client=orats,
+    )
+
+    assert audit["executed_paper"] == 0
+    assert lamb.calls == []
+    assert orats.calls == []
+    pending = json.loads(
+        s3.uploads["daily-alpha/execution-universe/latest/pending_actions.json"]
+    )
+    assert pending["actions"][0]["status"] == "PENDING_HUMAN_APPROVAL"
