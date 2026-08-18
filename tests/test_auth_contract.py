@@ -1,6 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
-from daily_alpha.auth_contract import AuthSession, PrincipalRole, authorize_session
+from daily_alpha.auth_contract import (
+    AuthSession,
+    PrincipalRole,
+    authorize_session,
+)
 
 
 NOW = datetime(2026, 8, 18, 5, 0, tzinfo=UTC)
