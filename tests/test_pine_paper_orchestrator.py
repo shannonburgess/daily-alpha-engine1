@@ -47,6 +47,7 @@ def ingress(action="ENTRY_LONG", **overrides):
         "source": "TRADINGVIEW_PINE",
         "signal_id": f"AAPL-{action}",
         "symbol": "AAPL",
+        "sector": "Technology",
         "action": action,
         "strategy": "DA_TURTLE_ADAPTIVE_TREND",
         "strategy_version": "1.9",
@@ -177,6 +178,18 @@ def test_after_close_signal_cannot_mutate_paper_ledger(tmp_path):
     assert result["reason"] == "OUTSIDE_REGULAR_EXECUTION_WINDOW"
     assert result["paper_execution_triggered"] is False
     assert result["live_trading_enabled"] is False
+    assert service.ledger.find_open("AAPL") == []
+    assert fake_orats.calls == []
+
+
+def test_entry_with_unverified_sector_is_blocked(tmp_path):
+    fake_orats = FakeOrats()
+    service = executor(tmp_path, fake_orats)
+
+    result = service.execute(ingress(sector="Unknown"), now=NOW)
+
+    assert result["disposition"] == "NO_TRADE"
+    assert result["reason"] == "SECTOR_DATA_UNVERIFIED"
     assert service.ledger.find_open("AAPL") == []
     assert fake_orats.calls == []
 
