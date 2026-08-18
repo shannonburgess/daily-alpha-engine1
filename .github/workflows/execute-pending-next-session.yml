@@ -80,6 +80,38 @@ jobs:
           role-session-name: daily-alpha-next-session-execution
           aws-region: us-east-2
 
+      - name: Verify execution-state S3 read/write permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="daily-alpha/execution-universe"
+          PROBE_KEY="${PREFIX}/healthchecks/${GITHUB_RUN_ID}.json"
+          printf '{"run_id":"%s","purpose":"paper-execution-s3-preflight"}\n' "$GITHUB_RUN_ID" >/tmp/daily-alpha-s3-probe.json
+
+          # ListBucket is required so a genuinely missing optional state object is
+          # distinguishable from AccessDenied instead of surfacing as an ambiguous 403.
+          aws s3api list-objects-v2 \
+            --bucket "$STAGING_BUCKET" \
+            --prefix "${PREFIX}/latest/" \
+            --max-keys 5 \
+            >/tmp/daily-alpha-execution-prefix.json
+
+          # Prove PutObject and GetObject before any signal can reach paper execution.
+          # The tiny healthcheck object is intentionally retained as an audit breadcrumb.
+          aws s3api put-object \
+            --bucket "$STAGING_BUCKET" \
+            --key "$PROBE_KEY" \
+            --body /tmp/daily-alpha-s3-probe.json \
+            --server-side-encryption AES256 \
+            >/tmp/daily-alpha-s3-put.json
+          aws s3api get-object \
+            --bucket "$STAGING_BUCKET" \
+            --key "$PROBE_KEY" \
+            /tmp/daily-alpha-s3-probe-read.json \
+            >/tmp/daily-alpha-s3-get.json
+          cmp /tmp/daily-alpha-s3-probe.json /tmp/daily-alpha-s3-probe-read.json
+          echo "Execution-state S3 preflight passed: ListBucket/GetObject/PutObject are available."
+
       - name: Revalidate and execute paper-only pending actions
         id: execute
         run: |
@@ -108,6 +140,7 @@ jobs:
             echo "- Cancelled / no-trade: ${{ steps.execute.outputs.cancelled }}"
             echo "- Deferred DATA_ERROR: ${{ steps.execute.outputs.deferred }}"
             echo "- Remaining pending: ${{ steps.execute.outputs.remaining }}"
+            echo "- S3 execution-state preflight: required before any paper action"
             echo "- Entry revalidation: breakout must remain valid and price must remain below +1 ATR add level"
             echo "- Underlying + option data: refreshed from ORATS before execution"
             echo "- Downstream gates: portfolio risk + fresh ORATS + option-first instrument selection"

@@ -1,0 +1,38 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListDailyAlphaExecutionPrefixes",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::daily-alpha-staging-490809405132-us-east-2",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "daily-alpha/execution-universe/*",
+            "ovtlyr/shortlist/latest/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadDailyAlphaExecutionInputs",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::daily-alpha-staging-490809405132-us-east-2/daily-alpha/execution-universe/*",
+        "arn:aws:s3:::daily-alpha-staging-490809405132-us-east-2/ovtlyr/shortlist/latest/*"
+      ]
+    },
+    {
+      "Sid": "WriteDailyAlphaExecutionState",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::daily-alpha-staging-490809405132-us-east-2/daily-alpha/execution-universe/*"
+    }
+  ]
+}
