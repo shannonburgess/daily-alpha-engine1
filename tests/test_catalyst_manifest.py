@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -15,9 +15,9 @@ def valid_record() -> CatalystManifestRecord:
         ticker="NVDA",
         event_type=CatalystType.PRODUCT_LAUNCH,
         event_date=date(2026, 9, 10),
-        event_known_at=datetime(2026, 8, 1, 16, 0, tzinfo=timezone.utc),
+        event_known_at=datetime(2026, 8, 1, 16, 0, tzinfo=UTC),
         source_url="https://investor.nvidia.com/example-event",
-        source_first_seen_at=datetime(2026, 8, 1, 16, 5, tzinfo=timezone.utc),
+        source_first_seen_at=datetime(2026, 8, 1, 16, 5, tzinfo=UTC),
         source_sha256="a" * 64,
         source_title="Example public event",
     )
@@ -46,7 +46,7 @@ def test_manifest_rejects_source_seen_before_public_known_time() -> None:
     invalid = CatalystManifestRecord(
         **{
             **record.__dict__,
-            "source_first_seen_at": datetime(2026, 8, 1, 15, 59, tzinfo=timezone.utc),
+            "source_first_seen_at": datetime(2026, 8, 1, 15, 59, tzinfo=UTC),
         }
     )
     with pytest.raises(ValueError, match="cannot precede"):
@@ -55,8 +55,9 @@ def test_manifest_rejects_source_seen_before_public_known_time() -> None:
 
 def test_manifest_rejects_naive_timestamps() -> None:
     record = valid_record()
+    naive = datetime(2026, 8, 1, 16, 0, tzinfo=UTC).replace(tzinfo=None)
     invalid = CatalystManifestRecord(
-        **{**record.__dict__, "event_known_at": datetime(2026, 8, 1, 16, 0)}
+        **{**record.__dict__, "event_known_at": naive}
     )
     with pytest.raises(ValueError, match="timezone-aware"):
         validate_manifest_record(invalid)
