@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+import datetime as dt
 
 from daily_alpha.auth_contract import (
     AuthSession,
@@ -7,7 +7,7 @@ from daily_alpha.auth_contract import (
 )
 
 
-NOW = datetime(2026, 8, 18, 5, 0, tzinfo=UTC)
+NOW = dt.datetime(2026, 8, 18, 5, 0, tzinfo=dt.UTC)
 
 
 def session(**overrides):
@@ -16,8 +16,8 @@ def session(**overrides):
         "subject_id": "subject-1",
         "provider_id": "provider-neutral",
         "role": PrincipalRole.CUSTOMER,
-        "issued_at": NOW - timedelta(minutes=30),
-        "expires_at": NOW + timedelta(hours=1),
+        "issued_at": NOW - dt.timedelta(minutes=30),
+        "expires_at": NOW + dt.timedelta(hours=1),
         "customer_id": "cust-a",
         "mfa_verified_at": None,
         "revoked_at": None,
@@ -54,7 +54,7 @@ def test_expired_and_revoked_sessions_fail_closed():
         session(expires_at=NOW), now=NOW, requested_customer_id="cust-a"
     )
     revoked = authorize_session(
-        session(revoked_at=NOW - timedelta(minutes=1)),
+        session(revoked_at=NOW - dt.timedelta(minutes=1)),
         now=NOW,
         requested_customer_id="cust-a",
     )
@@ -69,7 +69,7 @@ def test_privileged_tenant_access_requires_explicit_action_and_recent_mfa():
     admin = session(
         role=PrincipalRole.ADMIN,
         customer_id=None,
-        mfa_verified_at=NOW - timedelta(minutes=5),
+        mfa_verified_at=NOW - dt.timedelta(minutes=5),
     )
 
     implicit = authorize_session(admin, now=NOW, requested_customer_id="cust-b")
@@ -98,7 +98,7 @@ def test_privileged_tenant_access_rejects_missing_or_stale_mfa():
         session(
             role=PrincipalRole.ADMIN,
             customer_id=None,
-            mfa_verified_at=NOW - timedelta(minutes=16),
+            mfa_verified_at=NOW - dt.timedelta(minutes=16),
         ),
         now=NOW,
         requested_customer_id="cust-a",
