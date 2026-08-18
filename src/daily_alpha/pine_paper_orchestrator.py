@@ -82,6 +82,28 @@ class AwsPinePaperExecutor:
         if action not in {"ENTRY_LONG", "ADD", "PARTIAL", "EXIT"}:
             raise PinePaperExecutionError("PINE_ACTION_UNSUPPORTED")
         symbol = _required_text(ingress.get("symbol"), "symbol").upper()
+        if action in {"ENTRY_LONG", "ADD"}:
+            approval = ingress.get("human_approval")
+            valid_approval = (
+                isinstance(approval, Mapping)
+                and str(approval.get("status", "")).upper() == "APPROVED"
+                and bool(str(approval.get("approval_id", "")).strip())
+            )
+            try:
+                approved_risk_fraction = float(
+                    approval.get("approved_risk_fraction", 0.0)
+                    if isinstance(approval, Mapping)
+                    else 0.0
+                )
+            except (TypeError, ValueError):
+                approved_risk_fraction = 0.0
+            if not valid_approval or not 0.0 < approved_risk_fraction <= 0.005:
+                return _execution_result(
+                    disposition="NO_TRADE",
+                    reason="HUMAN_APPROVAL_REQUIRED",
+                    action=action,
+                    symbol=symbol,
+                )
         if not _regular_execution_window(timestamp):
             return _execution_result(
                 disposition="NO_TRADE",
@@ -112,7 +134,13 @@ class AwsPinePaperExecutor:
         total_risk, daily_risk, new_today, cluster_risk = _paper_risk_state(
             open_trades, now=now
         )
-        proposed_loss = self.paper_nav * 0.005
+        approval = ingress.get("human_approval")
+        approved_risk_fraction = float(
+            approval.get("approved_risk_fraction", 0.0)
+            if isinstance(approval, Mapping)
+            else 0.0
+        )
+        proposed_loss = self.paper_nav * approved_risk_fraction
 
         stock_stop = _optional_positive_float(
             ingress.get("stock_stop_price"), "stock_stop_price"

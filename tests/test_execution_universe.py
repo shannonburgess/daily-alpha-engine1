@@ -218,3 +218,28 @@ def test_runner_harvest_sets_underlying_break_even(monkeypatch):
     assert decision.proposed_state is not None
     assert decision.proposed_state.runner_stage == "HARVEST_3_ATR"
     assert decision.proposed_state.break_even_level == pytest.approx((200 + 106 + 111) / 4)
+
+
+def test_adx_17_is_the_canonical_entry_floor(monkeypatch):
+    bars = _bars(close=110.0)
+    rows = _rows(
+        len(bars),
+        fresh_breakout=True,
+        trend_state=1,
+        normal_trend_mature=True,
+        efficiency=0.35,
+        rsi=60.0,
+        adx=17.0,
+        atr=5.0,
+        upper20=105.0,
+        lower10=98.0,
+    )
+    monkeypatch.setattr("daily_alpha.execution_universe.indicators", lambda _: rows)
+    decision = evaluate_latest_v24(
+        "MU",
+        bars,
+        state=None,
+        now=datetime(2026, 8, 17, 20, 20, tzinfo=UTC),
+        require_trade_date=date(2026, 8, 17),
+    )
+    assert decision.action == "ENTRY_LONG"

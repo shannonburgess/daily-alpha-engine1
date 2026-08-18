@@ -61,6 +61,11 @@ def ingress(action="ENTRY_LONG", **overrides):
         "trading_authorized": False,
         "paper_execution_triggered": False,
         "live_trading_enabled": False,
+        "human_approval": {
+            "status": "APPROVED",
+            "approval_id": "test-approval-1",
+            "approved_risk_fraction": 0.005,
+        },
     }
     payload.update(overrides)
     return payload
@@ -172,5 +177,19 @@ def test_after_close_signal_cannot_mutate_paper_ledger(tmp_path):
     assert result["reason"] == "OUTSIDE_REGULAR_EXECUTION_WINDOW"
     assert result["paper_execution_triggered"] is False
     assert result["live_trading_enabled"] is False
+    assert service.ledger.find_open("AAPL") == []
+    assert fake_orats.calls == []
+
+
+def test_entry_without_human_approval_is_blocked(tmp_path):
+    fake_orats = FakeOrats()
+    service = executor(tmp_path, fake_orats)
+    payload = ingress()
+    payload.pop("human_approval")
+
+    result = service.execute(payload, now=NOW)
+
+    assert result["disposition"] == "NO_TRADE"
+    assert result["reason"] == "HUMAN_APPROVAL_REQUIRED"
     assert service.ledger.find_open("AAPL") == []
     assert fake_orats.calls == []

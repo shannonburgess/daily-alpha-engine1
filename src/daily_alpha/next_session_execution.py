@@ -102,6 +102,35 @@ def run_next_session_execution(
             "origin_market_date": item.get("market_date"),
             "mode": mode,
         }
+        approval = item.get("human_approval")
+        if action in {"ENTRY_LONG", "ADD"}:
+            valid_approval = (
+                isinstance(approval, dict)
+                and str(approval.get("status", "")).upper() == "APPROVED"
+                and bool(str(approval.get("approval_id", "")).strip())
+            )
+            try:
+                approved_risk_fraction = float(
+                    approval.get("approved_risk_fraction", 0.0)
+                    if isinstance(approval, dict)
+                    else 0.0
+                )
+            except (TypeError, ValueError):
+                approved_risk_fraction = 0.0
+            if not valid_approval or not 0.0 < approved_risk_fraction <= 0.005:
+                pending_item = dict(item)
+                pending_item["status"] = "PENDING_HUMAN_APPROVAL"
+                remaining.append(pending_item)
+                record["final_status"] = "PENDING_HUMAN_APPROVAL"
+                record["reason"] = "ENTRY_OR_ADD_REQUIRES_VALID_HUMAN_APPROVAL"
+                attempts.append(record)
+                _update_watch(
+                    watch_by_symbol,
+                    symbol,
+                    scanner_status="PENDING_HUMAN_APPROVAL",
+                    execution="NO_ACTION",
+                )
+                continue
         try:
             chain = orats.fetch_chain(symbol, as_of=timestamp)
             stock_price = float(chain.stock_price)
@@ -133,7 +162,11 @@ def run_next_session_execution(
                 )
                 continue
 
-            outcome = _invoke_processor(lambda_client, prepared.signal)
+            executable_signal = dict(prepared.signal or {})
+            if action in {"ENTRY_LONG", "ADD"}:
+                executable_signal["human_approval"] = dict(approval)
+                executable_signal["approved_risk_fraction"] = approved_risk_fraction
+            outcome = _invoke_processor(lambda_client, executable_signal)
             record["processor"] = outcome
             if outcome.get("ok") is not True:
                 raise RuntimeError(str(outcome.get("error_code", "PROCESSOR_REJECTED")))
