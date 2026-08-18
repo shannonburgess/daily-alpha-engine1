@@ -1,12 +1,12 @@
 # Daily Alpha Project Roadmap
 
-Updated: 2026-08-17 evening, Pacific Time
+Updated: 2026-08-17 late evening, Pacific Time
 
 ## Current operating boundary
 
-Daily Alpha remains a research and paper-trading platform. Canonical v2.4 now uses the corrected 70% full Earnings Gap & Go threshold and a 60%-<70% `EARNINGS_GAP_GO_EARLY` research/watch band. The canonical ADX entry floor is 17. Paper ENTRY and ADD actions require explicit human approval and remain capped by the existing 0.50% NAV hard-risk ceiling. Live brokerage execution remains disabled.
+Daily Alpha remains a research and **paper-trading** platform. Canonical v2.4 uses the corrected 70% full Earnings Gap & Go threshold and a 60%-<70% `EARNINGS_GAP_GO_EARLY` research/watch band. The canonical ADX entry floor is 17. Qualifying paper ENTRY and ADD actions no longer require a human approval step: lifecycle-aware sizing now permits autonomous paper execution within the existing hard portfolio-risk controls, with winner-only ATR-confirmed adds and no averaging down. Missing/unknown lifecycle metadata falls back to the smallest starter allocation rather than vetoing an otherwise valid paper signal, and Extended Leaders may take a reduced starter rather than being categorically blocked. Live brokerage execution remains disabled.
 
-The current production-research split is intentional: stable v2.4 paper behavior stays frozen while new R2 Long-Runner, portfolio-overlay, options, sector-ETF, SGOV, downside-risk and commercialization ideas are tested in disconnected research/draft branches.
+The current production-research split is intentional: stable v2.4 paper behavior stays distinct from new R2 Long-Runner, portfolio-overlay, options, sector-ETF, SGOV, downside-risk and commercialization ideas, which remain disconnected research/draft work unless separately approved.
 
 ## Workstream A — Paper-trading and staging readiness
 
@@ -14,16 +14,20 @@ The current production-research split is intentional: stable v2.4 paper behavior
 - v2.4 historical baseline aligned to 70% Gap & Go; PR #77 merged.
 - server-side Top-20 + open-position execution-universe scanner; PR #124 merged.
 - next-regular-session staging/execution lifecycle; PR #126 merged.
-- ADX17 + explicit human approval for ENTRY/ADD; PR #130 merged.
+- ADX17 paper entry floor and hard risk gate; PR #130 merged.
 - gated automatic deployment of paper-runtime changes to staging; PR #131 merged.
-- main deployment gate includes a paper-approval rehearsal before staging mutation.
+- staging deployment rehearsal gate; PR #132 merged.
+- autonomous lifecycle sizing and winner-only paper pyramiding; PR #147 merged.
+- valid paper signals no longer fail solely because lifecycle metadata is missing/unknown; smallest starter fallback in PR #148 merged.
+- Extended Leaders are no longer categorically blocked; qualifying fresh signals use a reduced starter allocation under PR #149.
 
 ### Remaining evidence gates
 1. Confirm scheduled close scan produces staged actions only, with zero after-hours paper fills.
-2. Confirm 9:45 AM ET revalidation uses fresh market/ORATS data and either executes an approved paper action or records CANCEL / DATA_ERROR.
-3. Confirm 10:05 AM ET retry path remains fail-closed for persistent data errors.
-4. Reconcile paper ledger, runner state, intended versus executed instrument, fees/slippage and duplicate/idempotency behavior.
-5. Preserve live-trading lockout and separate any future production/live authorization from this roadmap.
+2. Confirm next-session revalidation uses fresh market/ORATS data and either executes a qualifying paper action or records CANCEL / DATA_ERROR.
+3. Confirm retry path remains fail-closed for persistent data errors.
+4. Reconcile paper ledger, runner state, lifecycle sizing, intended versus executed instrument, fees/slippage and duplicate/idempotency behavior.
+5. Persist and enforce sector/correlation exposure in the execution ledger rather than relying only on upstream classification.
+6. Preserve live-trading lockout and require a separate explicit approval path for any future actual-capital execution.
 
 ## Workstream B — Active research backlog
 
@@ -33,11 +37,11 @@ Track: #71 / draft PR #134.
 Current state:
 - refreshed on current `main` after the canonical baseline correction;
 - `NO_ENTRY`, 25% starter-only and 25%→50% T+1/T+2 confirmation scenarios remain research-only;
-- event-high and event-close confirmations stay separate;
-- point-in-time event/option data, MRVL isolation, best-trade exclusion and an explicit null-result path are required;
-- current test workflow is green.
+- first empirical screen across 61 requested liquid names produced only 14 qualifying EARLY events from 2022 through 2026-07-31;
+- 20-day mean return was +3.60% and median +1.12%; excluding the best event reduced the mean to +2.02%, leaving insufficient sample size for promotion;
+- 40-day results were right-tail unstable, reinforcing the need for more events rather than a broader holding-period claim.
 
-Promotion gate: no EARLY starter enters paper/live until an out-of-sample cohort proves incremental value without depending on MRVL or another single outlier.
+Promotion gate: no EARLY starter enters paper/live until a broader point-in-time cohort proves incremental value without depending on MRVL or another single outlier.
 
 ### Pre-Catalyst Drift
 Track: #72 / draft PR #135.
@@ -45,11 +49,11 @@ Track: #72 / draft PR #135.
 Current state:
 - refreshed on current `main`;
 - hard `event_known_date` boundary prevents lookahead;
+- point-in-time catalyst manifest requires timezone-aware public-known/first-seen timestamps, source URL and source hash;
 - `PRE_CATALYST_WATCH` / `PRE_CATALYST_RUN` remain descriptive research states only;
-- matched-control and incremental-value tests are required to prove benefit beyond ordinary momentum/R2 trend;
-- current test workflow is green.
+- matched-control and incremental-value tests are required to prove benefit beyond ordinary momentum/R2 trend.
 
-Promotion gate: no scheduled non-earnings catalyst becomes a trade authorization without point-in-time source provenance, sufficient N, matched-control evidence and walk-forward stability.
+Promotion gate: no scheduled non-earnings catalyst becomes a trade authorization without a frozen point-in-time event manifest, sufficient N, matched-control evidence and walk-forward stability.
 
 ### ORATS reliability
 Track: #75 / #106 / PR #82 / PR #95 / draft PR #137.
@@ -57,15 +61,17 @@ Track: #75 / #106 / PR #82 / PR #95 / draft PR #137.
 Current state:
 - heavy research workflows are serialized;
 - standard ORATS client has bounded 429/transient retry and distinct rate-limit classification;
-- refreshed historical transport on current `main` distinguishes RATE_LIMITED / AUTH / REQUEST / HTTP / malformed-data failures and is green;
+- refreshed historical transport distinguishes RATE_LIMITED / AUTH / REQUEST / HTTP / malformed-data failures;
 - strict compatibility-route helper allows a legacy-route fallback only on explicit endpoint incompatibility, never on 429, 401/403, network exhaustion, malformed data or ordinary bad requests;
-- draft PR #137 now also contains a strict historical daily/earnings fetch adapter with tests proving RATE_LIMITED cannot be reinterpreted as compatibility fallback or missing data; latest CI is green.
+- draft PR #137 contains a strict historical daily/earnings fetch adapter with tests proving RATE_LIMITED cannot be reinterpreted as compatibility fallback or missing data.
 
 Remaining:
 - switch legacy `fetch_orats_history()` in `backtest.py` to the new daily/earnings adapter and preserve route/source provenance;
 - update historical option callers after reconciling older stacked PR #110;
 - add safe per-run caching/batching where it materially reduces duplicate historical requests;
 - preserve `DATA_ERROR` / `RATE_LIMITED` / `NO_QUALIFIED_OPTION` as distinct states end-to-end.
+
+A new concrete entitlement limitation surfaced in downside research: the current ORATS account returns HTTP 403 for historical SGOV dividend data. Research must not silently substitute price-only SGOV; reserve studies use a clearly labeled Treasury-carry approximation until distribution-adjusted/broker-grade SGOV total return is available.
 
 ### R2 Long-Runner research
 Current leading research hypothesis:
@@ -83,35 +89,53 @@ Current leading research hypothesis:
 Current result is promising but still research-only. The weak 2025 validation regime remains the key falsification/stability problem; do not promote by optimizing 2025 thresholds after the fact.
 
 ### Portfolio construction / downside research
-Track: PR #127, #114, #115, #133, #142 / draft PR #143.
+Track: PR #127, #114, #115, #133, #142 / draft PR #143, draft PR #152, #154.
 
 Required independent attribution tests:
 - R2 shares-only baseline;
-- SGOV treasury-reserve sleeve for unused investable capital, retaining an operational cash buffer;
+- Treasury/SGOV reserve sleeve for unused investable capital, retaining an operational cash buffer;
 - stock + long-dated option accelerator under one combined risk budget;
 - selective 2x / 3x sector proxy when sector leadership is strong but no individual stock qualifies;
-- volatility/drawdown risk-budget reduction;
+- volatility/regime-aware risk-budget reduction;
 - dynamic SPY/QQQ beta hedge;
-- small index-put tail hedge / put-spread / collar cost challenger;
+- small index-put tail hedge / put-spread / collar cost challenger once executable historical option marks are reliable;
 - shrinkage-covariance marginal-risk-contribution governor.
 
-Important early result from PR #127: the prototype SGOV reserve improved the tested R2 portfolio, while the first drawdown-throttle schedule did not. Those results are not promotion-grade because the prototype still needs the corrected ADX17 and 55-day Long-Runner signal lifecycle plus point-in-time universe cleanup.
+#### Phase-1 downside-overlay result — draft PR #152
+First completed 2022-01-03 through 2026-07-31 portfolio run on 60 liquid U.S. equities, before the reserve total-return correction:
+- R2 core/cash: CAGR 11.11%, annualized volatility 15.05%, Sharpe 0.738, Sortino 1.022, max drawdown 22.07%, Calmar 0.503, worst month -9.22%, beta 0.716.
+- dynamic SPY beta hedge: CAGR 10.20%, volatility 12.55%, Sharpe 0.812, Sortino 1.135, max drawdown 19.03%, Calmar 0.536, worst month -6.76%, beta 0.450.
+- hard drawdown throttle: CAGR 7.59%, volatility 10.59%, max drawdown 15.03%, Calmar 0.505 and a 498-trading-day recovery; current thresholds sacrifice too much return/recovery for promotion.
+- combined throttle + beta hedge: max drawdown 13.11% and Calmar 0.568, but CAGR falls to 7.44%; stronger protection, excessive return penalty.
+
+Leading phase-1 hypothesis: **dynamic beta hedging currently dominates the hard drawdown throttle on return preservation and improves Sharpe/Sortino, worst month, beta and max drawdown.** This is not promotion-grade yet and must survive reserve-accounting correction, universe cleanup, costs and further out-of-sample testing.
+
+The initial SGOV implementation used price-only OHLC and therefore understated reserve economics. The branch is being corrected to use a fail-closed FRED DGS3MO 3-month Treasury carry proxy less the current SGOV expense ratio, with source hashing. It remains an approximation, not exact SGOV shareholder total return.
+
+Tail puts remain intentionally excluded from phase 1 because credible option insurance requires timestamp-aligned executable-side historical quotes, roll/expiry costs and stale/locked/crossed quote handling. Do not approximate that with midpoints or Black-Scholes for promotion decisions.
 
 ### Instrument hierarchy to test
-Track: #142 / draft PR #143; current CI is green.
+Track: #142 / draft PR #143.
 
 1. qualified long-duration R2 signal → shares as core trend vehicle;
 2. exceptional liquid long-dated option structure → optional accelerator within the same trade-risk budget;
 3. no qualifying stock but broad sector leadership → research selective 2x/3x sector ETF shares at risk-normalized size;
-4. unallocated unborrowed investable cash → SGOV treasury reserve, excluding a small operational cash buffer;
+4. unallocated unborrowed investable cash → Treasury/SGOV reserve, excluding a small operational cash buffer;
 5. stale/failed data → cash / no trade, never automatic leverage or silent substitution.
 
 The research-only classifier hard-locks 3x sector expression behind an explicit experiment enable, defaults long-call eligibility to a 90–150 DTE research window, and includes a common-risk-budget splitter so shares plus options cannot silently double planned risk. No item in this hierarchy is promoted into paper/live execution by this document.
 
+### Regime-dependent R2 exposure scaling
+Track: #154.
+
+New challenger motivated by recent trend-allocation research and the phase-1 downside result. It keeps every stock-level R2 rule frozen and tests whether a small point-in-time regime state can scale exposure 1.00x / 0.75x / 0.50x more efficiently than a hard portfolio drawdown throttle. Regime inputs are limited to observable market trend, realized volatility, breadth and correlation; no hindsight macro labels or special 2025 repair state is allowed.
+
+Promotion hurdle: out-of-sample Sharpe or Calmar improvement >=10%, no worse max drawdown, >=90% of fixed-R2 CAGR, improved tail metric, <=25% extra turnover and no dependence on one sector/year. Kill if it merely duplicates the beta hedge or relies on fitting 2025.
+
 ### Valuation-extreme trend-reversal regime
 Track: #146.
 
-A new challenger, motivated by June 2026 trend-following research, will test whether public point-in-time valuation and yield-curve extremes identify reversal regimes that matter incrementally for the R2 Long-Runner. The experiment must hold stock-level R2 rules fixed, cannot increase risk in favorable regimes, must report 2025 separately without tuning it away, and must prove value beyond information already embedded in trend/volatility state.
+Tests whether public point-in-time valuation and yield-curve extremes identify reversal regimes that matter incrementally for the R2 Long-Runner. The experiment must hold stock-level R2 rules fixed, cannot increase risk in favorable regimes, must report 2025 separately without tuning it away, and must prove value beyond information already embedded in trend/volatility state.
 
 ## Workstream C — Quant Research Challenger queue
 
@@ -131,11 +155,13 @@ Active research families include:
 - #112 point-in-time option-surface divergence / skew shift;
 - #114 volatility-managed risk budget;
 - #115 shrinkage covariance + marginal-risk contribution;
-- #133 layered downside / beta / tail / SGOV overlay;
+- #133 layered downside / beta / tail / Treasury-reserve overlay;
 - #138 state-dependent predictability / signal-confidence mosaic;
 - #139 mega-cap concentration-constraint / stock-vs-sector relative-value overlay;
 - #142/#143 shares/options/sector-proxy/SGOV instrument-expression hierarchy;
-- #146 valuation-extreme trend-reversal regime gate.
+- #146 valuation-extreme trend-reversal regime gate;
+- #151 pre-breakout liquidity-improvement challenger;
+- #154 regime-dependent R2 exposure scaling.
 
 Challenger governance:
 - hypothesis and source before code;
@@ -148,7 +174,7 @@ Challenger governance:
 
 ## Workstream D — Institutional-scale portfolio readiness
 
-Track: #92, #105/#109, #114, #115, #118, #133, #138, #139, #142, #146.
+Track: #92, #105/#109, #114, #115, #118, #133, #138, #139, #142, #146, #151, #154.
 
 Before any claim that the strategy can scale toward $25M / $50M / $100M+ NAV, require:
 - order-to-ADV and days-to-liquidate estimates;
@@ -159,13 +185,14 @@ Before any claim that the strategy can scale toward $25M / $50M / $100M+ NAV, re
 - marginal contribution to portfolio risk with shrinkage-stabilized covariance;
 - stock-vs-sector expression choice when single-name concentration/capacity is unfavorable;
 - signal reliability/predictability state so capital is not assumed equally productive everywhere;
+- pre-breakout liquidity-path evidence versus one-day volume spikes;
 - performance net of realistic capacity costs at each NAV tier.
 
 ## Workstream E — Commercial beta / marketable business
 
 Master: #81. Long-term fund-readiness: #118.
 
-The initial marketable product remains a research/subscription product, not autonomous execution or personalized portfolio management.
+The initial marketable product remains a research/subscription product, not autonomous customer execution or personalized portfolio management.
 
 ### Identity, subscriptions, tiers and billing
 Track: #85 / draft PR #145, #88 / PR #101.
@@ -175,8 +202,7 @@ Current state:
 - duplicate/out-of-order billing events remain idempotent/fail-closed;
 - entitlements remain server-side and deny-by-default outside ACTIVE/TRIAL states;
 - privileged support/admin overrides are represented as auditable evidence and cannot grant access merely by existing;
-- the expanded beta-readiness gate now requires provenance/replay, performance methodology and claim controls, terms/privacy/support, retention, security/DR evidence and explicit live-execution disablement;
-- latest CI is green.
+- beta-readiness gate requires provenance/replay, performance methodology and claim controls, terms/privacy/support, retention, security/DR evidence and explicit live-execution disablement.
 
 Still required:
 - authentication/session/MFA provider adapter contract without selecting or purchasing a vendor;
@@ -189,7 +215,7 @@ Still required:
 Track: #89 / draft PR #144.
 
 Current state:
-- current-main dry-run desired-state planner is green;
+- current-main dry-run desired-state planner exists;
 - deterministic CREATE / UPDATE / DISABLE / MIGRATE_STRATEGY / NO_CHANGE / DATA_ERROR diff;
 - stale/incomplete ranked-candidate sources fail closed;
 - strategy-version changes require explicit migration;
@@ -203,19 +229,25 @@ Still required before any real alert mutation:
 - explicit user approval for the first real TradingView mutation.
 
 ### Customer-facing research outputs and delivery
-Track: #87 / PR #100 / PR #111, #116.
+Track: #87 / PR #100 / PR #111, #116 / draft PR #150.
 
-Required:
+Current safe implementation:
+- draft PR #150 adds an immutable report-provenance manifest contract;
+- deterministic evidence hashing and report identity;
+- explicit ACTUAL / PAPER / BACKTEST / HYPOTHETICAL / NONE basis separation;
+- source freshness/error states cannot silently disappear;
+- customer-safe provenance footer excludes internal archive/delivery infrastructure identifiers.
+
+Still required:
 - readable morning/evening research outputs and archive;
-- immutable report IDs and source/data cutoff timestamps;
-- deterministic provenance manifest linking inputs, strategy/model/methodology version and git/build hash;
+- source/data cutoff timestamps surfaced consistently;
 - monitored scheduled delivery with correlation IDs;
 - idempotent replay without duplicate delivery or ledger mutation;
 - explicit stale/data-error labeling rather than apparently healthy output;
 - tested backup/restore and incident-disable path.
 
 ### Performance and audit history
-Track: #86 / #113 / #116 / PR #96 / draft PR #140.
+Track: #86 / #113 / #116 / PR #96 / draft PR #140 / draft PR #150.
 
 Current safe implementation:
 - draft PR #140 adds a machine-readable performance-methodology contract;
@@ -224,14 +256,15 @@ Current safe implementation:
 - deterministic methodology hash;
 - executable-side long-option mark requirement;
 - fail-closed stale/locked/crossed/missing option performance evidence;
-- gross/net separation when costs are estimated.
+- gross/net separation when costs are estimated;
+- draft PR #150 links report identity to immutable source/model/methodology evidence.
 
 Still required:
 - canonical NAV calculator and fixtures for stock/ETF/options/add/partial/roll/assignment cases;
 - benchmark and cost-model registries;
 - minimum sample/period rules for annualized/performance claims;
 - methodology-change invalidation into the claim registry;
-- provenance/replay evidence.
+- full provenance/replay evidence across generated and delivered reports.
 
 ### Security, privacy, secrets and environment separation
 Track: #103 / PR #104, #87 / PR #111.
@@ -301,7 +334,7 @@ Daily Alpha Research can become a commercial research/distribution product witho
 ## Non-negotiable safety boundaries
 
 - No live trading is authorized.
-- No research rule self-promotes into paper/live execution.
+- No disconnected research rule self-promotes into paper/live execution.
 - No stale ORATS/data failure silently becomes stock, option, leveraged ETF or other exposure.
 - No leverage increase occurs merely because volatility is low or idle capital exists.
 - No paid service, public website, customer outreach, public performance claim, production AWS deployment, real TradingView alert mutation, capital deployment, fundraising or legal/compliance conclusion occurs without the required explicit approval and review gates.
