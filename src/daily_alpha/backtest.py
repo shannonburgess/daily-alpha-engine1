@@ -478,7 +478,7 @@ def run_strategy(
         price_ok = bar.close >= 25.0
         eff_ok = row["efficiency"] is not None and float(row["efficiency"]) >= 0.20
         rsi_ok = row["rsi"] is not None and float(row["rsi"]) <= 80.0
-        adx_ok = row["adx"] is not None and float(row["adx"]) >= 25.0
+        adx_ok = row["adx"] is not None and float(row["adx"]) >= 17.0
 
         if version == "2.3":
             base_setup = (
