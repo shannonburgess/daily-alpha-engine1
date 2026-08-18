@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from daily_alpha.auth_contract import AuthSession, PrincipalRole, authorize_session
 
 
-NOW = datetime(2026, 8, 18, 5, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 18, 5, 0, tzinfo=UTC)
 
 
 def session(**overrides):
@@ -109,7 +109,7 @@ def test_privileged_tenant_access_rejects_missing_or_stale_mfa():
 
 def test_unknown_role_and_naive_timestamp_fail_closed():
     unknown = session(role="ADMIN")  # type: ignore[arg-type]
-    naive = session(issued_at=datetime(2026, 8, 18, 4, 30))
+    naive = session(issued_at=NOW.replace(tzinfo=None))
 
     unknown_decision = authorize_session(
         unknown,
