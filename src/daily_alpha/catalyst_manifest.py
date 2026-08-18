@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from urllib.parse import urlparse
 
 from .pre_catalyst import CatalystType, PublicCatalyst
@@ -40,7 +40,7 @@ class CatalystManifestRecord:
                 self.ticker.upper().strip(),
                 self.event_type.value,
                 self.event_date.isoformat(),
-                self.event_known_at.astimezone(timezone.utc).isoformat(),
+                self.event_known_at.astimezone(UTC).isoformat(),
                 self.source_url.strip(),
                 self.source_sha256,
             )
