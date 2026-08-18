@@ -39,6 +39,11 @@ class NewsletterRenderer:
             sections.append("SMART_MONEY")
             content.append(self._smart_money_section(packet.smart_money))
 
+        if not packet.candidates:
+            content.append(
+                "<section><h2>No publishable candidates</h2>"
+                "<p>The research engine produced no eligible records for this run.</p></section>"
+            )
         sections.append("UNUSUAL_OPTIONS_ACTIVITY")
         content.append(self._unusual_options_section(packet.candidates))
 
