@@ -5,6 +5,8 @@ fundamentals, social data, or live execution.  Signals are known at the close
 and orders execute no earlier than the following session.
 """
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 import argparse
@@ -12,7 +14,7 @@ import json
 import math
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from statistics import mean, pstdev
@@ -411,7 +413,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ticker = futures[future]
             try:
                 _, raw[ticker] = future.result()
-            except Exception as exc:  # preserve complete research evidence
+            except RuntimeError as exc:  # preserve complete research evidence
                 failures[ticker] = f"{type(exc).__name__}: {exc}"
     if "SPY" not in raw or "QQQ" not in raw:
         raise RuntimeError(f"Missing benchmark history: {failures}")
