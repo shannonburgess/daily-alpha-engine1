@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from .models import InstrumentSelected
 from .newsletter import NewsletterRenderer
 from .research_report import DailyResearchPacket, ResearchCandidate, ResearchDisposition
+from .sectors import resolve_sector
 
 
 class StagingReportError(RuntimeError):
@@ -297,7 +298,7 @@ def _packet_from_shortlist(
                 reasons=tuple(reasons),
                 risk_status=risk_status,
                 data_status=data_status,
-                sector=str(raw.get("sector") or "UNKNOWN"),
+                sector=resolve_sector(symbol, str(raw.get("sector") or "")),
                 option_contract=contract,
                 flow_classification=(
                     "UNUSUAL_CONFIRMATION"
