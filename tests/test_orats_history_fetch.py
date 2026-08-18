@@ -3,7 +3,10 @@ from datetime import date
 import pytest
 
 from daily_alpha.orats_historical_transport import HistoricalOratsRateLimitedError
-from daily_alpha.orats_history_fetch import fetch_daily_earnings_payloads
+from daily_alpha.orats_history_fetch import (
+    fetch_daily_earnings_payloads,
+    fetch_daily_earnings_rows,
+)
 from daily_alpha.orats_history_route import HistoricalRouteResult
 
 
@@ -84,5 +87,72 @@ def test_adapter_rejects_invalid_request_identity_before_network_work():
             warm_start=date(2024, 1, 1),
             end=date(2026, 8, 14),
             token="",
+            router=router,
+        )
+
+
+def test_rows_preserve_daily_and_earnings_provenance_separately():
+    calls = 0
+
+    def router(primary_url, fallback_url, **kwargs):
+        nonlocal calls
+        calls += 1
+        if "dailies" in primary_url:
+            return HistoricalRouteResult(
+                payload={
+                    "data": [
+                        {
+                            "ticker": "NVDA",
+                            "tradeDate": "2026-08-14",
+                            "source": "SPOOFED_PAYLOAD_SOURCE",
+                        }
+                    ]
+                },
+                source="ORATS_DATA_API",
+                used_compatibility_fallback=False,
+            )
+        return HistoricalRouteResult(
+            payload=[
+                {
+                    "ticker": "NVDA",
+                    "earnDate": "2026-07-30",
+                    "source": "SPOOFED_PAYLOAD_SOURCE",
+                }
+            ],
+            source="ORATS_DATAV2_API",
+            used_compatibility_fallback=True,
+        )
+
+    result = fetch_daily_earnings_rows(
+        "NVDA",
+        warm_start=date(2024, 1, 1),
+        end=date(2026, 8, 14),
+        token="secret-token",
+        router=router,
+    )
+
+    assert calls == 2
+    assert result.daily_rows[0]["source"] == "ORATS_DATA_API"
+    assert result.earnings_rows[0]["source"] == "ORATS_DATAV2_API"
+    assert result.daily_source == "ORATS_DATA_API"
+    assert result.earnings_source == "ORATS_DATAV2_API"
+    assert result.daily_used_compatibility_fallback is False
+    assert result.earnings_used_compatibility_fallback is True
+
+
+def test_rows_reject_unexpected_payload_shape():
+    def router(primary_url, fallback_url, **kwargs):
+        return HistoricalRouteResult(
+            payload={"unexpected": []},
+            source="ORATS_DATA_API",
+            used_compatibility_fallback=False,
+        )
+
+    with pytest.raises(RuntimeError, match="Unexpected ORATS response shape"):
+        fetch_daily_earnings_rows(
+            "NVDA",
+            warm_start=date(2024, 1, 1),
+            end=date(2026, 8, 14),
+            token="secret-token",
             router=router,
         )
