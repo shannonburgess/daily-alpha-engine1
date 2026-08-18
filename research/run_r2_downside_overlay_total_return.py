@@ -31,6 +31,7 @@ FRED_DGS3MO_CSV = (
     "https://fred.stlouisfed.org/graph/fredgraph.csv?"
     "id=DGS3MO&cosd=2021-01-01&coed=2026-07-31"
 )
+FRED_RETRY_DELAYS_SECONDS = (0, 2, 5)
 SGOV_EXPENSE_RATIO = 0.0009
 
 
@@ -38,7 +39,8 @@ def fetch_dgs3mo() -> tuple[dict[date, float], str]:
     request = Request(FRED_DGS3MO_CSV, headers={"User-Agent": "DailyAlphaResearch/1.0"})
     raw: bytes | None = None
     last_error: OSError | None = None
-    for attempt, delay in enumerate((0, 2, 5), start=1):
+    max_attempts = len(FRED_RETRY_DELAYS_SECONDS)
+    for attempt, delay in enumerate(FRED_RETRY_DELAYS_SECONDS, start=1):
         if delay:
             time.sleep(delay)
         try:
@@ -47,7 +49,7 @@ def fetch_dgs3mo() -> tuple[dict[date, float], str]:
             break
         except (OSError, TimeoutError) as exc:
             last_error = exc
-            if attempt == 3:
+            if attempt == max_attempts:
                 raise RuntimeError("FRED DGS3MO fetch failed after bounded retries") from exc
     if raw is None:
         raise RuntimeError("FRED DGS3MO fetch returned no bytes") from last_error
