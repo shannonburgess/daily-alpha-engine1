@@ -1,7 +1,7 @@
 """Quota-bounded YouTube Data API v3 transport for Behavioral Change research.
 
 The transport uses only public search data and receives its API key by injection.
-It never logs or persists the key.  One search request is made per uncached query,
+It never logs or persists the key. One search request is made per uncached query,
 with no pagination, and duplicate video IDs across entity aliases are counted once.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Protocol
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -101,7 +101,9 @@ class YouTubePublicSearchFetcher:
                 self._cache[cache_key] = video_ids
                 self._search_calls_used += 1
 
-            deduped_ids = tuple(video_id for video_id in video_ids if video_id not in seen_video_ids)
+            deduped_ids = tuple(
+                video_id for video_id in video_ids if video_id not in seen_video_ids
+            )
             seen_video_ids.update(deduped_ids)
             provenance = json.dumps(
                 {
@@ -155,8 +157,10 @@ class YouTubePublicSearchFetcher:
                 timeout_seconds=self.timeout_seconds,
             )
             payload = json.loads(raw.decode("utf-8"))
-        except Exception as exc:  # noqa: BLE001 - provider boundary normalized here
-            raise YouTubeTransportError(f"YOUTUBE_SEARCH_REQUEST_FAILED:{type(exc).__name__}") from exc
+        except Exception as exc:
+            raise YouTubeTransportError(
+                f"YOUTUBE_SEARCH_REQUEST_FAILED:{type(exc).__name__}"
+            ) from exc
         if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
             raise YouTubeTransportError("YOUTUBE_SEARCH_RESPONSE_INVALID")
 
@@ -197,7 +201,7 @@ def build_youtube_data_adapter(
 
 def _default_http_get(url: str, *, timeout_seconds: float) -> bytes:
     request = Request(url, headers={"Accept": "application/json"})
-    with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310 - fixed HTTPS endpoint
+    with urlopen(request, timeout=timeout_seconds) as response:
         return response.read()
 
 
