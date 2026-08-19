@@ -1,8 +1,8 @@
 """Deterministic research artifacts for Daily Alpha strategy forensics.
 
-The writer consumes already-computed forensics diagnostics and model-disagreement
-observations. It does not fetch future prices, alter a decision, mutate a paper
-ledger, or authorize any trade.
+The writer consumes already-computed forensics diagnostics, model-disagreement
+observations, and optional point-in-time path evidence. It does not fetch future
+prices, alter a decision, mutate a paper ledger, or authorize any trade.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from .strategy_forensics import (
     ModelDisagreement,
     summarize_forensics,
 )
+from .strategy_forensics_observations import ForensicsPathEvidence
 
 
 def write_strategy_forensics_artifacts(
@@ -24,6 +25,7 @@ def write_strategy_forensics_artifacts(
     diagnostics: Iterable[ForensicsDiagnostic],
     *,
     disagreements: Iterable[ModelDisagreement] = (),
+    path_evidence: Iterable[ForensicsPathEvidence] = (),
 ) -> dict[str, Path]:
     """Write stable JSON/CSV research artifacts without changing strategy state."""
     destination = Path(output_dir)
@@ -49,11 +51,21 @@ def write_strategy_forensics_artifacts(
             item.challenger_decision,
         ),
     )
+    ordered_evidence = sorted(
+        path_evidence,
+        key=lambda item: (
+            item.decision_observed_at,
+            item.decision_id,
+            item.path.strategy_version,
+            item.path.symbol,
+        ),
+    )
 
     payload = {
         "summary": summarize_forensics(ordered_diagnostics),
         "diagnostics": [item.to_dict() for item in ordered_diagnostics],
         "model_disagreements": [item.to_dict() for item in ordered_disagreements],
+        "path_evidence_count": len(ordered_evidence),
         "research_only": True,
         "trading_authorized": False,
         "live_trading_enabled": False,
@@ -62,6 +74,7 @@ def write_strategy_forensics_artifacts(
     json_path = destination / "strategy_forensics.json"
     csv_path = destination / "strategy_forensics.csv"
     disagreement_path = destination / "strategy_model_disagreements.json"
+    evidence_path = destination / "strategy_forensics_path_evidence.json"
 
     json_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
@@ -96,8 +109,26 @@ def write_strategy_forensics_artifacts(
         encoding="utf-8",
     )
 
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "observations": [item.to_dict() for item in ordered_evidence],
+                "count": len(ordered_evidence),
+                "cutoff_bounded": True,
+                "research_only": True,
+                "trading_authorized": False,
+                "live_trading_enabled": False,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     return {
         "json": json_path,
         "csv": csv_path,
         "model_disagreements": disagreement_path,
+        "path_evidence": evidence_path,
     }
