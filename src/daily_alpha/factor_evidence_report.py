@@ -8,6 +8,8 @@ candidate ranking from observed returns.
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
+from statistics import median
 from typing import Any
 
 from .factor_attribution import FactorReturnObservation, evaluate_factor
@@ -124,3 +126,124 @@ def build_factor_evidence_report(
         "trading_authorized": False,
         "live_trading_enabled": False,
     }
+
+
+def build_factor_ic_history_report(
+    observations: list[FactorReturnObservation],
+    *,
+    minimum_cross_section: int = 20,
+    minimum_dates: int = 5,
+    rolling_dates: int = 5,
+) -> dict[str, Any]:
+    """Build point-in-time cross-sectional rank-IC history by forward horizon.
+
+    Unlike pooled evidence across many snapshot dates, this report computes rank IC
+    independently for each observation date. Rolling means use only the current and
+    earlier dated IC observations in the ordered research history. The output is a
+    retrospective evidence diagnostic and cannot change factor weights or authorize
+    execution.
+    """
+    if not observations:
+        raise ValueError("FACTOR_IC_HISTORY_OBSERVATIONS_REQUIRED")
+    if minimum_cross_section <= 1:
+        raise ValueError("FACTOR_IC_MINIMUM_CROSS_SECTION_INVALID")
+    if minimum_dates <= 1:
+        raise ValueError("FACTOR_IC_MINIMUM_DATES_INVALID")
+    if rolling_dates <= 1:
+        raise ValueError("FACTOR_IC_ROLLING_DATES_INVALID")
+
+    factors = {item.factor for item in observations}
+    if len(factors) != 1:
+        raise ValueError("FACTOR_IC_HISTORY_REQUIRES_ONE_FACTOR")
+    factor = next(iter(factors))
+
+    by_horizon_and_date: dict[
+        int, dict[str, list[FactorReturnObservation]]
+    ] = defaultdict(lambda: defaultdict(list))
+    normalized_dates: dict[str, str] = {}
+    for item in observations:
+        observation_date = _normalize_observation_date(item.as_of)
+        normalized_dates[item.as_of] = observation_date
+        by_horizon_and_date[item.horizon_bars][observation_date].append(item)
+
+    horizon_rows = []
+    for horizon in sorted(by_horizon_and_date):
+        date_groups = by_horizon_and_date[horizon]
+        date_rows = []
+        sufficient_rank_ics: list[float] = []
+        for observation_date in sorted(date_groups):
+            evidence = evaluate_factor(
+                date_groups[observation_date],
+                minimum_sample=minimum_cross_section,
+            )
+            rank_ic = evidence.rank_ic
+            rolling_mean_rank_ic = None
+            if evidence.sufficient_sample and rank_ic is not None:
+                sufficient_rank_ics.append(rank_ic)
+                if len(sufficient_rank_ics) >= rolling_dates:
+                    window = sufficient_rank_ics[-rolling_dates:]
+                    rolling_mean_rank_ic = round(sum(window) / len(window), 6)
+            date_rows.append(
+                {
+                    "observation_date": observation_date,
+                    "observations": evidence.observations,
+                    "rank_ic": rank_ic,
+                    "sufficient_cross_section": evidence.sufficient_sample,
+                    "rolling_mean_rank_ic": rolling_mean_rank_ic,
+                }
+            )
+
+        mean_rank_ic = (
+            round(sum(sufficient_rank_ics) / len(sufficient_rank_ics), 6)
+            if sufficient_rank_ics
+            else None
+        )
+        median_rank_ic = (
+            round(median(sufficient_rank_ics), 6) if sufficient_rank_ics else None
+        )
+        positive_share = (
+            round(
+                sum(value > 0 for value in sufficient_rank_ics) / len(sufficient_rank_ics),
+                6,
+            )
+            if sufficient_rank_ics
+            else None
+        )
+        horizon_rows.append(
+            {
+                "horizon_bars": horizon,
+                "distinct_observation_dates": len(date_rows),
+                "sufficient_date_count": len(sufficient_rank_ics),
+                "minimum_dates": minimum_dates,
+                "sufficient_history": len(sufficient_rank_ics) >= minimum_dates,
+                "mean_rank_ic": mean_rank_ic,
+                "median_rank_ic": median_rank_ic,
+                "positive_rank_ic_share": positive_share,
+                "daily_rank_ic": date_rows,
+            }
+        )
+
+    return {
+        "factor": factor,
+        "observations": len(observations),
+        "minimum_cross_section": minimum_cross_section,
+        "minimum_dates": minimum_dates,
+        "rolling_dates": rolling_dates,
+        "horizons": horizon_rows,
+        "date_normalization": "CALENDAR_DATE_FROM_AS_OF",
+        "interpretation": "RETROSPECTIVE_FACTOR_STABILITY_EVIDENCE_ONLY",
+        "research_only": True,
+        "trading_authorized": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _normalize_observation_date(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("FACTOR_OBSERVATION_AS_OF_INVALID")
+    try:
+        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("FACTOR_OBSERVATION_AS_OF_INVALID") from exc
+    return parsed.date().isoformat()
