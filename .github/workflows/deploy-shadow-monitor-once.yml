@@ -1,0 +1,102 @@
+name: Deploy shadow monitor endpoint once
+
+on:
+  push:
+    branches:
+      - staging/shadow-e2e-integration
+    paths:
+      - ".github/workflows/deploy-shadow-monitor-once.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-monitor:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install and validate candidate
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          ruff check .
+          pytest -q tests/test_shadow_staging_integration.py tests/test_armed_replay.py
+
+      - name: Build deployment package
+        run: |
+          rm -rf build deployment.zip
+          mkdir -p build
+          pip install . --target build --no-deps
+          cp -R lambda_handlers build/lambda_handlers
+          (cd build && zip -qr ../deployment.zip .)
+
+      - name: Configure short-lived staging credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-shadow-monitor-deploy
+          aws-region: us-east-2
+
+      - name: Verify staging safety preflight
+        run: |
+          set -euo pipefail
+          START="$(aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query 'Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START' \
+            --output text)"
+          test "${START}" = "2026-08-19"
+          echo "Forward-test boundary verified: ${START}"
+
+      - name: Deploy processor only
+        run: |
+          set -euo pipefail
+          aws lambda update-function-code \
+            --function-name daily-alpha-pine-processor \
+            --zip-file fileb://deployment.zip \
+            --publish >/dev/null
+          aws lambda wait function-updated --function-name daily-alpha-pine-processor
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --handler lambda_handlers.pine_processor.lambda_handler >/dev/null
+          aws lambda wait function-updated --function-name daily-alpha-pine-processor
+
+      - name: Prove read-only monitor endpoint and safety flags
+        run: |
+          set -euo pipefail
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}' \
+            /tmp/monitor.json >/dev/null
+          cat /tmp/monitor.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          state = json.loads(Path('/tmp/monitor.json').read_text())
+          assert state['ok'] is True, state
+          assert state['trading_authorized'] is False, state
+          assert state['live_trading_enabled'] is False, state
+          assert set(state['books']) == {'PAPER_SHADOW_V24', 'PAPER_SHADOW_V25'}, state
+          for book in state['books'].values():
+              assert book['scan_truncated'] is False, state
+          print('SHADOW MONITOR STAGING DEPLOYMENT: PASS')
+          PY
+
+      - name: Verify forward boundary unchanged
+        run: |
+          START="$(aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query 'Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START' \
+            --output text)"
+          test "${START}" = "2026-08-19"
+          echo "trading_authorized=false"
+          echo "live_trading_enabled=false"
