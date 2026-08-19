@@ -43,8 +43,8 @@ class PineProcessorResult:
 
 
 CANONICAL_STRATEGY = "DA_TURTLE_ADAPTIVE_TREND"
-# Keep v2.3 accepted during migration so existing TradingView alerts do not break.
-CANONICAL_STRATEGY_VERSIONS = {"2.3", "2.4"}
+# Keep v2.3/v2.4 accepted while v2.5 runs as an isolated shadow challenger.
+CANONICAL_STRATEGY_VERSIONS = {"2.3", "2.4", "2.5"}
 CANONICAL_TIMEFRAMES = {"D", "1D"}
 CANONICAL_ADD_STAGES = {"ADD_1_ATR", "ADD_2_ATR"}
 CANONICAL_PARTIAL_STAGE = "HARVEST_3_ATR"
@@ -53,8 +53,9 @@ INGRESS_SCHEMA_VERSIONS = {
     "2026-08-16-v2",
     "2026-08-16-v3",
     "2026-08-16-v4",
+    "2026-08-18-v5",
 }
-PROCESSOR_SCHEMA_VERSION = "2026-08-16-v2"
+PROCESSOR_SCHEMA_VERSION = "2026-08-18-v3"
 
 
 def process_ingress_record(
