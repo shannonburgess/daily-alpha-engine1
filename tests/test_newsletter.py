@@ -271,6 +271,29 @@ def _seed_staging_s3(client):
       {"sector":"Technology","new_buys":3,"leaders":5,"net_score":8},
       {"sector":"Industrials","new_buys":1,"leaders":2,"net_score":3}
     ]'''
+    client.objects["ovtlyr/shortlist/latest/buy_continuity.json"] = b'''{
+      "states": [
+        {
+          "symbol": "AAPL",
+          "current_signal": "BUY",
+          "active_buy": true,
+          "research_eligibility": "ACTIVE_BUY_ELIGIBLE",
+          "first_seen_date": "2026-08-10",
+          "first_buy_date": "2026-08-10",
+          "current_buy_streak_start": "2026-08-10",
+          "consecutive_buy_observations": 6,
+          "total_buy_observations": 6,
+          "last_seen_date": "2026-08-17",
+          "last_meaningful_change_date": "2026-08-10",
+          "trend": "Up",
+          "momentum": "Accelerating",
+          "sector": "Technology",
+          "industry": "Hardware",
+          "optionable": true,
+          "partial_data": false
+        }
+      ]
+    }'''
     client.objects["ovtlyr/shortlist/latest/shortlist.csv"] = b"rank,symbol\n1,AAPL\n2,XYZ\n"
 
 
@@ -294,23 +317,31 @@ def test_staging_publisher_writes_newsletter_csvs_and_manifest():
     assert result["ok"] is True
     assert result["status"] == "PUBLISHED"
     assert result["manifest"]["research_candidate_count"] == 2
+    assert result["manifest"]["persistent_active_buy_count"] == 1
+    assert result["manifest"]["eligible_persistent_active_buy_count"] == 1
     assert result["manifest"]["open_paper_position_count"] == 1
     assert result["manifest"]["newsletter_quality_passed"] is True
     assert result["live_trading_enabled"] is False
 
     latest = "daily-alpha/outputs/latest/"
     html = s3.objects[latest + "newsletter.html"].decode()
+    continuity_csv = s3.objects[latest + "buy_continuity.csv"].decode()
     ledger_csv = s3.objects[latest + "paper_ledger.csv"].decode()
     sector_csv = s3.objects[latest + "sector_rotation.csv"].decode()
     manifest = s3.objects[latest + "report_manifest.json"].decode()
 
     assert "Daily Alpha &amp; Risk" in html
     assert "AAPL" in html
+    assert "BUY_STREAK_START=2026-08-10" in html
+    assert "BUY_OBSERVATIONS=6" in html
     assert "XYZ" in html
     assert "Data Error" in html
+    assert "AAPL" in continuity_csv
+    assert "ACTIVE_BUY_ELIGIBLE" in continuity_csv
     assert "ACCOUNT#paper-unit#POSITION#OPTION#AAPL" in ledger_csv
     assert "Technology" in sector_csv
     assert '"session": "MORNING"' in manifest
+    assert '"persistent_active_buy_count": 1' in manifest
     assert '"live_trading_enabled": false' in manifest
 
 
@@ -337,6 +368,7 @@ def test_staging_publisher_keeps_history_and_latest_copies():
     for name in (
         "newsletter.html",
         "research_shortlist.csv",
+        "buy_continuity.csv",
         "paper_ledger.csv",
         "sector_rotation.csv",
         "report_manifest.json",
