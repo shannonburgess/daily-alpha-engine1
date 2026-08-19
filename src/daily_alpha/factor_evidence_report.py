@@ -160,10 +160,8 @@ def build_factor_ic_history_report(
     by_horizon_and_date: dict[
         int, dict[str, list[FactorReturnObservation]]
     ] = defaultdict(lambda: defaultdict(list))
-    normalized_dates: dict[str, str] = {}
     for item in observations:
         observation_date = _normalize_observation_date(item.as_of)
-        normalized_dates[item.as_of] = observation_date
         by_horizon_and_date[item.horizon_bars][observation_date].append(item)
 
     horizon_rows = []
@@ -243,7 +241,7 @@ def _normalize_observation_date(value: str) -> str:
     if not normalized:
         raise ValueError("FACTOR_OBSERVATION_AS_OF_INVALID")
     try:
-        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise ValueError("FACTOR_OBSERVATION_AS_OF_INVALID") from exc
     return parsed.date().isoformat()
