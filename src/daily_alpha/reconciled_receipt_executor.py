@@ -31,7 +31,6 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
         now: datetime | None = None,
     ) -> dict[str, Any]:
         timestamp = _aware(now or datetime.now(UTC))
-        action = str(ingress.get("action", "")).upper()
         before_trade = self._before_trade(ingress)
         self._receipt_quote = None
         result = super().execute(ingress, now=timestamp)
