@@ -200,8 +200,13 @@ def _record_from_signal(
                     "EARNINGS_GAP_GO entry requires complete earnings metrics"
                 )
 
+    schema_version = (
+        "2026-08-18-v5"
+        if signal.strategy_version == "2.5" or model_id is not None
+        else "2026-08-16-v4"
+    )
     return PineIngressRecord(
-        schema_version="2026-08-18-v5",
+        schema_version=schema_version,
         source="TRADINGVIEW_PINE",
         signal_id=signal.signal_id,
         symbol=signal.symbol,
