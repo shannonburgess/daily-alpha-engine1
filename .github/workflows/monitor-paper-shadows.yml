@@ -33,7 +33,6 @@ jobs:
     environment: staging
     env:
       AWS_REGION: us-east-2
-      LEDGER_TABLE: daily-alpha-paper-ledger-staging
       REPO: ${{ github.repository }}
     steps:
       - name: Check out repository
@@ -51,28 +50,28 @@ jobs:
           role-session-name: daily-alpha-shadow-monitor
           aws-region: us-east-2
 
-      - name: Read isolated shadow positions
+      - name: Read isolated positions, ARMED state, events and receipts
         run: |
           set -euo pipefail
           aws lambda invoke \
             --function-name daily-alpha-pine-processor \
             --cli-binary-format raw-in-base64-out \
-            --payload '{"operation":"LIST_SHADOW_PAPER_POSITIONS"}' \
-            /tmp/shadow-positions.json >/dev/null
-          cat /tmp/shadow-positions.json
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}' \
+            /tmp/shadow-monitor-state.json >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
 
-      - name: Read durable SH24 and SH25 Pine events
-        run: |
-          set -euo pipefail
-          for ACCOUNT in PAPER_SHADOW_V24 PAPER_SHADOW_V25; do
-            VALUES="$(jq -cn --arg p "ACCOUNT#${ACCOUNT}#PINE_EVENT#" '{":prefix":{"S":$p}}')"
-            aws dynamodb scan \
-              --table-name "${LEDGER_TABLE}" \
-              --filter-expression 'begins_with(#pk, :prefix)' \
-              --expression-attribute-names '{"#pk":"pk"}' \
-              --expression-attribute-values "${VALUES}" \
-              --output json > "/tmp/events-${ACCOUNT}.json"
-          done
+          state = json.loads(Path('/tmp/shadow-monitor-state.json').read_text())
+          assert state.get('ok') is True, state
+          assert state.get('trading_authorized') is False, state
+          assert state.get('live_trading_enabled') is False, state
+          assert set(state.get('books', {})) == {
+              'PAPER_SHADOW_V24',
+              'PAPER_SHADOW_V25',
+          }, state
+          print('Read-only shadow monitor API: PASS')
+          PY
 
       - name: Build exact shadow status
         id: summarize
@@ -80,9 +79,7 @@ jobs:
         run: |
           set +e
           python scripts/shadow_monitor.py \
-            --positions /tmp/shadow-positions.json \
-            --events-v24 /tmp/events-PAPER_SHADOW_V24.json \
-            --events-v25 /tmp/events-PAPER_SHADOW_V25.json \
+            --monitor-state /tmp/shadow-monitor-state.json \
             --output-json /tmp/shadow-status.json \
             --output-md /tmp/shadow-status.md
           CODE=$?
@@ -115,15 +112,13 @@ jobs:
         with:
           name: paper-shadow-monitor-${{ github.run_id }}
           path: |
+            /tmp/shadow-monitor-state.json
             /tmp/shadow-status.json
             /tmp/shadow-status.md
-            /tmp/shadow-positions.json
-            /tmp/events-PAPER_SHADOW_V24.json
-            /tmp/events-PAPER_SHADOW_V25.json
           retention-days: 30
 
-      - name: Enforce fail-closed safety result
+      - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety/isolation violation."
+          echo "Paper-shadow monitor detected a safety, isolation, or evidence-completeness violation."
           exit 1
