@@ -5,6 +5,8 @@ import json
 import pytest
 
 from daily_alpha.candidate_factor_snapshot import (
+    CANDIDATE_FACTOR_ARTIFACT_SCHEMA,
+    CANDIDATE_FACTOR_SNAPSHOT_SCHEMA,
     build_candidate_factor_snapshot,
     write_candidate_factor_snapshots,
 )
@@ -80,6 +82,10 @@ def test_snapshot_maps_observed_candidate_evidence_without_authorizing_trades() 
     assert factors["sector_industry_leadership"] == 0.5
     assert factors["options_confirmation"] == pytest.approx(0.85)
 
+    assert snapshot.schema_version == CANDIDATE_FACTOR_SNAPSHOT_SCHEMA
+    assert len(snapshot.snapshot_id) == 64
+    assert len(snapshot.weights_hash) == 64
+    assert snapshot.as_of == "2026-08-18T20:00:00+00:00"
     assert snapshot.availability["momentum"] is True
     assert snapshot.availability["trendability"] is True
     assert snapshot.availability["liquidity_capacity"] is True
@@ -94,6 +100,38 @@ def test_snapshot_maps_observed_candidate_evidence_without_authorizing_trades() 
     assert snapshot.trading_authorized is False
     assert snapshot.live_trading_enabled is False
     assert snapshot.factor_score.trading_authorized is False
+
+
+def test_snapshot_identity_is_deterministic_and_evidence_sensitive() -> None:
+    first = build_candidate_factor_snapshot(
+        as_of="2026-08-18T20:00:00Z",
+        source=_source(),
+        classified=_classified(),
+        candidate=_candidate(),
+    )
+    same = build_candidate_factor_snapshot(
+        as_of="2026-08-18T20:00:00+00:00",
+        source=_source(),
+        classified=_classified(),
+        candidate=_candidate(),
+    )
+    weaker = _candidate()
+    weaker = CandidateAssessment(
+        **{
+            **weaker.__dict__,
+            "sector_net_score": 10,
+        }
+    )
+    changed = build_candidate_factor_snapshot(
+        as_of="2026-08-18T20:00:00Z",
+        source=_source(),
+        classified=_classified(),
+        candidate=weaker,
+    )
+
+    assert first.snapshot_id == same.snapshot_id
+    assert first.weights_hash == same.weights_hash
+    assert changed.snapshot_id != first.snapshot_id
 
 
 def test_missing_option_and_liquidity_evidence_stays_explicitly_unavailable() -> None:
@@ -143,6 +181,16 @@ def test_symbol_mismatch_fails_closed() -> None:
         )
 
 
+def test_naive_factor_timestamp_fails_closed() -> None:
+    with pytest.raises(ValueError, match="CANDIDATE_FACTOR_AS_OF_MUST_BE_TIMEZONE_AWARE"):
+        build_candidate_factor_snapshot(
+            as_of="2026-08-18T20:00:00",
+            source=_source(),
+            classified=_classified(),
+            candidate=_candidate(),
+        )
+
+
 def test_snapshot_artifact_preserves_research_only_boundary(tmp_path) -> None:
     snapshot = build_candidate_factor_snapshot(
         as_of="2026-08-18T20:00:00Z",
@@ -153,9 +201,39 @@ def test_snapshot_artifact_preserves_research_only_boundary(tmp_path) -> None:
     path = write_candidate_factor_snapshots(tmp_path / "candidate_factors.json", [snapshot])
     payload = json.loads(path.read_text(encoding="utf-8"))
 
+    assert payload["schema_version"] == CANDIDATE_FACTOR_ARTIFACT_SCHEMA
+    assert len(payload["snapshot_set_id"]) == 64
     assert payload["count"] == 1
     assert payload["research_only"] is True
     assert payload["trading_authorized"] is False
     assert payload["live_trading_enabled"] is False
     assert payload["snapshots"][0]["symbol"] == "NFLX"
+    assert payload["snapshots"][0]["snapshot_id"] == snapshot.snapshot_id
     assert payload["snapshots"][0]["weighted_coverage"] == pytest.approx(0.8)
+
+
+def test_snapshot_set_identity_is_order_independent(tmp_path) -> None:
+    nflx = build_candidate_factor_snapshot(
+        as_of="2026-08-18T20:00:00Z",
+        source=_source("NFLX"),
+        classified=_classified("NFLX"),
+        candidate=_candidate("NFLX"),
+    )
+    meta = build_candidate_factor_snapshot(
+        as_of="2026-08-18T20:00:00Z",
+        source=_source("META"),
+        classified=_classified("META"),
+        candidate=_candidate("META"),
+    )
+
+    first_path = write_candidate_factor_snapshots(
+        tmp_path / "first.json", [nflx, meta]
+    )
+    second_path = write_candidate_factor_snapshots(
+        tmp_path / "second.json", [meta, nflx]
+    )
+    first = json.loads(first_path.read_text(encoding="utf-8"))
+    second = json.loads(second_path.read_text(encoding="utf-8"))
+
+    assert first["snapshot_set_id"] == second["snapshot_set_id"]
+    assert first["snapshots"] == second["snapshots"]
