@@ -337,12 +337,9 @@ def _packet_from_shortlist(
             reasons.extend(
                 (
                     f"BUY_STREAK_START={continuity_state.get('current_buy_streak_start') or 'NONE'}",
-                    "BUY_OBSERVATIONS="
-                    f"{int(continuity_state.get('consecutive_buy_observations', 0) or 0)}",
-                    "BUY_LAST_CHANGE="
-                    f"{continuity_state.get('last_meaningful_change_date') or 'UNKNOWN'}",
-                    "BUY_ELIGIBILITY="
-                    f"{continuity_state.get('research_eligibility') or 'UNKNOWN'}",
+                    f"BUY_OBSERVATIONS={int(continuity_state.get('consecutive_buy_observations', 0) or 0)}",
+                    f"BUY_LAST_CHANGE={continuity_state.get('last_meaningful_change_date') or 'UNKNOWN'}",
+                    f"BUY_ELIGIBILITY={continuity_state.get('research_eligibility') or 'UNKNOWN'}",
                 )
             )
         smart_bonus = float(raw.get("smart_money_bonus", 0) or 0)
