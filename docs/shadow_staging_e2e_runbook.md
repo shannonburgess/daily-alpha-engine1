@@ -1,6 +1,6 @@
 # Daily Alpha Shadow Staging E2E Runbook
 
-Status: **PAPER / STAGING ONLY — NOT ACTIVATED**
+Status: **PAPER / STAGING ONLY — BACKEND PROOF PASSED; TRADINGVIEW-ORIGIN PROOF STILL PENDING**
 
 This runbook proves the canonical `#185 -> #186 -> #196 -> #205 -> #207` integration without enabling live trading or production deployment.
 
@@ -13,27 +13,49 @@ This runbook proves the canonical `#185 -> #186 -> #196 -> #205 -> #207` integra
 - Staging Lambda `daily-alpha-pine-processor` has `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19`.
 - `trading_authorized=false` and `live_trading_enabled=false` remain mandatory.
 
-## Stage 1 — deploy the composite candidate
+## Stage 1 — deploy the composite candidate — PASSED 2026-08-19
 
-Use the existing **Deploy Daily Alpha staging Lambdas** workflow and select branch:
+The staging-only composite was deployed successfully to `us-east-2` with only:
 
-`staging/shadow-e2e-integration`
+- `daily-alpha-pine-ingress`
+- `daily-alpha-pine-processor`
 
-On that branch the workflow is deliberately narrowed: engine/report/paper-trader deployment steps are skipped; only `daily-alpha-pine-ingress` and `daily-alpha-pine-processor` are updated. Before deployment it fails closed unless the existing processor environment contains exactly:
+The deployment verified `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19` before and after deployment, confirmed both isolated shadow books exist, and confirmed `trading_authorized=false` / `live_trading_enabled=false`.
 
-`DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19`
+Temporary branch-only deployment/test workflows used to obtain this proof were removed afterward so they cannot become a second long-term deployment path. The canonical reusable deployment workflow remains `.github/workflows/deploy-staging-lambdas.yml`.
 
-After deployment it verifies both Pine handlers, rechecks the forward-start value, invokes `LIST_SHADOW_PAPER_POSITIONS`, confirms the two isolated books exist, and asserts both live-safety flags are false. It also reruns the existing scanner fail-closed staging proof.
+## Stage 2 — rotate/configure webhook secret — PASSED 2026-08-19
 
-## Stage 2 — rotate/configure webhook secret
+The staging secret reference remains:
 
-Rotate the previously exposed TradingView webhook secret through the existing AWS secret-management path. Do not place the value in GitHub, this runbook, screenshots, or chat.
+`daily-alpha/pine-webhook/staging`
 
-Keep both TradingView webhook toggles OFF until the rotated secret is configured on both new shadow copies.
+The operator rotated the secret outside GitHub/chat. AWS showed the new version as `AWSCURRENT` and the prior version as `AWSPREVIOUS`. The secret value was not committed to source control or recorded in this runbook.
 
-## Stage 3 — real paper-only proof
+The GitHub staging deployment role is intentionally **not** granted `secretsmanager:GetSecretValue`; the failed temporary workflow confirmed that least-privilege boundary. Do not weaken that IAM boundary merely to automate the test.
 
-Use a controlled shadow signal after the synchronized boundary and capture evidence for this exact chain:
+## Stage 3A — authenticated backend ingress proof — PASSED 2026-08-19
+
+A manual CloudShell proof used `AWSCURRENT` without printing the secret and sent a deliberately harmless v2.5 orphan `ADD` event through the real staging path:
+
+`daily-alpha-pine-ingress -> SQS -> daily-alpha-pine-processor -> PAPER_SHADOW_V25 audit state`
+
+Expected fail-closed result was observed:
+
+- `disposition=STATE_MISMATCH`
+- `reason=TRADINGVIEW_POSITION_NOT_IN_PAPER_LEDGER`
+- `paper_account_id=PAPER_SHADOW_V25`
+- `paper_execution_triggered=false`
+- `trading_authorized=false`
+- `live_trading_enabled=false`
+- both `PAPER_SHADOW_V24` and `PAPER_SHADOW_V25` remained FLAT
+- terminal proof output: `BACKEND SHADOW E2E: PASS`
+
+This proves authenticated ingress, queueing, processor persistence, model/account isolation and fail-closed lifecycle handling. It deliberately does **not** claim a paper fill or fresh ORATS/risk replay proof.
+
+## Stage 3B — TradingView-origin paper proof — PENDING
+
+The remaining activation gate is one controlled signal originating from the actual SH24/SH25 TradingView copy. It must preserve the rotated secret outside chat/source control and capture evidence for this exact chain:
 
 1. TradingView emits a tagged shadow event with `model_id`, `forward_test_start`, and, for ENTRY, `replay_max_price`.
 2. Pine ingress authenticates and normalizes the event without retaining the webhook secret.
@@ -45,8 +67,8 @@ Use a controlled shadow signal after the synchronized boundary and capture evide
 8. `PAPER_SHADOW_V24` and `PAPER_SHADOW_V25` remain isolated from one another and from the legacy `paper-staging` book.
 9. Evidence shows `trading_authorized=false` and `live_trading_enabled=false`.
 
-A local/stubbed replay test does not satisfy this gate.
+A local/stubbed replay test does not satisfy this gate, and the Stage 3A orphan-ADD proof does not replace the fresh ORATS/risk execution proof.
 
 ## Stage 4 — activation decision
 
-Only after the real staging proof passes may ongoing V24/V25 shadow alerts be considered. Enabling either TradingView forward-test/webhook toggle requires separate explicit approval. No live broker route is part of this process.
+Only after Stage 3B passes may ongoing V24/V25 shadow alerts be considered. Enabling either TradingView forward-test/webhook toggle requires separate explicit approval. No live broker route is part of this process.
