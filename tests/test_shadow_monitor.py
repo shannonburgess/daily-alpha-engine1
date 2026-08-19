@@ -34,14 +34,16 @@ def monitor_state(*, v24=None, v25=None, v24_armed=0, v25_armed=0):
 def event(
     account: str,
     *,
+    signal_id=None,
+    symbol="AAPL",
     disposition="NO_TRADE",
     reason="PORTFOLIO_RISK_REJECTED",
     receipt=None,
     paper_account_id=None,
 ):
     return {
-        "signal_id": f"sig-{account}",
-        "symbol": "AAPL",
+        "signal_id": signal_id or f"sig-{account}",
+        "symbol": symbol,
         "action": "ENTRY_LONG",
         "model_id": account,
         "forward_test_start": "2026-08-19",
@@ -62,11 +64,31 @@ def event(
 def test_no_event_day_is_explicit_not_assumed_trade_rejection():
     summary = summarize(monitor_state(), now=NOW)
 
-    assert summary["diagnosis"] == "NO_STRATEGY_EVENT_RECEIVED"
-    assert summary["total_session_events"] == 0
+    assert summary["diagnosis"] == "NO_GENUINE_STRATEGY_EVENT_RECEIVED"
+    assert summary["total_strategy_events"] == 0
+    assert summary["total_test_events"] == 0
     assert summary["total_session_fills"] == 0
     assert summary["safety"]["violations"] == []
-    assert "No SH24/SH25 strategy-origin event" in render_markdown(summary)
+    assert "No genuine SH24/SH25 strategy-origin event" in render_markdown(summary)
+
+
+def test_e2e_proof_is_excluded_from_genuine_trade_diagnosis():
+    proof = event(
+        "PAPER_SHADOW_V25",
+        signal_id="TV-SHADOW-E2E-20260819-01",
+        symbol="MU",
+        disposition="STATE_MISMATCH",
+        reason="TRADINGVIEW_POSITION_NOT_IN_PAPER_LEDGER",
+    )
+
+    summary = summarize(monitor_state(v25=[proof]), now=NOW)
+
+    assert summary["diagnosis"] == "NO_GENUINE_STRATEGY_EVENT_RECEIVED"
+    assert summary["total_strategy_events"] == 0
+    assert summary["total_test_events"] == 1
+    assert summary["blocker_counts"] == {}
+    assert summary["accounts"]["PAPER_SHADOW_V25"]["session_test_event_count"] == 1
+    assert "excluded from trade diagnosis" in render_markdown(summary)
 
 
 def test_strategy_event_without_fill_surfaces_exact_reason():
@@ -76,6 +98,7 @@ def test_strategy_event_without_fill_surfaces_exact_reason():
     )
 
     assert summary["diagnosis"] == "STRATEGY_EVENTS_RECEIVED_NO_PAPER_FILL"
+    assert summary["total_strategy_events"] == 1
     assert summary["accounts"]["PAPER_SHADOW_V24"]["reason_counts"] == {
         "PORTFOLIO_RISK_REJECTED": 1
     }
