@@ -1,0 +1,124 @@
+name: Monitor Daily Alpha paper shadows
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * 1-5"
+  push:
+    branches:
+      - ops/automated-shadow-monitor
+    paths:
+      - ".github/workflows/monitor-paper-shadows.yml"
+      - "scripts/shadow_monitor.py"
+      - "tests/test_shadow_monitor.py"
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: daily-alpha-paper-shadow-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      AWS_REGION: us-east-2
+      LEDGER_TABLE: daily-alpha-paper-ledger-staging
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-shadow-monitor
+          aws-region: us-east-2
+
+      - name: Read isolated shadow positions
+        run: |
+          set -euo pipefail
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"LIST_SHADOW_PAPER_POSITIONS"}' \
+            /tmp/shadow-positions.json >/dev/null
+          cat /tmp/shadow-positions.json
+
+      - name: Read durable SH24 and SH25 Pine events
+        run: |
+          set -euo pipefail
+          for ACCOUNT in PAPER_SHADOW_V24 PAPER_SHADOW_V25; do
+            VALUES="$(jq -cn --arg p "ACCOUNT#${ACCOUNT}#PINE_EVENT#" '{":prefix":{"S":$p}}')"
+            aws dynamodb scan \
+              --table-name "${LEDGER_TABLE}" \
+              --filter-expression 'begins_with(#pk, :prefix)' \
+              --expression-attribute-names '{"#pk":"pk"}' \
+              --expression-attribute-values "${VALUES}" \
+              --output json > "/tmp/events-${ACCOUNT}.json"
+          done
+
+      - name: Build exact shadow status
+        id: summarize
+        shell: bash
+        run: |
+          set +e
+          python scripts/shadow_monitor.py \
+            --positions /tmp/shadow-positions.json \
+            --events-v24 /tmp/events-PAPER_SHADOW_V24.json \
+            --events-v25 /tmp/events-PAPER_SHADOW_V25.json \
+            --output-json /tmp/shadow-status.json \
+            --output-md /tmp/shadow-status.md
+          CODE=$?
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          cat /tmp/shadow-status.md >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/shadow-status.json
+          exit 0
+
+      - name: Update one rolling issue status
+        if: always() && hashFiles('/tmp/shadow-status.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          COMMENT_ID="$(gh api "repos/${REPO}/issues/213/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- daily-alpha-shadow-monitor -->")) | .id' \
+            | head -n 1)"
+          jq -Rs '{body:.}' /tmp/shadow-status.md > /tmp/comment.json
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              --input /tmp/comment.json >/dev/null
+          else
+            gh api --method POST "repos/${REPO}/issues/213/comments" \
+              --input /tmp/comment.json >/dev/null
+          fi
+
+      - name: Upload monitor evidence
+        if: always() && hashFiles('/tmp/shadow-status.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-shadow-monitor-${{ github.run_id }}
+          path: |
+            /tmp/shadow-status.json
+            /tmp/shadow-status.md
+            /tmp/shadow-positions.json
+            /tmp/events-PAPER_SHADOW_V24.json
+            /tmp/events-PAPER_SHADOW_V25.json
+          retention-days: 30
+
+      - name: Enforce fail-closed safety result
+        if: steps.summarize.outputs.exit_code != '0'
+        run: |
+          echo "Paper-shadow monitor detected a safety/isolation violation."
+          exit 1
