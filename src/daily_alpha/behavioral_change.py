@@ -178,7 +178,7 @@ class _ProviderAdapter:
                 entity=entity,
                 as_of=as_of,
             )
-        except Exception as exc:  # provider boundary must fail closed
+        except Exception as exc:  # noqa: BLE001 - provider boundary fails closed
             result = ProviderFetchResult(
                 source=self.source,
                 status=SourceStatus.DATA_ERROR,
