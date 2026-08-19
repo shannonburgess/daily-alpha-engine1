@@ -1,0 +1,63 @@
+{
+  "schema_version": "2026-08-19-v1",
+  "model_id": "PAPER_SHADOW_V25",
+  "strategy_version": "2.5",
+  "tradingview_shorttitle": "DA-T20/10-ARM25",
+  "source_status": "EXACT_TRADINGVIEW_SOURCE_NOT_ARCHIVED",
+  "activation_ready": false,
+  "reason": "The exact Pine source currently loaded in TradingView is not present on main, PR #207, or the available uploaded-file library. Screenshots are sufficient to audit inputs but not to reconstruct state-transition logic without guessing.",
+  "audited_parameters": {
+    "entry_channel": 20,
+    "legacy_exit_channel": 10,
+    "breakout_confirmation": "Close",
+    "atr_length": 10,
+    "fast_trend_factor": 2.0,
+    "slow_trend_factor": 4.0,
+    "trend_efficiency_lookback": 20,
+    "require_recent_bullish_trend_flip": false,
+    "max_bars_since_bullish_flip": 5,
+    "completed_bull_bars_before_entry": 2,
+    "failed_breakout_bars": 3,
+    "adx_required": true,
+    "di_length": 14,
+    "adx_smoothing": 14,
+    "minimum_adx": 25.0,
+    "minimum_trend_efficiency_required": true,
+    "minimum_trend_efficiency": 0.2,
+    "minimum_underlying_price_required": true,
+    "minimum_stock_etf_price": 25.0,
+    "persistent_armed_breakout": true,
+    "maximum_bars_to_keep_breakout_armed": 10,
+    "maximum_entry_distance_above_breakout_atr": 1.0,
+    "invalidate_below_breakout_atr": 0.5,
+    "runner_management": true,
+    "add_1_atr": 1.0,
+    "add_2_atr": 2.0,
+    "harvest_atr": 3.0,
+    "structural_runner_exit": true,
+    "structural_exit_lookback": 20,
+    "structural_exit_confirmation_bars": 1,
+    "break_even_after_harvest": false,
+    "legacy_adaptive_bear_flip_exit": false,
+    "legacy_10_bar_turtle_exit": false,
+    "webhook_attachment_default": false,
+    "webhook_secret_default": ""
+  },
+  "required_shadow_contract": {
+    "forward_test_start": "YYYY-MM-DD shared with PAPER_SHADOW_V24 and backend DAILY_ALPHA_SHADOW_FORWARD_START",
+    "entry_replay_max_price": "explicit finite ceiling derived from the audited 1.0 ATR no-chase envelope; never guessed or widened by backend",
+    "lifecycle_fields": [
+      "model_id",
+      "forward_test_start"
+    ],
+    "entry_only_fields": [
+      "replay_max_price"
+    ]
+  },
+  "safety": {
+    "trading_authorized": false,
+    "live_trading_enabled": false,
+    "webhook_activation_authorized": false,
+    "aws_production_deployment_authorized": false
+  }
+}
