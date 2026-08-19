@@ -1,51 +1,53 @@
 import json
 
+import pytest
+
 from daily_alpha.buy_continuity import (
     build_buy_continuity,
+    build_buy_continuity_from_csv_directory,
     write_buy_continuity_output,
 )
+
+HEADER = "Ticker,Signal,Sector,Industry,Trend,Momentum,Optionable,Partial Data Stocks\n"
 
 
 def _write_universe(root, date, rows):
     run = root / date
     run.mkdir(parents=True)
     (run / "universe.csv").write_text(
-        "Ticker,Signal,Sector,Industry,Trend,Momentum,Optionable,Partial Data Stocks\n"
-        + "\n".join(rows)
-        + "\n",
+        HEADER + "\n".join(rows) + "\n",
         encoding="utf-8",
     )
 
 
+def _write_flat(root, date, rows, *, suffix=""):
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"OVTLYR_{date}{suffix}.csv"
+    path.write_text(HEADER + "\n".join(rows) + "\n", encoding="utf-8")
+    return path
+
+
 def test_buy_continuity_tracks_streak_change_and_explicit_ineligibility(tmp_path):
     history = tmp_path / "history"
-    _write_universe(
-        history,
-        "2026-08-17",
-        [
+    rows_by_date = {
+        "2026-08-17": [
             "AAA,Buy,Technology,Software,Up,Rising,Yes,No",
             "BBB,Buy,Industrials,Machinery,Up,Rising,Yes,No",
             "CCC,Buy,Energy,Oil & Gas,Up,Rising,Yes,No",
         ],
-    )
-    _write_universe(
-        history,
-        "2026-08-18",
-        [
+        "2026-08-18": [
             "AAA,Buy,Technology,Software,Up,Rising,Yes,No",
             "BBB,Buy,Industrials,Machinery,Up,Rising,Yes,No",
             "CCC,Buy,Energy,Oil & Gas,Up,Rising,Yes,No",
         ],
-    )
-    _write_universe(
-        history,
-        "2026-08-19",
-        [
+        "2026-08-19": [
             "AAA,Buy,Technology,Software,Up,Accelerating,Yes,No",
             "BBB,Buy,Industrials,Machinery,Up,Rising,No,No",
             "DDD,Sell,Health Care,Biotechnology,Down,Falling,Yes,No",
         ],
-    )
+    }
+    for date, rows in rows_by_date.items():
+        _write_universe(history, date, rows)
 
     states = {state.symbol: state for state in build_buy_continuity(history)}
 
@@ -82,3 +84,48 @@ def test_buy_continuity_tracks_streak_change_and_explicit_ineligibility(tmp_path
     assert payload["summary"]["eligible_active_buy"] == 1
     assert payload["summary"]["trading_authorized"] is False
     assert payload["summary"]["live_trading_enabled"] is False
+
+
+def test_downloaded_dated_csvs_build_the_same_continuity_without_using_mtime(tmp_path):
+    incoming = tmp_path / "incoming"
+    _write_flat(
+        incoming,
+        "2026-08-17",
+        ["AAA,Buy,Technology,Software,Up,Rising,Yes,No"],
+    )
+    _write_flat(
+        incoming,
+        "2026-08-18",
+        ["AAA,Buy,Technology,Software,Up,Rising,Yes,No"],
+    )
+    _write_flat(
+        incoming,
+        "2026-08-19",
+        ["AAA,Buy,Technology,Software,Up,Accelerating,Yes,No"],
+    )
+
+    states = build_buy_continuity_from_csv_directory(incoming)
+
+    assert len(states) == 1
+    assert states[0].symbol == "AAA"
+    assert states[0].current_buy_streak_start == "2026-08-17"
+    assert states[0].consecutive_buy_observations == 3
+    assert states[0].last_meaningful_change_date == "2026-08-19"
+
+
+def test_downloaded_dated_csvs_fail_closed_on_duplicate_date(tmp_path):
+    incoming = tmp_path / "incoming"
+    _write_flat(
+        incoming,
+        "2026-08-19",
+        ["AAA,Buy,Technology,Software,Up,Rising,Yes,No"],
+    )
+    _write_flat(
+        incoming,
+        "2026-08-19",
+        ["AAA,Buy,Technology,Software,Up,Rising,Yes,No"],
+        suffix="_copy",
+    )
+
+    with pytest.raises(ValueError, match="BUY_CONTINUITY_DUPLICATE_DATE"):
+        build_buy_continuity_from_csv_directory(incoming)
