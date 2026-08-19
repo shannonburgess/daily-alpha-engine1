@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_GATE = REPO_ROOT / "tradingview" / "v2_5_shadow_challenger_source_gate.json"
 
