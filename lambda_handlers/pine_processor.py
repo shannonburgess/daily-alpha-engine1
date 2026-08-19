@@ -8,11 +8,13 @@ from daily_alpha.armed_replay import replay_armed_events
 from daily_alpha.dynamo_ledger import DynamoPaperLedger
 from daily_alpha.execution_universe import build_scanner_ingress
 from daily_alpha.pine_paper_orchestrator import _all_open_trades
-from daily_alpha.pine_paper_reconciliation import ReconciledAwsPinePaperExecutor
 from daily_alpha.pine_processor import (
     DynamoPineEventStore,
     PineProcessorResult,
     process_sqs_batch,
+)
+from daily_alpha.reconciled_receipt_executor import (
+    ReceiptReconciledAwsPinePaperExecutor,
 )
 
 
@@ -38,7 +40,7 @@ def lambda_handler(event, context):
             raw_limit = event.get("limit", 25)
             limit = int(raw_limit)
             store = DynamoPineEventStore()
-            executor = ReconciledAwsPinePaperExecutor()
+            executor = ReceiptReconciledAwsPinePaperExecutor()
             result = replay_armed_events(store, executor, now=now, limit=limit)
             return {
                 "service": "daily-alpha-pine-processor",
@@ -78,7 +80,7 @@ def lambda_handler(event, context):
             )
             store = DynamoPineEventStore()
             persisted = store.persist(ingress, processor_result)
-            executor = ReconciledAwsPinePaperExecutor()
+            executor = ReceiptReconciledAwsPinePaperExecutor()
             execution = executor.execute(ingress, now=now)
             store.mark_execution(processor_result.signal_id, execution)
             return {
@@ -108,5 +110,5 @@ def lambda_handler(event, context):
             }
 
     store = DynamoPineEventStore()
-    executor = ReconciledAwsPinePaperExecutor()
+    executor = ReceiptReconciledAwsPinePaperExecutor()
     return process_sqs_batch(event, store, executor=executor)
