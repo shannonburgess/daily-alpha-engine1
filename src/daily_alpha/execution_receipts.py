@@ -156,7 +156,7 @@ def _paper_trade(paper: dict[str, Any], action: str) -> dict[str, Any]:
         values = paper.get("closed_trades")
         value = values[0] if isinstance(values, list) and len(values) == 1 else None
     if not isinstance(value, dict):
-        raise ValueError("EXECUTION_RECEIPT_TRADE_RESULT_INVALID")
+        raise TypeError("EXECUTION_RECEIPT_TRADE_RESULT_INVALID")
     return dict(value)
 
 
@@ -165,7 +165,11 @@ def _signal_id(paper: dict[str, Any], trade: dict[str, Any], action: str) -> str
         value = trade.get("signal_id")
     elif action == "ADD":
         stage = str(paper.get("runner_stage", "")).upper()
-        value = trade.get("add1_signal_id") if stage == "ADD_1_ATR" else trade.get("add2_signal_id")
+        value = (
+            trade.get("add1_signal_id")
+            if stage == "ADD_1_ATR"
+            else trade.get("add2_signal_id")
+        )
     elif action == "PARTIAL":
         value = trade.get("harvest_signal_id")
     else:
