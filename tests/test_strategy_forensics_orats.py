@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -115,7 +115,7 @@ def test_build_forensics_path_from_orats_respects_decision_and_cutoff() -> None:
         strategy_version="v2.4",
         decision="ENTRY",
         reason="QUALIFIED",
-        observed_at=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
+        observed_at=datetime(2026, 8, 17, 20, 0, tzinfo=UTC),
         reference_price=180.0,
         stop_price=174.0,
         executed=True,
@@ -123,7 +123,7 @@ def test_build_forensics_path_from_orats_respects_decision_and_cutoff() -> None:
 
     path, evidence = build_forensics_path_from_orats(
         decision,
-        evaluation_cutoff=datetime(2026, 8, 18, 21, 0, tzinfo=timezone.utc),
+        evaluation_cutoff=datetime(2026, 8, 18, 21, 0, tzinfo=UTC),
         token="test-token",
         router=_router(),
     )
