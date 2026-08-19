@@ -1,0 +1,11 @@
+{
+  "schema_version": "2026-08-19-manual-watch-v1",
+  "entries": [
+    {
+      "symbol": "NFLX",
+      "label": "Netflix",
+      "reason": "USER_PINNED",
+      "enabled": true
+    }
+  ]
+}
