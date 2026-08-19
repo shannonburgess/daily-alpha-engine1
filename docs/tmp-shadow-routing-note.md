@@ -1,1 +1,0 @@
-Temporary branch-point note for v2.4/v2.5 shadow routing. This file is intentionally short-lived and should not be merged to main.
