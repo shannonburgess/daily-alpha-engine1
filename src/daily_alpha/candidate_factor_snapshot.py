@@ -188,7 +188,7 @@ def _normalized_as_of(value: str) -> str:
     if not text:
         raise ValueError("CANDIDATE_FACTOR_AS_OF_REQUIRED")
     try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text)
     except ValueError as exc:
         raise ValueError("CANDIDATE_FACTOR_AS_OF_INVALID") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
