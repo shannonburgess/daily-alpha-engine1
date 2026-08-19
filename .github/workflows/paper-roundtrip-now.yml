@@ -6,6 +6,11 @@ on:
       - ops/paper-roundtrip-20260819
     paths:
       - .github/workflows/paper-roundtrip-now.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/paper-roundtrip-now.yml
 
 permissions:
   contents: read
