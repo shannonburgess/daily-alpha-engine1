@@ -84,7 +84,7 @@ def decision_observation_from_pine_outcome(
     outcomes whose current execution contract does not yet persist one.
     """
     if not isinstance(ingress, Mapping) or not isinstance(execution, Mapping):
-        raise ValueError("FORENSICS_PINE_OUTCOME_MUST_BE_OBJECT")
+        raise TypeError("FORENSICS_PINE_OUTCOME_MUST_BE_OBJECT")
     action = _required_text(
         ingress.get("action"), "FORENSICS_PINE_ACTION_REQUIRED"
     ).upper()
