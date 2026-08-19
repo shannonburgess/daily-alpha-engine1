@@ -30,29 +30,23 @@ Do not create another shadow implementation beside this chain.
 
 The underlying v2.4 entry, add, harvest, failed-breakout, Turtle-exit and adaptive-trend-exit rules are preserved.
 
-### v2.5 CHALLENGER — exact source capture still required
+### v2.5 CHALLENGER — exact source captured
 
-The exact Pine source currently loaded in TradingView as `DA-T20/10-ARM25` is **not archived in the repository or available uploaded-file library**. The screenshots are enough to verify its inputs, but not enough to reconstruct its state-transition logic without guessing. Therefore no fabricated v2.5 source has been committed and v2.5 activation remains fail-closed.
+The user supplied the full current Pine source loaded in TradingView as `DA-T20/10-ARM25` on 2026-08-19. The source capture is recorded in `tradingview/v2_5_shadow_challenger_source_gate.json` with SHA-256 provenance, so the persistent-arm and structural-exit state machine no longer needs to be reconstructed from screenshots.
 
-The audited source gate is recorded in `tradingview/v2_5_shadow_challenger_source_gate.json`. The verified settings include:
+Verified source behavior includes:
 
-- 20-bar entry / legacy 10-bar exit reference / Close confirmation;
-- ATR 10, adaptive factors 2/4, efficiency lookback 20;
-- ADX required, 14/14, minimum ADX **25**;
-- trend-efficiency floor **0.20**;
-- minimum underlying price **$25**;
-- Persistent Armed Breakout ON;
-- maximum armed window **10 bars**;
-- maximum entry distance above breakout **1.0 ATR**;
-- invalidate below breakout by **0.5 ATR**;
-- runner adds at +1 ATR / +2 ATR and 25% harvest at +3 ATR;
+- the price breakout itself can arm the opportunity before trend/ADX/efficiency/RSI confirmation;
+- armed state is not invalidated merely because trend/ADX is not ready yet;
+- armed entry requires price at/above the stored breakout and at/below the audited +1 ATR no-chase ceiling;
+- 10-bar maximum arm age and -0.5 ATR invalidation;
+- +1/+2 ATR adds and +3 ATR 25% harvest;
 - Structural Runner Exit ON, 20-bar lookback, 1 confirmation bar;
 - break-even-after-harvest OFF;
-- legacy adaptive bear-flip exit OFF;
-- legacy 10-bar Turtle exit OFF;
-- v2.5 webhook attachment OFF and secret blank.
+- legacy adaptive bear-flip and legacy 10-bar exits OFF;
+- webhook attachment OFF and secret blank in the supplied v2.5 source.
 
-The exact current TradingView Pine source must be exported/captured before adding shadow metadata. Do not infer hidden state logic from chart labels or screenshots.
+A transformed v2.5 shadow challenger has been generated from that captured source by adding only the common forward-test boundary plus `forward_test_start` and ENTRY `replay_max_price` metadata. It remains **NOT ACTIVATED** until the transformed source is archived/reviewed and successfully compiled in TradingView.
 
 ## Common forward-test boundary
 
@@ -64,7 +58,7 @@ Both shadow models must:
 4. match backend `DAILY_ALPHA_SHADOW_FORWARD_START` exactly;
 5. reject any event whose bar/event time predates that date.
 
-The v2.4 shadow source defaults its proposed boundary to **2026-08-19** but keeps the entire shadow forward test disabled until explicitly enabled. The shared date is synchronization metadata, not a performance-tuning parameter. If v2.5 cannot be source-captured and configured to the same clean boundary, do not start an asymmetric comparison.
+The shadow sources propose **2026-08-19** as the common boundary but keep the forward test disabled until explicitly enabled. The date is synchronization metadata, not a performance-tuning parameter.
 
 ## Model identities
 
@@ -75,51 +69,41 @@ No untagged event may be silently migrated into either shadow book.
 
 ## Reviewed replay no-chase rule
 
-The TradingView audit verified the v2.5 entry envelope at **1.0 ATR above the breakout**.
+For delayed ENTRY replay, both models use an explicit source-side ceiling and the backend never infers or widens it.
 
-For the v2.4 control, the replay-only ceiling is:
+For the v2.4 control:
 
 `max(original confirmed signal close, breakout level + 1.0 * ATR)`
 
-This does not change when v2.4 itself generates an entry. It only prevents an after-hours replay from buying above the reviewed +1 ATR envelope; if the original valid v2.4 signal close was already above that envelope, replay may not exceed the original signal close. This satisfies the backend requirement that `replay_max_price` cannot be below the source signal price without silently widening the strategy's entry rule.
+For the v2.5 challenger, the ceiling preserves the captured armed-breakout rule:
 
-For v2.5, the exact archived source must derive the replay ceiling from its existing armed-breakout/no-chase state using the already-audited **1.0 ATR** threshold. Do not invent variable names or a second state machine before source capture.
+`max(original confirmed signal close, selected breakout level + selected replay ATR * 1.0)`
 
-Every tagged shadow ENTRY must carry:
+For an armed entry, `selected replay ATR` is the ATR stored when the breakout was armed; for a same-bar/earnings entry it is the current confirmed-bar ATR. This affects delayed replay only and does not alter the original strategy entry condition.
 
-```json
-{
-  "model_id": "PAPER_SHADOW_V24",
-  "forward_test_start": "YYYY-MM-DD",
-  "replay_max_price": 0.0
-}
-```
-
-`replay_max_price` must be finite, positive, and at least the original signal price. The backend never infers or widens it.
-
-ADD / PARTIAL / EXIT events carry `model_id` and `forward_test_start`; they do not invent an ENTRY replay ceiling.
+Every tagged shadow ENTRY carries `model_id`, `forward_test_start`, and `replay_max_price`. ADD / PARTIAL / EXIT carry `model_id` and `forward_test_start`.
 
 ## Exact TradingView activation sequence
 
 Do not enable ongoing alerts until all gates below are complete.
 
-1. **Load the v2.4 control as a new copy**, using `da_turtle_20_10_v2_4_shadow_control.pine`. Do not overwrite the existing v2.4 chart instance.
+1. Load the v2.4 control as a **new copy**. Do not overwrite the existing v2.4 chart instance.
 2. Keep `Enable Paper Shadow Forward Test` **OFF** and `Attach v2.4 Shadow Webhook Messages` **OFF** while loading and checking the script.
-3. Verify the v2.4 control inputs match the audited control values. Confirm its Strategy Tester shows no position before the intended common boundary.
-4. **Capture/export the exact current `DA-T20/10-ARM25` Pine source** into the canonical #207 branch. Preserve its existing strategy logic and audited inputs before making any metadata change.
-5. Add only the shadow contract to that exact v2.5 source: `PAPER_SHADOW_V25`, configurable common start, ENTRY `replay_max_price`, forward-start gating, blank secret default, webhook OFF default.
-6. Set both new shadow copies to the **same** forward-test date and verify both are FLAT at the boundary. Do not use a v2.5 chart carrying a historical simulated position.
-7. Configure staging `DAILY_ALPHA_SHADOW_FORWARD_START` to the identical date. This is a staging configuration change only; do not deploy production.
-8. Use a rotated/configured webhook secret only at the activation step. Never commit it or paste it into source. The previously exposed value is not repeated here.
-9. Run one paper-only staging proof: TradingView signal -> ingress -> durable event -> ARMED when applicable -> fresh market/ORATS/risk revalidation -> PAPER fill/CANCEL/DATA_ERROR -> exact persisted receipt/audit record.
-10. Verify model/account isolation, `trading_authorized=false`, and `live_trading_enabled=false` in the resulting evidence.
-11. Only after that proof passes should ongoing v2.4 CONTROL and v2.5 CHALLENGER shadow alerts be enabled with separate explicit approval.
+3. Load the generated v2.5 shadow challenger as a **new copy**. Do not overwrite `DA-T20/10-ARM25`.
+4. Keep `Enable Paper Shadow Forward Test` **OFF** and v2.5 webhook attachment **OFF** while compiling and verifying the audited inputs.
+5. Set both new shadow copies to the **same** forward-test date and verify both are FLAT at the boundary.
+6. Configure staging `DAILY_ALPHA_SHADOW_FORWARD_START` to the identical date. This is a staging configuration change only; do not deploy production.
+7. Rotate/configure the previously exposed webhook secret only at activation. Never commit or paste it into source.
+8. Run one paper-only staging proof: TradingView signal -> ingress -> durable event -> ARMED when applicable -> fresh market/ORATS/risk revalidation -> PAPER fill/CANCEL/DATA_ERROR -> exact persisted receipt/audit record.
+9. Verify model/account isolation, `trading_authorized=false`, and `live_trading_enabled=false` in the resulting evidence.
+10. Only after that proof passes should ongoing v2.4 CONTROL and v2.5 CHALLENGER shadow alerts be enabled with separate explicit approval.
 
 ## Activation checklist
 
 - [x] v2.4 control source emits model/start/ceiling fields and defaults fail-closed.
-- [ ] exact v2.5 TradingView source archived in the repository.
-- [ ] v2.5 source emits model/start/ceiling fields and defaults fail-closed.
+- [x] exact v2.5 TradingView source captured with provenance hash.
+- [x] v2.5 shadow transform generated from the captured source without reconstructing hidden state logic.
+- [ ] v2.5 transformed source archived/reviewed and compiled successfully in TradingView.
 - [ ] both shadow copies start FLAT on the identical boundary.
 - [ ] backend `DAILY_ALPHA_SHADOW_FORWARD_START` matches the payload date.
 - [x] ingress validates model/version/start and explicit replay ceiling in the canonical branch.
