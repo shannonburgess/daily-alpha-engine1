@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 SHADOW_ACCOUNTS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
 NEW_YORK = ZoneInfo("America/New_York")
 MAX_RENDERED_EVENTS_PER_ACCOUNT = 10
+TEST_SIGNAL_MARKERS = ("E2E", "CONNECTIVITY", "SYSTEM-ROUNDTRIP", "STAGING-READINESS")
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -36,6 +37,12 @@ def _session_events(events: list[dict[str, Any]], session_date: str) -> list[dic
     return selected
 
 
+def _is_test_event(event: dict[str, Any]) -> bool:
+    signal_id = str(event.get("signal_id") or "").upper()
+    symbol = str(event.get("symbol") or "").upper()
+    return any(marker in signal_id for marker in TEST_SIGNAL_MARKERS) or symbol == "DAE2E"
+
+
 def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
     return {
         "signal_id": event.get("signal_id"),
@@ -47,6 +54,7 @@ def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
         "disposition": event.get("disposition"),
         "reason": event.get("reason"),
         "paper_execution_triggered": event.get("paper_execution_triggered") is True,
+        "evidence_type": "TEST_PROOF" if _is_test_event(event) else "STRATEGY",
     }
 
 
@@ -107,10 +115,11 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
 
     books = state.get("books") if isinstance(state.get("books"), dict) else {}
     accounts: dict[str, Any] = {}
-    total_session_events = 0
-    total_session_fills = 0
+    total_strategy_events = 0
+    total_test_events = 0
+    total_strategy_fills = 0
     total_armed = 0
-    all_reasons: Counter[str] = Counter()
+    strategy_reasons: Counter[str] = Counter()
 
     for account in SHADOW_ACCOUNTS:
         book = books.get(account, {}) if isinstance(books, dict) else {}
@@ -124,21 +133,24 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
             or datetime.min.replace(tzinfo=UTC),
             reverse=True,
         )
-        fills = [
-            event for event in session_events if event.get("disposition") == "EXECUTED_PAPER"
+        test_events = [event for event in session_events if _is_test_event(event)]
+        strategy_events = [event for event in session_events if not _is_test_event(event)]
+        strategy_fills = [
+            event for event in strategy_events if event.get("disposition") == "EXECUTED_PAPER"
         ]
         receipts = [
             event["execution_receipt"]
-            for event in session_events
+            for event in strategy_events
             if isinstance(event.get("execution_receipt"), dict)
         ]
         reasons = Counter(
             str(event.get("reason") or event.get("disposition") or "UNKNOWN")
-            for event in session_events
+            for event in strategy_events
         )
-        all_reasons.update(reasons)
-        total_session_events += len(session_events)
-        total_session_fills += len(fills)
+        strategy_reasons.update(reasons)
+        total_strategy_events += len(strategy_events)
+        total_test_events += len(test_events)
+        total_strategy_fills += len(strategy_fills)
         armed_count = int(book.get("armed_count_visible", 0)) if isinstance(book, dict) else 0
         total_armed += armed_count
         latest = max(
@@ -156,9 +168,11 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
             else len(open_positions),
             "open_positions": open_positions,
             "armed_count": armed_count,
-            "session_event_count": len(session_events),
-            "session_fill_count": len(fills),
-            "session_events": [_compact_event(event) for event in session_events],
+            "session_strategy_event_count": len(strategy_events),
+            "session_test_event_count": len(test_events),
+            "session_fill_count": len(strategy_fills),
+            "session_strategy_events": [_compact_event(event) for event in strategy_events],
+            "session_test_events": [_compact_event(event) for event in test_events],
             "session_receipts": receipts,
             "reason_counts": dict(sorted(reasons.items())),
             "latest_event_at": latest.isoformat() if latest else None,
@@ -169,24 +183,25 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
 
     if violations:
         diagnosis = "SAFETY_OR_EVIDENCE_VIOLATION"
-    elif total_session_fills:
+    elif total_strategy_fills:
         diagnosis = "TRADES_RECORDED"
-    elif total_session_events:
+    elif total_strategy_events:
         diagnosis = "STRATEGY_EVENTS_RECEIVED_NO_PAPER_FILL"
     elif total_armed:
         diagnosis = "ARMED_WAITING_FOR_REVALIDATION"
     else:
-        diagnosis = "NO_STRATEGY_EVENT_RECEIVED"
+        diagnosis = "NO_GENUINE_STRATEGY_EVENT_RECEIVED"
 
     return {
         "ok": not violations,
         "snapshot_at": timestamp.isoformat(),
         "session_date_et": session_date,
         "diagnosis": diagnosis,
-        "total_session_events": total_session_events,
-        "total_session_fills": total_session_fills,
+        "total_strategy_events": total_strategy_events,
+        "total_test_events": total_test_events,
+        "total_session_fills": total_strategy_fills,
         "total_armed": total_armed,
-        "blocker_counts": dict(sorted(all_reasons.items())),
+        "blocker_counts": dict(sorted(strategy_reasons.items())),
         "accounts": accounts,
         "safety": {
             "trading_authorized": False if not violations else state.get("trading_authorized"),
@@ -198,6 +213,21 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
     }
 
 
+def _render_events(lines: list[str], title: str, events: list[dict[str, Any]]) -> None:
+    if not events:
+        return
+    lines.append(title)
+    for event in events[:MAX_RENDERED_EVENTS_PER_ACCOUNT]:
+        lines.append(
+            "- "
+            f"`{event.get('received_at')}` "
+            f"`{event.get('signal_id')}` "
+            f"{event.get('symbol') or '?'} {event.get('action') or '?'} -> "
+            f"`{event.get('disposition') or '?'}` / "
+            f"`{event.get('reason') or '?'}`"
+        )
+
+
 def render_markdown(summary: dict[str, Any]) -> str:
     """Render a concise rolling issue comment and workflow summary."""
     lines = [
@@ -206,7 +236,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         f"**Session:** {summary['session_date_et']} ET  ",
         f"**Diagnosis:** `{summary['diagnosis']}`  ",
-        f"**Strategy events today:** {summary['total_session_events']}  ",
+        f"**Genuine SH24/SH25 strategy events today:** {summary['total_strategy_events']}  ",
+        f"**Test/proof events today:** {summary['total_test_events']}  ",
         f"**Paper fills today:** {summary['total_session_fills']}  ",
         f"**Currently ARMED:** {summary['total_armed']}  ",
         "**Safety:** `trading_authorized=false`, `live_trading_enabled=false`",
@@ -220,7 +251,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"### {account}",
                 f"Open positions: **{state['open_count']}**  ",
                 f"ARMED: **{state['armed_count']}**  ",
-                f"Events today: **{state['session_event_count']}**  ",
+                f"Genuine strategy events today: **{state['session_strategy_event_count']}**  ",
+                f"Test/proof events today: **{state['session_test_event_count']}**  ",
                 f"Fills today: **{state['session_fill_count']}**  ",
                 f"Latest durable event: `{state['latest_event_at'] or 'none observed'}`",
             ]
@@ -229,18 +261,9 @@ def render_markdown(summary: dict[str, Any]) -> str:
             reasons = ", ".join(
                 f"`{reason}`={count}" for reason, count in state["reason_counts"].items()
             )
-            lines.append(f"Outcomes/blockers: {reasons}")
-        if state["session_events"]:
-            lines.append("Recent session events:")
-            for event in state["session_events"][:MAX_RENDERED_EVENTS_PER_ACCOUNT]:
-                lines.append(
-                    "- "
-                    f"`{event.get('received_at')}` "
-                    f"`{event.get('signal_id')}` "
-                    f"{event.get('symbol') or '?'} {event.get('action') or '?'} -> "
-                    f"`{event.get('disposition') or '?'}` / "
-                    f"`{event.get('reason') or '?'}`"
-                )
+            lines.append(f"Genuine strategy blockers/outcomes: {reasons}")
+        _render_events(lines, "Recent genuine strategy events:", state["session_strategy_events"])
+        _render_events(lines, "Test/proof traffic (excluded from trade diagnosis):", state["session_test_events"])
         if state["session_receipts"]:
             lines.append("Receipts:")
             for receipt in state["session_receipts"]:
@@ -255,12 +278,12 @@ def render_markdown(summary: dict[str, Any]) -> str:
         blockers = ", ".join(
             f"`{reason}`={count}" for reason, count in summary["blocker_counts"].items()
         )
-        lines.extend(["### Exact no-fill / outcome evidence", blockers, ""])
-    elif summary["diagnosis"] == "NO_STRATEGY_EVENT_RECEIVED":
+        lines.extend(["### Exact genuine-strategy no-fill evidence", blockers, ""])
+    elif summary["diagnosis"] == "NO_GENUINE_STRATEGY_EVENT_RECEIVED":
         lines.extend(
             [
-                "### Exact no-fill / outcome evidence",
-                "No SH24/SH25 strategy-origin event reached the durable staging store for this ET session. This is an observed no-event state, not an invented trade rejection. TradingView configuration remains frozen.",
+                "### Exact genuine-strategy no-fill evidence",
+                "No genuine SH24/SH25 strategy-origin event reached the durable staging store for this ET session. Any E2E/connectivity proof traffic is shown separately and excluded from the trade diagnosis. This does not prove a TradingView defect; it proves only that no genuine strategy order event reached AWS. TradingView configuration remains frozen.",
                 "",
             ]
         )
