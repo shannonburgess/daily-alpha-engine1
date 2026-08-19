@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,7 @@ from daily_alpha.behavioral_change import (
     build_behavioral_snapshot,
     derive_source_signal,
 )
+from daily_alpha.behavioral_entities import load_behavioral_entities
 
 AS_OF = datetime(2026, 8, 19, 20, 0, tzinfo=UTC)
 ENTITY = BehavioralEntity(
@@ -98,6 +100,15 @@ def test_entity_dictionary_deduplicates_terms_and_separates_domains():
         "AI GPU",
     )
     assert ENTITY.website_domains() == ("nvidia.com",)
+
+
+def test_versioned_repository_entity_dictionary_loads_deterministically():
+    entities = load_behavioral_entities(Path("config/behavioral_entities.json"))
+    assert [entity.ticker for entity in entities] == ["NFLX", "NVDA"]
+    by_ticker = {entity.ticker: entity for entity in entities}
+    assert by_ticker["NVDA"].version == "2026-08-19-v1"
+    assert "Blackwell" in by_ticker["NVDA"].search_terms()
+    assert by_ticker["NFLX"].website_domains() == ("netflix.com",)
 
 
 def test_unconfigured_providers_fail_closed_without_credentials():
