@@ -1,0 +1,165 @@
+"""Point-in-time observation adapter for research-only strategy forensics.
+
+This module converts an immutable Daily Alpha decision plus subsequently observed
+price bars into the fixed path consumed by ``strategy_forensics``. The adapter
+makes the evaluation cutoff explicit so later bars cannot silently leak into an
+earlier forensic horizon.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from typing import Any, Iterable
+
+from .strategy_forensics import OpportunityPath
+
+
+@dataclass(frozen=True)
+class DecisionObservation:
+    decision_id: str
+    symbol: str
+    strategy_version: str
+    decision: str
+    reason: str
+    observed_at: datetime
+    reference_price: float
+    stop_price: float
+    executed: bool = False
+    exit_price: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["observed_at"] = self.observed_at.isoformat()
+        return payload
+
+
+@dataclass(frozen=True)
+class PriceBarObservation:
+    observed_at: datetime
+    high: float
+    low: float
+    close: float
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["observed_at"] = self.observed_at.isoformat()
+        return payload
+
+
+@dataclass(frozen=True)
+class ForensicsPathEvidence:
+    decision_id: str
+    decision_observed_at: str
+    evaluation_cutoff: str
+    first_bar_at: str
+    last_bar_at: str
+    bars_used: int
+    ignored_predecision_bars: int
+    ignored_after_cutoff_bars: int
+    path: OpportunityPath
+    research_only: bool = True
+    trading_authorized: bool = False
+    live_trading_enabled: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        return payload
+
+
+def build_forensics_path(
+    decision: DecisionObservation,
+    bars: Iterable[PriceBarObservation],
+    *,
+    evaluation_cutoff: datetime,
+    max_bars: int | None = None,
+) -> ForensicsPathEvidence:
+    """Build an auditable post-decision path bounded by an explicit cutoff."""
+    _validate_decision(decision)
+    _require_aware(evaluation_cutoff, "FORENSICS_CUTOFF_MUST_BE_TIMEZONE_AWARE")
+    if evaluation_cutoff <= decision.observed_at:
+        raise ValueError("FORENSICS_CUTOFF_MUST_FOLLOW_DECISION")
+    if max_bars is not None and max_bars <= 0:
+        raise ValueError("FORENSICS_MAX_BARS_MUST_BE_POSITIVE")
+
+    observed = list(bars)
+    for bar in observed:
+        _validate_bar(bar)
+
+    ignored_predecision = sum(bar.observed_at <= decision.observed_at for bar in observed)
+    ignored_after_cutoff = sum(bar.observed_at > evaluation_cutoff for bar in observed)
+    eligible = sorted(
+        (
+            bar
+            for bar in observed
+            if decision.observed_at < bar.observed_at <= evaluation_cutoff
+        ),
+        key=lambda bar: bar.observed_at,
+    )
+    if max_bars is not None:
+        eligible = eligible[:max_bars]
+    if not eligible:
+        raise ValueError("FORENSICS_NO_POST_DECISION_BARS_IN_CUTOFF")
+
+    timestamps = [bar.observed_at for bar in eligible]
+    if len(set(timestamps)) != len(timestamps):
+        raise ValueError("FORENSICS_DUPLICATE_BAR_TIMESTAMP")
+
+    path = OpportunityPath(
+        symbol=decision.symbol,
+        strategy_version=decision.strategy_version,
+        decision=decision.decision,
+        reason=decision.reason,
+        reference_price=decision.reference_price,
+        stop_price=decision.stop_price,
+        max_price_after=max(bar.high for bar in eligible),
+        min_price_after=min(bar.low for bar in eligible),
+        terminal_price=eligible[-1].close,
+        bars_observed=len(eligible),
+        executed=decision.executed,
+        exit_price=decision.exit_price,
+    )
+    return ForensicsPathEvidence(
+        decision_id=decision.decision_id,
+        decision_observed_at=decision.observed_at.isoformat(),
+        evaluation_cutoff=evaluation_cutoff.isoformat(),
+        first_bar_at=eligible[0].observed_at.isoformat(),
+        last_bar_at=eligible[-1].observed_at.isoformat(),
+        bars_used=len(eligible),
+        ignored_predecision_bars=ignored_predecision,
+        ignored_after_cutoff_bars=ignored_after_cutoff,
+        path=path,
+    )
+
+
+def _validate_decision(decision: DecisionObservation) -> None:
+    if not decision.decision_id.strip():
+        raise ValueError("FORENSICS_DECISION_ID_REQUIRED")
+    if not decision.symbol.strip() or not decision.strategy_version.strip():
+        raise ValueError("FORENSICS_DECISION_IDENTITY_REQUIRED")
+    if not decision.decision.strip():
+        raise ValueError("FORENSICS_DECISION_REQUIRED")
+    _require_aware(decision.observed_at, "FORENSICS_DECISION_TIME_MUST_BE_TIMEZONE_AWARE")
+    if decision.reference_price <= 0 or decision.stop_price <= 0:
+        raise ValueError("FORENSICS_DECISION_PRICES_MUST_BE_POSITIVE")
+    if decision.stop_price >= decision.reference_price:
+        raise ValueError("FORENSICS_DECISION_STOP_MUST_BE_BELOW_REFERENCE")
+    if decision.executed and decision.exit_price is not None and decision.exit_price <= 0:
+        raise ValueError("FORENSICS_DECISION_EXIT_PRICE_INVALID")
+    if not decision.executed and decision.exit_price is not None:
+        raise ValueError("FORENSICS_NONEXECUTED_EXIT_INVALID")
+
+
+def _validate_bar(bar: PriceBarObservation) -> None:
+    _require_aware(bar.observed_at, "FORENSICS_BAR_TIME_MUST_BE_TIMEZONE_AWARE")
+    if bar.high <= 0 or bar.low <= 0 or bar.close <= 0:
+        raise ValueError("FORENSICS_BAR_PRICES_MUST_BE_POSITIVE")
+    if bar.high < bar.low:
+        raise ValueError("FORENSICS_BAR_RANGE_INVALID")
+    if not bar.low <= bar.close <= bar.high:
+        raise ValueError("FORENSICS_BAR_CLOSE_OUTSIDE_RANGE")
+
+
+def _require_aware(value: datetime, message: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(message)
