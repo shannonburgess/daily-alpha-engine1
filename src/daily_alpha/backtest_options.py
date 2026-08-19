@@ -13,9 +13,10 @@ from datetime import date, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
-from .backtest import _request_json, fetch_orats_history, indicators, run_strategy
+from .backtest import fetch_orats_history, indicators, run_strategy
 from .backtest_sensitivity import reclassify_gap_go
 from .config import OptionQualityRules
+from .orats_historical_transport import request_json
 
 
 def _rows(payload: Any) -> list[dict[str, Any]]:
@@ -41,7 +42,13 @@ def fetch_chain(ticker: str, trade_date: str, token: str) -> list[dict[str, Any]
         "dte": "45,75",
         "fields": "ticker,tradeDate,expirDate,dte,strike,stockPrice,callBidPrice,callAskPrice,callVolume,callOpenInterest,delta",
     })
-    return _rows(_request_json(f"https://api.orats.io/datav2/hist/strikes?{q}", token=token, header_auth=False))
+    return _rows(
+        request_json(
+            f"https://api.orats.io/datav2/hist/strikes?{q}",
+            token=token,
+            header_auth=False,
+        )
+    )
 
 
 def fetch_contract(ticker: str, expiry: str, strike: float, trade_date: str, token: str) -> dict[str, Any] | None:
@@ -52,7 +59,13 @@ def fetch_contract(ticker: str, expiry: str, strike: float, trade_date: str, tok
         "strike": strike,
         "tradeDate": trade_date,
     })
-    rows = _rows(_request_json(f"https://api.orats.io/datav2/hist/strikes/options?{q}", token=token, header_auth=False))
+    rows = _rows(
+        request_json(
+            f"https://api.orats.io/datav2/hist/strikes/options?{q}",
+            token=token,
+            header_auth=False,
+        )
+    )
     if not rows:
         return None
     exact = [r for r in rows if str(r.get("tradeDate", ""))[:10] == trade_date]
