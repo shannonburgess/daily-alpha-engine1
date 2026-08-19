@@ -11,6 +11,8 @@ from daily_alpha.shadow_routing import (
     account_id_for_ingress,
 )
 
+SHADOW_START = "2026-08-18"
+
 
 class EmptyLedger:
     def __init__(self, account_id):
@@ -34,7 +36,7 @@ class RecordingStore:
         self.executions.append((signal_id, dict(execution)))
 
 
-def _ingress(version, model_id=None):
+def _ingress(version, model_id=None, forward_test_start=SHADOW_START):
     payload = {
         "schema_version": "2026-08-18-v5",
         "source": "TRADINGVIEW_PINE",
@@ -57,6 +59,7 @@ def _ingress(version, model_id=None):
     }
     if model_id is not None:
         payload["model_id"] = model_id
+        payload["forward_test_start"] = forward_test_start
     return payload
 
 
@@ -65,17 +68,34 @@ def test_untagged_existing_v24_is_not_silently_migrated(monkeypatch):
     assert account_id_for_ingress(_ingress("2.4")) == "paper-staging"
 
 
-def test_explicit_shadow_models_route_to_separate_accounts():
+def test_explicit_shadow_models_route_to_separate_accounts(monkeypatch):
+    monkeypatch.setenv("DAILY_ALPHA_SHADOW_FORWARD_START", SHADOW_START)
     assert account_id_for_ingress(_ingress("2.4", PAPER_SHADOW_V24)) == PAPER_SHADOW_V24
     assert account_id_for_ingress(_ingress("2.5", PAPER_SHADOW_V25)) == PAPER_SHADOW_V25
 
 
-def test_shadow_model_version_mismatch_fails_closed():
+def test_shadow_model_version_mismatch_fails_closed(monkeypatch):
+    monkeypatch.setenv("DAILY_ALPHA_SHADOW_FORWARD_START", SHADOW_START)
     with pytest.raises(PineProcessorError, match="VERSION_MISMATCH"):
         account_id_for_ingress(_ingress("2.4", PAPER_SHADOW_V25))
 
 
-def test_shadow_event_store_uses_model_specific_account():
+def test_shadow_start_configuration_is_required(monkeypatch):
+    monkeypatch.delenv("DAILY_ALPHA_SHADOW_FORWARD_START", raising=False)
+    with pytest.raises(PineProcessorError, match="FORWARD_START_NOT_CONFIGURED"):
+        account_id_for_ingress(_ingress("2.5", PAPER_SHADOW_V25))
+
+
+def test_shadow_models_must_match_same_configured_forward_start(monkeypatch):
+    monkeypatch.setenv("DAILY_ALPHA_SHADOW_FORWARD_START", SHADOW_START)
+    with pytest.raises(PineProcessorError, match="FORWARD_START_MISMATCH"):
+        account_id_for_ingress(
+            _ingress("2.5", PAPER_SHADOW_V25, forward_test_start="2026-08-19")
+        )
+
+
+def test_shadow_event_store_uses_model_specific_account(monkeypatch):
+    monkeypatch.setenv("DAILY_ALPHA_SHADOW_FORWARD_START", SHADOW_START)
     stores = {}
 
     def factory(account_id):
@@ -107,7 +127,8 @@ def test_shadow_event_store_uses_model_specific_account():
     assert stores[PAPER_SHADOW_V25].executions[0][0] == result.signal_id
 
 
-def test_v25_executor_returns_shadow_account_and_keeps_live_disabled():
+def test_v25_executor_returns_shadow_account_and_keeps_live_disabled(monkeypatch):
+    monkeypatch.setenv("DAILY_ALPHA_SHADOW_FORWARD_START", SHADOW_START)
     executor = ShadowRoutedPinePaperExecutor(
         paper_nav=1_000_000,
         secrets_client=object(),
@@ -122,6 +143,7 @@ def test_v25_executor_returns_shadow_account_and_keeps_live_disabled():
     assert result["disposition"] == "ARMED_FOR_NEXT_TRADABLE_WINDOW"
     assert result["paper_account_id"] == PAPER_SHADOW_V25
     assert result["model_id"] == PAPER_SHADOW_V25
+    assert result["forward_test_start"] == SHADOW_START
     assert result["paper_execution_triggered"] is False
     assert result["trading_authorized"] is False
     assert result["live_trading_enabled"] is False
