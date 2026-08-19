@@ -54,6 +54,7 @@ class PineIngressRecord:
     runner_stage: str | None = None
     model_id: str | None = None
     forward_test_start: str | None = None
+    replay_max_price: float | None = None
     stock_stop_price: float | None = None
     average_daily_dollar_volume: float | None = None
     entry_type: str | None = None
@@ -143,6 +144,12 @@ def _record_from_signal(
         model_id=model_id,
         bar_time=signal.bar_time,
     )
+    replay_max_price = _replay_max_price(
+        payload.get("replay_max_price"),
+        action=signal.action,
+        model_id=model_id,
+        signal_price=signal.price,
+    )
     earnings_gap_pct = None
     earnings_gap_atr = None
     earnings_close_location = None
@@ -227,6 +234,7 @@ def _record_from_signal(
         runner_stage=signal.runner_stage,
         model_id=model_id,
         forward_test_start=forward_test_start,
+        replay_max_price=replay_max_price,
         stock_stop_price=stock_stop_price,
         average_daily_dollar_volume=average_daily_dollar_volume,
         entry_type=entry_type,
@@ -271,6 +279,30 @@ def _forward_test_start(value: Any, *, model_id: str | None, bar_time: datetime)
     if bar_time.astimezone(UTC).date() < start:
         raise PineIngressError("shadow signal predates forward_test_start")
     return start.isoformat()
+
+
+def _replay_max_price(
+    value: Any,
+    *,
+    action: SignalAction,
+    model_id: str | None,
+    signal_price: float,
+) -> float | None:
+    if action != SignalAction.ENTRY_LONG:
+        return None
+    if value in (None, ""):
+        if model_id is not None:
+            raise PineIngressError("replay_max_price is required for shadow entries")
+        return None
+    try:
+        ceiling = float(value)
+    except (TypeError, ValueError) as exc:
+        raise PineIngressError("replay_max_price must be numeric") from exc
+    if not math.isfinite(ceiling) or ceiling <= 0:
+        raise PineIngressError("replay_max_price must be positive and finite")
+    if ceiling < signal_price:
+        raise PineIngressError("replay_max_price cannot be below signal price")
+    return ceiling
 
 
 def _optional_tag(value: Any, name: str, allowed: set[str]) -> str | None:
