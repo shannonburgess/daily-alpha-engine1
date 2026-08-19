@@ -235,6 +235,6 @@ def test_durable_worker_persists_replay_receipt_with_risk_basis(monkeypatch):
     assert receipt["fill_quantity"] == 2
     assert receipt["fill_notional"] == 210.0
     assert receipt["initial_risk_basis"] == 500.0
-    assert receipt["r_basis_status"] == "AVAILABLE"
+    assert receipt["r_basis_status"] == "NO_REALIZED_PNL_YET"
     assert receipt["trading_authorized"] is False
     assert receipt["live_trading_enabled"] is False
