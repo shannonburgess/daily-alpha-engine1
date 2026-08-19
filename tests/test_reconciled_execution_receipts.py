@@ -120,6 +120,7 @@ def test_reconciled_entry_attaches_receipt_without_changing_execution(monkeypatc
 
     receipt = result["execution_receipt"]
     assert result["disposition"] == "EXECUTED_PAPER"
+    assert result["evaluated_at"] == NOW.isoformat()
     assert receipt["action"] == "ENTRY_LONG"
     assert receipt["fill_price"] == 100.0
     assert receipt["fill_quantity"] == 10
@@ -176,6 +177,7 @@ def test_armed_replay_receipt_uses_refreshed_market_price_and_replay_signal_id(
     result = executor.replay_armed(ingress, now=NOW)
 
     receipt = result["execution_receipt"]
+    assert result["evaluated_at"] == NOW.isoformat()
     assert receipt["signal_id"] == replay_signal_id
     assert receipt["fill_price"] == 105.0
     assert receipt["fill_quantity"] == 2
@@ -208,4 +210,5 @@ def test_armed_or_state_mismatch_never_fabricates_receipt(monkeypatch):
     )
 
     assert result["disposition"] == "STATE_MISMATCH"
+    assert result["evaluated_at"] == NOW.isoformat()
     assert "execution_receipt" not in result
