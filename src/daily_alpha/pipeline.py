@@ -61,6 +61,7 @@ class PaperTradingPipeline:
                 option_type=contract.option_type,
                 runner_stage="STARTER",
                 sector=sector,
+                initial_risk_basis=size.estimated_max_loss,
             )
 
         if decision.instrument_selected == InstrumentSelected.STOCK:
@@ -83,6 +84,7 @@ class PaperTradingPipeline:
                 fallback_reason=decision.fallback_reason,
                 runner_stage="STARTER",
                 sector=sector,
+                initial_risk_basis=size.estimated_max_loss,
             )
 
         raise ValueError("Unsupported instrument decision")
