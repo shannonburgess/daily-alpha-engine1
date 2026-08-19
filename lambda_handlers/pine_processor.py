@@ -16,6 +16,53 @@ from daily_alpha.pine_processor import (
 from daily_alpha.reconciled_receipt_executor import (
     ReceiptReconciledAwsPinePaperExecutor,
 )
+from daily_alpha.shadow_routing import (
+    PAPER_SHADOW_V24,
+    PAPER_SHADOW_V25,
+    ShadowRoutedPineEventStore,
+    ShadowRoutedPinePaperExecutor,
+    default_paper_account_id,
+)
+
+
+def _replay_all_paper_accounts(*, now: datetime, limit: int) -> dict:
+    accounts = [default_paper_account_id(), PAPER_SHADOW_V24, PAPER_SHADOW_V25]
+    remaining = limit
+    total_found = 0
+    combined_counts: dict[str, int] = {}
+    combined_outcomes: list[dict] = []
+    scanned: list[str] = []
+
+    for account_id in accounts:
+        if remaining <= 0:
+            break
+        store = DynamoPineEventStore(account_id=account_id)
+        executor = ShadowRoutedPinePaperExecutor()
+        result = replay_armed_events(store, executor, now=now, limit=remaining)
+        scanned.append(account_id)
+        found = int(result.get("armed_found", 0))
+        total_found += found
+        remaining -= found
+        for disposition, count in dict(result.get("outcome_counts") or {}).items():
+            combined_counts[str(disposition)] = (
+                combined_counts.get(str(disposition), 0) + int(count)
+            )
+        for outcome in list(result.get("outcomes") or []):
+            item = dict(outcome)
+            item["paper_account_id"] = account_id
+            combined_outcomes.append(item)
+
+    return {
+        "ok": True,
+        "operation": "REPLAY_ARMED_SIGNALS",
+        "processed_at": now.isoformat(),
+        "accounts_scanned": scanned,
+        "armed_found": total_found,
+        "outcome_counts": combined_counts,
+        "outcomes": combined_outcomes,
+        "trading_authorized": False,
+        "live_trading_enabled": False,
+    }
 
 
 def lambda_handler(event, context):
@@ -34,14 +81,30 @@ def lambda_handler(event, context):
             "request_id": getattr(context, "aws_request_id", None),
         }
 
+    if operation == "LIST_SHADOW_PAPER_POSITIONS":
+        books = {}
+        for account_id in (PAPER_SHADOW_V24, PAPER_SHADOW_V25):
+            trades = _all_open_trades(DynamoPaperLedger(account_id=account_id))
+            books[account_id] = {
+                "open_count": len(trades),
+                "open_positions": [trade.to_dict() for trade in trades],
+            }
+        return {
+            "ok": True,
+            "service": "daily-alpha-pine-processor",
+            "operation": operation,
+            "books": books,
+            "trading_authorized": False,
+            "live_trading_enabled": False,
+            "request_id": getattr(context, "aws_request_id", None),
+        }
+
     if operation == "REPLAY_ARMED_SIGNALS":
         now = datetime.now(UTC)
         try:
             raw_limit = event.get("limit", 25)
             limit = int(raw_limit)
-            store = DynamoPineEventStore()
-            executor = ReceiptReconciledAwsPinePaperExecutor()
-            result = replay_armed_events(store, executor, now=now, limit=limit)
+            result = _replay_all_paper_accounts(now=now, limit=limit)
             return {
                 "service": "daily-alpha-pine-processor",
                 **result,
@@ -109,6 +172,9 @@ def lambda_handler(event, context):
                 "request_id": getattr(context, "aws_request_id", None),
             }
 
-    store = DynamoPineEventStore()
-    executor = ReceiptReconciledAwsPinePaperExecutor()
+    # Authenticated TradingView SQS events route tagged v2.4/v2.5 traffic into
+    # isolated receipt-aware shadow books. Untagged legacy traffic stays on the
+    # configured default paper account.
+    store = ShadowRoutedPineEventStore()
+    executor = ShadowRoutedPinePaperExecutor()
     return process_sqs_batch(event, store, executor=executor)
