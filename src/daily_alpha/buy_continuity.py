@@ -1,4 +1,4 @@
-"""Durable OVTLYR BUY-state continuity derived from immutable dated archives.
+"""Durable OVTLYR BUY-state continuity derived from immutable dated inputs.
 
 This module answers a different question from day-over-day shortlist ranking: how long
 has a symbol remained in BUY state, when did it last materially change, and why is
@@ -8,11 +8,14 @@ it no longer research-eligible? It never promotes a symbol into execution.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from .ovtlyr import OvtlyrRecord, load_ovtlyr_csv
+
+_DATE_PATTERN = re.compile(r"(20\d{2}-\d{2}-\d{2})")
 
 
 @dataclass(frozen=True)
@@ -43,7 +46,7 @@ class BuyContinuityState:
 
 
 def build_buy_continuity(history_root: str | Path) -> tuple[BuyContinuityState, ...]:
-    """Build current BUY continuity from immutable ``YYYY-MM-DD/universe.csv`` runs."""
+    """Build continuity from immutable ``YYYY-MM-DD/universe.csv`` archive runs."""
     root = Path(history_root)
     dated_runs = sorted(
         path
@@ -52,8 +55,81 @@ def build_buy_continuity(history_root: str | Path) -> tuple[BuyContinuityState, 
     )
     if not dated_runs:
         raise ValueError("BUY_CONTINUITY_HISTORY_EMPTY")
+    observations = [
+        (run.name, tuple(load_ovtlyr_csv(run / "universe.csv"))) for run in dated_runs
+    ]
+    return _build_buy_continuity(observations)
 
-    latest_date = dated_runs[-1].name
+
+def build_buy_continuity_from_csv_directory(
+    csv_root: str | Path,
+) -> tuple[BuyContinuityState, ...]:
+    """Build continuity from flat dated OVTLYR CSVs downloaded for a shortlist run.
+
+    The date comes from each filename, never from filesystem modification time.
+    Duplicate date labels fail closed because their chronological order is ambiguous.
+    """
+    root = Path(csv_root)
+    dated_files: list[tuple[str, Path]] = []
+    for path in root.glob("*.csv"):
+        if not path.is_file() or path.stat().st_size <= 0:
+            continue
+        match = _DATE_PATTERN.search(path.name)
+        if match:
+            dated_files.append((match.group(1), path))
+    dated_files.sort(key=lambda item: (item[0], item[1].name))
+    if not dated_files:
+        raise ValueError("BUY_CONTINUITY_HISTORY_EMPTY")
+
+    dates = [date for date, _ in dated_files]
+    if len(dates) != len(set(dates)):
+        raise ValueError("BUY_CONTINUITY_DUPLICATE_DATE")
+
+    observations = [
+        (date, tuple(load_ovtlyr_csv(path))) for date, path in dated_files
+    ]
+    return _build_buy_continuity(observations)
+
+
+def write_buy_continuity_output(
+    output_path: str | Path,
+    states: tuple[BuyContinuityState, ...],
+) -> Path:
+    """Write one deterministic machine-readable continuity artifact."""
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    active = [state for state in states if state.active_buy]
+    payload = {
+        "summary": {
+            "symbols": len(states),
+            "active_buy": len(active),
+            "eligible_active_buy": sum(
+                state.research_eligibility == "ACTIVE_BUY_ELIGIBLE" for state in active
+            ),
+            "research_only": True,
+            "trading_authorized": False,
+            "live_trading_enabled": False,
+        },
+        "states": [state.to_dict() for state in states],
+    }
+    destination.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return destination
+
+
+def _build_buy_continuity(
+    observations: list[tuple[str, tuple[OvtlyrRecord, ...]]],
+) -> tuple[BuyContinuityState, ...]:
+    if not observations:
+        raise ValueError("BUY_CONTINUITY_HISTORY_EMPTY")
+    observations.sort(key=lambda item: item[0])
+    dates = [date for date, _ in observations]
+    if len(dates) != len(set(dates)):
+        raise ValueError("BUY_CONTINUITY_DUPLICATE_DATE")
+
+    latest_date = observations[-1][0]
     first_seen: dict[str, str] = {}
     first_buy: dict[str, str] = {}
     streak_start: dict[str, str | None] = {}
@@ -64,9 +140,8 @@ def build_buy_continuity(history_root: str | Path) -> tuple[BuyContinuityState, 
     last_signature: dict[str, tuple[Any, ...]] = {}
     latest_records: dict[str, OvtlyrRecord] = {}
 
-    for run in dated_runs:
-        run_date = run.name
-        records = {record.symbol: record for record in load_ovtlyr_csv(run / "universe.csv")}
+    for run_date, run_records in observations:
+        records = {record.symbol: record for record in run_records}
         for symbol, record in records.items():
             first_seen.setdefault(symbol, run_date)
             last_seen[symbol] = run_date
@@ -144,34 +219,6 @@ def build_buy_continuity(history_root: str | Path) -> tuple[BuyContinuityState, 
         )
 
     return tuple(states)
-
-
-def write_buy_continuity_output(
-    output_path: str | Path,
-    states: tuple[BuyContinuityState, ...],
-) -> Path:
-    """Write one deterministic machine-readable continuity artifact."""
-    destination = Path(output_path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    active = [state for state in states if state.active_buy]
-    payload = {
-        "summary": {
-            "symbols": len(states),
-            "active_buy": len(active),
-            "eligible_active_buy": sum(
-                state.research_eligibility == "ACTIVE_BUY_ELIGIBLE" for state in active
-            ),
-            "research_only": True,
-            "trading_authorized": False,
-            "live_trading_enabled": False,
-        },
-        "states": [state.to_dict() for state in states],
-    }
-    destination.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return destination
 
 
 def _eligibility(record: OvtlyrRecord) -> str:
