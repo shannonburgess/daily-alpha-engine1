@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from daily_alpha.armed_replay import list_armed_ingress, replay_armed_events
+from daily_alpha.armed_replay import (
+    list_armed_ingress,
+    list_recent_pine_event_state,
+    replay_armed_events,
+)
 from daily_alpha.dynamo_ledger import DynamoPaperLedger
 from daily_alpha.execution_universe import build_scanner_ingress
 from daily_alpha.pine_paper_orchestrator import _all_open_trades
@@ -65,13 +69,19 @@ def _replay_all_paper_accounts(*, now: datetime, limit: int) -> dict:
     }
 
 
-def _shadow_monitor_state(*, now: datetime, armed_limit: int) -> dict:
-    """Return a read-only snapshot of open and currently armed shadow state."""
+def _shadow_monitor_state(
+    *,
+    now: datetime,
+    armed_limit: int,
+    event_limit: int,
+) -> dict:
+    """Return a read-only snapshot of shadow positions, armed state and receipts."""
     books: dict[str, dict] = {}
     for account_id in (PAPER_SHADOW_V24, PAPER_SHADOW_V25):
         trades = _all_open_trades(DynamoPaperLedger(account_id=account_id))
         store = DynamoPineEventStore(account_id=account_id)
         armed = list_armed_ingress(store, limit=armed_limit)
+        event_state = list_recent_pine_event_state(store, limit=event_limit)
         books[account_id] = {
             "open_count": len(trades),
             "open_positions": [trade.to_dict() for trade in trades],
@@ -91,6 +101,7 @@ def _shadow_monitor_state(*, now: datetime, armed_limit: int) -> dict:
                 }
                 for item in armed
             ],
+            **event_state,
         }
     return {
         "ok": True,
@@ -140,9 +151,13 @@ def lambda_handler(event, context):
     if operation == "GET_SHADOW_MONITOR_STATE":
         now = datetime.now(UTC)
         try:
-            raw_limit = event.get("armed_limit", 25)
-            armed_limit = int(raw_limit)
-            result = _shadow_monitor_state(now=now, armed_limit=armed_limit)
+            armed_limit = int(event.get("armed_limit", 25))
+            event_limit = int(event.get("event_limit", 100))
+            result = _shadow_monitor_state(
+                now=now,
+                armed_limit=armed_limit,
+                event_limit=event_limit,
+            )
             return {
                 **result,
                 "request_id": getattr(context, "aws_request_id", None),
