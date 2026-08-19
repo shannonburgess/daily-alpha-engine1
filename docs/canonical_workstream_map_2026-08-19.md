@@ -20,13 +20,13 @@ Canonical stacked path:
 
 1. **#185** — durable `ARMED_FOR_NEXT_TRADABLE_WINDOW`, replay/revalidation, orphan lifecycle reconciliation.
 2. **#196** — exact ENTRY / ADD / PARTIAL / EXIT receipts integrated into realtime and durable replay execution.
-3. **#205** — durable initial-risk basis and realized-R continuity through lifecycle transitions.
+3. **#205** — durable initial-risk basis and realized-R continuity through lifecycle transitions, including the local processor/audit-store/ARMED/replay/receipt contract E2E.
 
 Superseded:
 
 - **#192** — independent receipt implementation; closed unmerged after #196/#205 became the integrated canonical chain.
 
-Rule: do not create or merge a second execution-receipt implementation outside this chain.
+Rule: do not create or merge a second execution-receipt implementation outside this chain. The local #205 E2E does not replace the still-required real staging proof with fresh market/ORATS/risk revalidation.
 
 ## v2.4 / v2.5 prospective shadow validation
 
@@ -34,13 +34,13 @@ Canonical stacked path:
 
 - **#185** — replay/reconciliation foundation.
 - **#186** — isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` routing and synchronized forward-test start.
-- **#207** — preserves and validates explicit `replay_max_price` for tagged shadow entries.
+- **#207** — preserves and validates explicit `replay_max_price` for tagged shadow entries and documents the source-side Pine contract.
 
-Remaining source-side blocker: prospective Pine payloads must deliberately emit the common `forward_test_start` and reviewed no-chase ceiling before any webhook activation.
+Remaining source-side blocker: prospective Pine payloads must deliberately emit `model_id`, the common `forward_test_start`, and a reviewed no-chase ceiling before any webhook activation. Both strategy instances must start FLAT on the same boundary.
 
 ## Persistent candidate/watch visibility
 
-- **#189** — persistent `ACTIVE_BUY` visibility in the research shortlist.
+- **#189** — persistent `ACTIVE_BUY` visibility plus archive-derived BUY continuity state: first-seen/first-BUY/streak/last-change and explicit ineligibility reasons.
 - **#199** — persistent manual research watchlist model, seeded with NFLX.
 - **#206** — staging-newsletter/manual-watch publication integration stacked on #199.
 
@@ -100,13 +100,20 @@ Neither may redefine execution logic, performance methodology, or entitlement en
 
 ## Research platform
 
-- **#193** — Strategy Forensics / missed-R diagnostics.
-- **#209** — consolidated Factor Attribution foundation + candidate evidence adapter. It replaces closed drafts #194 and #208.
+- **#193** — Strategy Forensics / missed-R diagnostics plus deterministic research artifacts.
+- **#209** — consolidated Factor Attribution foundation + candidate evidence adapter + horizon/regime/sector evidence reporting. It replaces closed drafts #194 and #208.
 - Quant challengers remain disconnected research unless a separate model-governance path promotes them.
 
 ## ORATS reliability
 
-Current `main` includes merged strict historical daily/earnings and option-contract transport from #188 and #197. Older stacked duplicates such as #190 are closed. Any remaining ORATS work should extend current `main` behavior rather than recreate the historical transport stack.
+These are distinct reliability layers, not duplicate implementations:
+
+- **#82** — workflow-level serialization for ORATS-heavy research jobs.
+- **#95** — bounded retry/backoff and explicit rate-limit classification for the standard `OratsClient`; remains a draft and is separate from historical transport.
+- **Merged #188** — strict historical daily/earnings transport and `fetch_orats_history()` wiring.
+- **Merged #197** — strict historical option-chain / contract-snapshot transport on current `main`.
+
+Historical duplicates/replaced foundations such as #110, #137 and #190 are closed unmerged. Issue #106's historical transport objective is completed. Future historical ORATS work must extend current `main`; future standard-client resilience should continue through #95 or explicitly supersede it before new implementation begins.
 
 ## Automation / reporting consistency rule
 
