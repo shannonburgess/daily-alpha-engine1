@@ -13,12 +13,14 @@ def load_behavioral_entities(path: str | Path) -> tuple[BehavioralEntity, ...]:
     """Load and validate the versioned behavioral entity dictionary."""
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("behavioral entity dictionary must be an object")
+        raise TypeError("behavioral entity dictionary must be an object")
     version = str(payload.get("version") or "").strip()
     if not version:
         raise ValueError("behavioral entity dictionary version is required")
     raw_entities = payload.get("entities")
-    if not isinstance(raw_entities, list) or not raw_entities:
+    if not isinstance(raw_entities, list):
+        raise TypeError("behavioral entity dictionary entities must be an array")
+    if not raw_entities:
         raise ValueError("behavioral entity dictionary must contain entities")
 
     entities: list[BehavioralEntity] = []
@@ -26,7 +28,7 @@ def load_behavioral_entities(path: str | Path) -> tuple[BehavioralEntity, ...]:
     tickers: set[str] = set()
     for raw in raw_entities:
         if not isinstance(raw, dict):
-            raise ValueError("behavioral entity entries must be objects")
+            raise TypeError("behavioral entity entries must be objects")
         entity = _entity_from_dict(raw, version=version)
         ticker = entity.ticker.upper()
         if entity.entity_id in entity_ids:
@@ -60,5 +62,5 @@ def _strings(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
     if not isinstance(value, list):
-        raise ValueError("behavioral entity list fields must be arrays")
+        raise TypeError("behavioral entity list fields must be arrays")
     return tuple(str(item).strip() for item in value if str(item).strip())
