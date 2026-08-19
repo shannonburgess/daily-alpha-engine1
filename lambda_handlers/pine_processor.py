@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from daily_alpha.armed_replay import replay_armed_events
+from daily_alpha.armed_replay import list_armed_ingress, replay_armed_events
 from daily_alpha.dynamo_ledger import DynamoPaperLedger
 from daily_alpha.execution_universe import build_scanner_ingress
 from daily_alpha.pine_paper_orchestrator import _all_open_trades
@@ -65,6 +65,44 @@ def _replay_all_paper_accounts(*, now: datetime, limit: int) -> dict:
     }
 
 
+def _shadow_monitor_state(*, now: datetime, armed_limit: int) -> dict:
+    """Return a read-only snapshot of open and currently armed shadow state."""
+    books: dict[str, dict] = {}
+    for account_id in (PAPER_SHADOW_V24, PAPER_SHADOW_V25):
+        trades = _all_open_trades(DynamoPaperLedger(account_id=account_id))
+        store = DynamoPineEventStore(account_id=account_id)
+        armed = list_armed_ingress(store, limit=armed_limit)
+        books[account_id] = {
+            "open_count": len(trades),
+            "open_positions": [trade.to_dict() for trade in trades],
+            "armed_count_visible": len(armed),
+            "armed_limit": armed_limit,
+            "armed_limit_reached": len(armed) == armed_limit,
+            "armed_signals": [
+                {
+                    "persisted_signal_id": item.get("_persisted_signal_id"),
+                    "signal_id": item.get("signal_id"),
+                    "symbol": item.get("symbol"),
+                    "action": item.get("action"),
+                    "model_id": item.get("model_id"),
+                    "forward_test_start": item.get("forward_test_start"),
+                    "received_at": item.get("received_at"),
+                    "replay_max_price": item.get("replay_max_price"),
+                }
+                for item in armed
+            ],
+        }
+    return {
+        "ok": True,
+        "service": "daily-alpha-pine-processor",
+        "operation": "GET_SHADOW_MONITOR_STATE",
+        "snapshot_at": now.isoformat(),
+        "books": books,
+        "trading_authorized": False,
+        "live_trading_enabled": False,
+    }
+
+
 def lambda_handler(event, context):
     operation = str(event.get("operation", "")).strip().upper() if isinstance(event, dict) else ""
 
@@ -98,6 +136,28 @@ def lambda_handler(event, context):
             "live_trading_enabled": False,
             "request_id": getattr(context, "aws_request_id", None),
         }
+
+    if operation == "GET_SHADOW_MONITOR_STATE":
+        now = datetime.now(UTC)
+        try:
+            raw_limit = event.get("armed_limit", 25)
+            armed_limit = int(raw_limit)
+            result = _shadow_monitor_state(now=now, armed_limit=armed_limit)
+            return {
+                **result,
+                "request_id": getattr(context, "aws_request_id", None),
+            }
+        except Exception as exc:  # noqa: BLE001 - monitor boundary must fail closed
+            return {
+                "ok": False,
+                "service": "daily-alpha-pine-processor",
+                "operation": operation,
+                "status": "REJECTED",
+                "error_code": str(exc) or type(exc).__name__,
+                "trading_authorized": False,
+                "live_trading_enabled": False,
+                "request_id": getattr(context, "aws_request_id", None),
+            }
 
     if operation == "REPLAY_ARMED_SIGNALS":
         now = datetime.now(UTC)
