@@ -27,6 +27,7 @@ jobs:
     env:
       AWS_REGION: us-east-2
       REPO: ${{ github.repository }}
+      EVIDENCE_DIR: shadow-monitor-artifacts
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -46,16 +47,17 @@ jobs:
       - name: Read isolated positions, ARMED state, events and receipts
         run: |
           set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
           aws lambda invoke \
             --function-name daily-alpha-pine-processor \
             --cli-binary-format raw-in-base64-out \
             --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}' \
-            /tmp/shadow-monitor-state.json >/dev/null
+            "${EVIDENCE_DIR}/shadow-monitor-state.json" >/dev/null
           python - <<'PY'
           import json
           from pathlib import Path
 
-          state = json.loads(Path('/tmp/shadow-monitor-state.json').read_text())
+          state = json.loads(Path('shadow-monitor-artifacts/shadow-monitor-state.json').read_text())
           assert state.get('ok') is True, state
           assert state.get('trading_authorized') is False, state
           assert state.get('live_trading_enabled') is False, state
@@ -72,42 +74,40 @@ jobs:
         run: |
           set +e
           python scripts/shadow_monitor.py \
-            --monitor-state /tmp/shadow-monitor-state.json \
-            --output-json /tmp/shadow-status.json \
-            --output-md /tmp/shadow-status.md
+            --monitor-state "${EVIDENCE_DIR}/shadow-monitor-state.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-status.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-status.md"
           CODE=$?
           echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
-          cat /tmp/shadow-status.md >> "$GITHUB_STEP_SUMMARY"
-          cat /tmp/shadow-status.json
+          cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "${EVIDENCE_DIR}/shadow-status.json"
           exit 0
 
       - name: Update one rolling issue status
-        if: always() && hashFiles('/tmp/shadow-status.md') != ''
+        if: always() && steps.summarize.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          test -f "${EVIDENCE_DIR}/shadow-status.md"
           COMMENT_ID="$(gh api "repos/${REPO}/issues/213/comments" --paginate \
             --jq '.[] | select(.body | startswith("<!-- daily-alpha-shadow-monitor -->")) | .id' \
             | head -n 1)"
-          jq -Rs '{body:.}' /tmp/shadow-status.md > /tmp/comment.json
+          jq -Rs '{body:.}' "${EVIDENCE_DIR}/shadow-status.md" > "${EVIDENCE_DIR}/comment.json"
           if [ -n "${COMMENT_ID}" ]; then
             gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-              --input /tmp/comment.json >/dev/null
+              --input "${EVIDENCE_DIR}/comment.json" >/dev/null
           else
             gh api --method POST "repos/${REPO}/issues/213/comments" \
-              --input /tmp/comment.json >/dev/null
+              --input "${EVIDENCE_DIR}/comment.json" >/dev/null
           fi
 
       - name: Upload monitor evidence
-        if: always() && hashFiles('/tmp/shadow-status.json') != ''
+        if: always() && steps.summarize.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: paper-shadow-monitor-${{ github.run_id }}
-          path: |
-            /tmp/shadow-monitor-state.json
-            /tmp/shadow-status.json
-            /tmp/shadow-status.md
+          path: shadow-monitor-artifacts/
           retention-days: 30
 
       - name: Enforce fail-closed monitor result
