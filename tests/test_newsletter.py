@@ -271,6 +271,23 @@ def _seed_staging_s3(client):
       {"sector":"Technology","new_buys":3,"leaders":5,"net_score":8},
       {"sector":"Industrials","new_buys":1,"leaders":2,"net_score":3}
     ]'''
+    client.objects["ovtlyr/shortlist/latest/classifications.json"] = b'''[
+      {
+        "symbol":"AAPL","status":"LEADER","signal":"BUY","signal_date":"2026-08-10",
+        "sector":"Technology","industry":"Consumer Electronics","trend":"UP",
+        "momentum":"RISING","optionable":true,"reason":"Leadership remains strong."
+      },
+      {
+        "symbol":"XYZ","status":"ENTRY_WATCH","signal":"BUY","signal_date":"2026-08-16",
+        "sector":"Industrials","industry":"Machinery","trend":"UP",
+        "momentum":"RISING","optionable":true,"reason":"Entry watch remains active."
+      },
+      {
+        "symbol":"NFLX","status":"ACTIVE_BUY","signal":"BUY","signal_date":"2026-08-10",
+        "sector":"Communication Services","industry":"Entertainment","trend":"UP",
+        "momentum":"RISING","optionable":true,"reason":"Pinned name remains an active BUY."
+      }
+    ]'''
     client.objects["ovtlyr/shortlist/latest/shortlist.csv"] = b"rank,symbol\n1,AAPL\n2,XYZ\n"
 
 

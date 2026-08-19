@@ -11,6 +11,12 @@ from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .manual_watchlist import (
+    ManualWatchlistError,
+    build_manual_watch_snapshots,
+    load_manual_watchlist,
+    render_manual_watch_section,
+)
 from .models import InstrumentSelected
 from .newsletter import NewsletterRenderer
 from .research_report import (
@@ -32,6 +38,7 @@ class AwsStagingReportPublisher:
     DEFAULT_BUCKET = "daily-alpha-staging-490809405132-us-east-2"
     DEFAULT_TABLE = "daily-alpha-paper-ledger-staging"
     DEFAULT_ACCOUNT = "paper-staging"
+    DEFAULT_MANUAL_WATCHLIST_PATH = "config/manual_watchlist.json"
     SHORTLIST_PREFIX = "ovtlyr/shortlist/latest"
     OUTPUT_PREFIX = "daily-alpha/outputs"
 
@@ -43,6 +50,7 @@ class AwsStagingReportPublisher:
         bucket: str | None = None,
         table_name: str | None = None,
         account_id: str | None = None,
+        manual_watchlist_path: str | None = None,
     ) -> None:
         self.bucket = (
             bucket or os.getenv("DAILY_ALPHA_STAGING_BUCKET") or self.DEFAULT_BUCKET
@@ -57,7 +65,17 @@ class AwsStagingReportPublisher:
             or os.getenv("DAILY_ALPHA_PAPER_ACCOUNT_ID")
             or self.DEFAULT_ACCOUNT
         ).strip()
-        if not self.bucket or not self.table_name or not self.account_id:
+        self.manual_watchlist_path = (
+            manual_watchlist_path
+            or os.getenv("DAILY_ALPHA_MANUAL_WATCHLIST_PATH")
+            or self.DEFAULT_MANUAL_WATCHLIST_PATH
+        ).strip()
+        if (
+            not self.bucket
+            or not self.table_name
+            or not self.account_id
+            or not self.manual_watchlist_path
+        ):
             raise StagingReportError("STAGING_REPORT_CONFIGURATION_INVALID")
 
         if s3_client is None or dynamodb_client is None:
@@ -94,7 +112,24 @@ class AwsStagingReportPublisher:
         )
         if not isinstance(sector_rotation, list):
             raise StagingReportError("SECTOR_ROTATION_JSON_MUST_BE_ARRAY")
+        classifications = self._json_object(
+            f"{self.SHORTLIST_PREFIX}/classifications.json"
+        )
+        if not isinstance(classifications, list):
+            raise StagingReportError("CLASSIFICATIONS_JSON_MUST_BE_ARRAY")
         shortlist_csv = self._bytes(f"{self.SHORTLIST_PREFIX}/shortlist.csv")
+
+        try:
+            manual_specs = load_manual_watchlist(self.manual_watchlist_path)
+            manual_watch = build_manual_watch_snapshots(
+                manual_specs,
+                classifications=classifications,
+                shortlist=shortlist,
+            )
+        except ManualWatchlistError as exc:
+            raise StagingReportError(f"MANUAL_WATCHLIST_INVALID:{exc}") from exc
+        manual_watch_fragment = render_manual_watch_section(manual_watch)
+        manual_watch_rows = [item.to_dict() for item in manual_watch]
 
         ledger_rows = self._paper_ledger_rows()
         ledger_csv = _rows_to_csv(
@@ -118,6 +153,7 @@ class AwsStagingReportPublisher:
             ),
         ).encode("utf-8")
         sector_csv = _rows_to_csv(sector_rotation).encode("utf-8")
+        manual_watch_csv = _rows_to_csv(manual_watch_rows).encode("utf-8")
 
         packet = _packet_from_shortlist(
             shortlist,
@@ -130,6 +166,10 @@ class AwsStagingReportPublisher:
             raise StagingReportError(
                 "NEWSLETTER_QUALITY_FAILED:" + ",".join(rendered.quality_warnings)
             )
+        newsletter_html = _inject_manual_watch_section(
+            rendered.html,
+            manual_watch_fragment,
+        )
 
         date_key = local.date().isoformat()
         stamp = timestamp.strftime("%Y%m%dT%H%M%SZ")
@@ -139,12 +179,25 @@ class AwsStagingReportPublisher:
         latest_prefix = f"{self.OUTPUT_PREFIX}/latest"
 
         outputs: dict[str, tuple[bytes, str]] = {
-            "newsletter.html": (rendered.html.encode("utf-8"), "text/html; charset=utf-8"),
+            "newsletter.html": (
+                newsletter_html.encode("utf-8"),
+                "text/html; charset=utf-8",
+            ),
             "research_shortlist.csv": (shortlist_csv, "text/csv; charset=utf-8"),
             "paper_ledger.csv": (ledger_csv, "text/csv; charset=utf-8"),
             "sector_rotation.csv": (sector_csv, "text/csv; charset=utf-8"),
+            "manual_watchlist.csv": (manual_watch_csv, "text/csv; charset=utf-8"),
+            "manual_watchlist.json": (
+                (json.dumps(manual_watch_rows, indent=2, sort_keys=True) + "\n").encode(
+                    "utf-8"
+                ),
+                "application/json",
+            ),
         }
 
+        newsletter_sections = list(rendered.sections)
+        if manual_watch:
+            newsletter_sections.append("MANUAL_WATCH")
         manifest = {
             "report_date": date_key,
             "session": normalized_session,
@@ -152,13 +205,19 @@ class AwsStagingReportPublisher:
             "run_id": run_id,
             "research_candidate_count": len(shortlist),
             "qualified_option_count": int(summary.get("qualified_option_count", 0) or 0),
+            "manual_watch_count": len(manual_watch),
+            "manual_watch_symbols": [item.symbol for item in manual_watch],
+            "manual_watch_data_error_count": sum(
+                item.data_status == "DATA_ERROR" for item in manual_watch
+            ),
             "paper_ledger_row_count": len(ledger_rows),
             "open_paper_position_count": sum(
                 "#POSITION#" in str(row.get("pk", "")) and row.get("sk") == "OPEN"
                 for row in ledger_rows
             ),
             "newsletter_quality_passed": rendered.quality_passed,
-            "newsletter_sections": list(rendered.sections),
+            "newsletter_sections": newsletter_sections,
+            "trading_authorized": False,
             "live_trading_enabled": False,
             "publication": "STAGING_RESEARCH_AND_PAPER_ONLY",
         }
@@ -184,6 +243,7 @@ class AwsStagingReportPublisher:
             "history_prefix": history_prefix,
             "outputs": published,
             "manifest": manifest,
+            "trading_authorized": False,
             "live_trading_enabled": False,
         }
 
@@ -237,6 +297,15 @@ class AwsStagingReportPublisher:
             )
         except Exception as exc:
             raise StagingReportError(f"S3_WRITE_FAILED:{key}") from exc
+
+
+def _inject_manual_watch_section(html: str, fragment: str) -> str:
+    if not fragment:
+        return html
+    marker = "</main>"
+    if html.count(marker) != 1:
+        raise StagingReportError("NEWSLETTER_MAIN_BOUNDARY_INVALID")
+    return html.replace(marker, fragment + marker, 1)
 
 
 def _packet_from_shortlist(
