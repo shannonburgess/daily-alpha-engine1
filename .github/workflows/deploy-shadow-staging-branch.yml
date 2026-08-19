@@ -1,0 +1,139 @@
+name: Deploy Daily Alpha shadow staging branch
+
+on:
+  push:
+    branches:
+      - staging/shadow-e2e-integration
+    paths:
+      - "src/daily_alpha/**"
+      - "lambda_handlers/**"
+      - "pyproject.toml"
+      - ".github/workflows/deploy-shadow-staging-branch.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test-and-deploy-shadow-staging:
+    name: Test and deploy shadow staging
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Assert staging branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "staging/shadow-e2e-integration"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run quality gates
+        run: |
+          ruff check .
+          pytest -q
+
+      - name: Build Lambda deployment package
+        run: |
+          rm -rf build deployment.zip
+          mkdir -p build
+          pip install . --target build --no-deps
+          cp -R lambda_handlers build/lambda_handlers
+          (cd build && zip -qr ../deployment.zip .)
+          unzip -l deployment.zip | grep -E "lambda_handlers/(pine_webhook|pine_processor)\.py"
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-shadow-staging-deploy
+          aws-region: us-east-2
+
+      - name: Verify AWS identity and shadow boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity
+          SHADOW_START="$(aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query 'Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START' \
+            --output text)"
+          test "${SHADOW_START}" = "2026-08-19"
+          echo "Shadow forward start verified: ${SHADOW_START}"
+
+      - name: Deploy Pine ingress to staging
+        run: |
+          aws lambda update-function-code \
+            --function-name daily-alpha-pine-ingress \
+            --zip-file fileb://deployment.zip \
+            --publish
+          aws lambda wait function-updated --function-name daily-alpha-pine-ingress
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-pine-ingress \
+            --handler lambda_handlers.pine_webhook.lambda_handler
+          aws lambda wait function-updated --function-name daily-alpha-pine-ingress
+
+      - name: Deploy Pine processor to staging
+        run: |
+          aws lambda update-function-code \
+            --function-name daily-alpha-pine-processor \
+            --zip-file fileb://deployment.zip \
+            --publish
+          aws lambda wait function-updated --function-name daily-alpha-pine-processor
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --handler lambda_handlers.pine_processor.lambda_handler
+          aws lambda wait function-updated --function-name daily-alpha-pine-processor
+
+      - name: Verify deployed Pine configuration
+        run: |
+          aws lambda get-function-configuration --function-name daily-alpha-pine-ingress \
+            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
+          aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
+            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus,ShadowForwardStart:Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START}'
+
+      - name: Verify isolated paper shadow books and live-disabled safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"LIST_SHADOW_PAPER_POSITIONS"}' \
+            /tmp/shadow-books.json
+          cat /tmp/shadow-books.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("/tmp/shadow-books.json").read_text())
+          assert result["ok"] is True
+          assert result["trading_authorized"] is False
+          assert result["live_trading_enabled"] is False
+          assert set(result["books"]) == {"PAPER_SHADOW_V24", "PAPER_SHADOW_V25"}
+          print("Shadow books isolated and live trading disabled.")
+          PY
+
+      - name: Reverify shadow boundary after deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHADOW_START="$(aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query 'Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START' \
+            --output text)"
+          test "${SHADOW_START}" = "2026-08-19"
+          echo "Shadow staging deployment verified; forward start=${SHADOW_START}"
