@@ -94,6 +94,13 @@ class AwsStagingReportPublisher:
         )
         if not isinstance(sector_rotation, list):
             raise StagingReportError("SECTOR_ROTATION_JSON_MUST_BE_ARRAY")
+        continuity = self._json_object(f"{self.SHORTLIST_PREFIX}/buy_continuity.json")
+        if not isinstance(continuity, Mapping):
+            raise StagingReportError("BUY_CONTINUITY_JSON_MUST_BE_OBJECT")
+        continuity_states = continuity.get("states")
+        if not isinstance(continuity_states, list):
+            raise StagingReportError("BUY_CONTINUITY_STATES_MUST_BE_ARRAY")
+        continuity_by_symbol = _continuity_index(continuity_states)
         shortlist_csv = self._bytes(f"{self.SHORTLIST_PREFIX}/shortlist.csv")
 
         ledger_rows = self._paper_ledger_rows()
@@ -118,12 +125,35 @@ class AwsStagingReportPublisher:
             ),
         ).encode("utf-8")
         sector_csv = _rows_to_csv(sector_rotation).encode("utf-8")
+        continuity_csv = _rows_to_csv(
+            continuity_states,
+            preferred=(
+                "symbol",
+                "current_signal",
+                "active_buy",
+                "research_eligibility",
+                "first_seen_date",
+                "first_buy_date",
+                "current_buy_streak_start",
+                "consecutive_buy_observations",
+                "total_buy_observations",
+                "last_seen_date",
+                "last_meaningful_change_date",
+                "trend",
+                "momentum",
+                "sector",
+                "industry",
+                "optionable",
+                "partial_data",
+            ),
+        ).encode("utf-8")
 
         packet = _packet_from_shortlist(
             shortlist,
             report_date=local.date().isoformat(),
             run_id=run_id,
             generated_at=timestamp.isoformat(),
+            buy_continuity=continuity_by_symbol,
         )
         rendered = NewsletterRenderer().render(packet)
         if not rendered.quality_passed:
@@ -141,10 +171,19 @@ class AwsStagingReportPublisher:
         outputs: dict[str, tuple[bytes, str]] = {
             "newsletter.html": (rendered.html.encode("utf-8"), "text/html; charset=utf-8"),
             "research_shortlist.csv": (shortlist_csv, "text/csv; charset=utf-8"),
+            "buy_continuity.csv": (continuity_csv, "text/csv; charset=utf-8"),
             "paper_ledger.csv": (ledger_csv, "text/csv; charset=utf-8"),
             "sector_rotation.csv": (sector_csv, "text/csv; charset=utf-8"),
         }
 
+        active_continuity = [
+            row for row in continuity_states if isinstance(row, Mapping) and row.get("active_buy") is True
+        ]
+        eligible_continuity = [
+            row
+            for row in active_continuity
+            if str(row.get("research_eligibility", "")) == "ACTIVE_BUY_ELIGIBLE"
+        ]
         manifest = {
             "report_date": date_key,
             "session": normalized_session,
@@ -152,6 +191,9 @@ class AwsStagingReportPublisher:
             "run_id": run_id,
             "research_candidate_count": len(shortlist),
             "qualified_option_count": int(summary.get("qualified_option_count", 0) or 0),
+            "buy_continuity_state_count": len(continuity_states),
+            "persistent_active_buy_count": len(active_continuity),
+            "eligible_persistent_active_buy_count": len(eligible_continuity),
             "paper_ledger_row_count": len(ledger_rows),
             "open_paper_position_count": sum(
                 "#POSITION#" in str(row.get("pk", "")) and row.get("sk") == "OPEN"
@@ -239,15 +281,31 @@ class AwsStagingReportPublisher:
             raise StagingReportError(f"S3_WRITE_FAILED:{key}") from exc
 
 
+def _continuity_index(rows: list[Any]) -> dict[str, Mapping[str, Any]]:
+    indexed: dict[str, Mapping[str, Any]] = {}
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            raise StagingReportError("BUY_CONTINUITY_STATE_INVALID")
+        symbol = str(raw.get("symbol", "")).strip().upper()
+        if not symbol:
+            raise StagingReportError("BUY_CONTINUITY_SYMBOL_REQUIRED")
+        if symbol in indexed:
+            raise StagingReportError("BUY_CONTINUITY_DUPLICATE_SYMBOL")
+        indexed[symbol] = raw
+    return indexed
+
+
 def _packet_from_shortlist(
     rows: list[Any],
     *,
     report_date: str,
     run_id: str,
     generated_at: str,
+    buy_continuity: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> DailyResearchPacket:
     candidates: list[ResearchCandidate] = []
     seen: set[str] = set()
+    continuity = buy_continuity or {}
     for raw in rows:
         if not isinstance(raw, Mapping):
             continue
@@ -274,6 +332,19 @@ def _packet_from_shortlist(
             f"ORATS={orats_reason}",
             f"RANK_SCORE={raw.get('score', 0)}",
         ]
+        continuity_state = continuity.get(symbol)
+        if continuity_state is not None:
+            reasons.extend(
+                (
+                    f"BUY_STREAK_START={continuity_state.get('current_buy_streak_start') or 'NONE'}",
+                    "BUY_OBSERVATIONS="
+                    f"{int(continuity_state.get('consecutive_buy_observations', 0) or 0)}",
+                    "BUY_LAST_CHANGE="
+                    f"{continuity_state.get('last_meaningful_change_date') or 'UNKNOWN'}",
+                    "BUY_ELIGIBILITY="
+                    f"{continuity_state.get('research_eligibility') or 'UNKNOWN'}",
+                )
+            )
         smart_bonus = float(raw.get("smart_money_bonus", 0) or 0)
         policy_bonus = float(raw.get("trump_policy_bonus", 0) or 0)
         if smart_bonus > 0:
