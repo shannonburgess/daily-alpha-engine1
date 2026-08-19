@@ -96,6 +96,7 @@ jobs:
 
           from daily_alpha.orats import OratsClient
           from daily_alpha.research_shortlist import (
+              CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
               build_research_shortlist,
               discover_daily_pair,
               write_research_shortlist_outputs,
@@ -152,12 +153,16 @@ jobs:
               congressional=congressional,
               institutional=institutional,
               trump_policy=policy_watch,
+              min_company_average_volume=CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
           )
           outputs = write_research_shortlist_outputs("data/shortlist", result)
           summary = result.summary
           print(
               f"Compared {result.previous_file} -> {result.current_file}; "
               f"ranked {summary['actionable_ranked_count']} actionable candidates, "
+              f"liquidity-filtered {summary['excluded_liquidity_filtered']} companies "
+              f"at/below {summary['company_min_average_volume']:.0f} average shares and "
+              f"{summary['excluded_liquidity_missing']} with missing volume, "
               f"excluded {summary['excluded_not_optionable']} OVTLYR non-optionable symbols, "
               f"excluded {summary['excluded_orats_no_45_75_dte_options']} ORATS symbols "
               f"without a 45-75 DTE chain, requested {summary['orats_requests']} ORATS chains, "
@@ -185,13 +190,20 @@ jobs:
               confirmation = " " + " ".join(extras) if extras else ""
               print(
                   f"{rank:02d} {item.symbol} {item.display_label} "
-                  f"score={item.score:.2f}{confirmation} ORATS={item.orats_reason}"
+                  f"score={item.score:.2f}{confirmation} "
+                  f"avg_vol={item.average_volume:.0f} ORATS={item.orats_reason}"
               )
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"previous_file={result.previous_file}\n")
               handle.write(f"current_file={result.current_file}\n")
               handle.write(f"ranked_count={summary['actionable_ranked_count']}\n")
               handle.write(f"qualified_count={summary['qualified_option_count']}\n")
+              handle.write(
+                  f"liquidity_filtered_count={summary['excluded_liquidity_filtered']}\n"
+              )
+              handle.write(
+                  f"liquidity_missing_count={summary['excluded_liquidity_missing']}\n"
+              )
               handle.write(
                   "orats_no_dte_count="
                   f"{summary['excluded_orats_no_45_75_dte_options']}\n"
@@ -283,6 +295,9 @@ jobs:
             echo "- Previous OVTLYR: ${{ steps.shortlist.outputs.previous_file }}"
             echo "- Current OVTLYR: ${{ steps.shortlist.outputs.current_file }}"
             echo "- Actionable ranked candidates: ${{ steps.shortlist.outputs.ranked_count }}"
+            echo "- Company liquidity gate: 30D average volume strictly > 1,500,000 shares"
+            echo "- Liquidity-filtered companies: ${{ steps.shortlist.outputs.liquidity_filtered_count }}"
+            echo "- Companies missing valid average-volume evidence: ${{ steps.shortlist.outputs.liquidity_missing_count }}"
             echo "- Smart-money matches in actionable universe: ${{ steps.shortlist.outputs.smart_money_matches }}"
             echo "- Trump policy-watch matches in actionable universe: ${{ steps.shortlist.outputs.trump_policy_matches }}"
             echo "- Congressional Top 5: ${{ steps.shortlist.outputs.congress_top }}"
