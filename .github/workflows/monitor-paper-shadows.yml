@@ -1,0 +1,117 @@
+name: Monitor Daily Alpha paper shadows
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * 1-5"
+  pull_request:
+    paths:
+      - ".github/workflows/monitor-paper-shadows.yml"
+      - "scripts/shadow_monitor.py"
+      - "tests/test_shadow_monitor.py"
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: daily-alpha-paper-shadow-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      AWS_REGION: us-east-2
+      REPO: ${{ github.repository }}
+      EVIDENCE_DIR: shadow-monitor-artifacts
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-shadow-monitor
+          aws-region: us-east-2
+
+      - name: Read isolated positions, ARMED state, events and receipts
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}' \
+            "${EVIDENCE_DIR}/shadow-monitor-state.json" >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          state = json.loads(Path('shadow-monitor-artifacts/shadow-monitor-state.json').read_text())
+          assert state.get('ok') is True, state
+          assert state.get('trading_authorized') is False, state
+          assert state.get('live_trading_enabled') is False, state
+          assert set(state.get('books', {})) == {
+              'PAPER_SHADOW_V24',
+              'PAPER_SHADOW_V25',
+          }, state
+          print('Read-only shadow monitor API: PASS')
+          PY
+
+      - name: Build exact shadow status
+        id: summarize
+        shell: bash
+        run: |
+          set +e
+          python scripts/shadow_monitor.py \
+            --monitor-state "${EVIDENCE_DIR}/shadow-monitor-state.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-status.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-status.md"
+          CODE=$?
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "${EVIDENCE_DIR}/shadow-status.json"
+          exit 0
+
+      - name: Update one rolling issue status
+        if: always() && steps.summarize.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -f "${EVIDENCE_DIR}/shadow-status.md"
+          COMMENT_ID="$(gh api "repos/${REPO}/issues/213/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- daily-alpha-shadow-monitor -->")) | .id' \
+            | head -n 1)"
+          jq -Rs '{body:.}' "${EVIDENCE_DIR}/shadow-status.md" > "${EVIDENCE_DIR}/comment.json"
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              --input "${EVIDENCE_DIR}/comment.json" >/dev/null
+          else
+            gh api --method POST "repos/${REPO}/issues/213/comments" \
+              --input "${EVIDENCE_DIR}/comment.json" >/dev/null
+          fi
+
+      - name: Upload monitor evidence
+        if: always() && steps.summarize.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-shadow-monitor-${{ github.run_id }}
+          path: shadow-monitor-artifacts/
+          retention-days: 30
+
+      - name: Enforce fail-closed monitor result
+        if: steps.summarize.outputs.exit_code != '0'
+        run: |
+          echo "Paper-shadow monitor detected a safety, isolation, or evidence-completeness violation."
+          exit 1
