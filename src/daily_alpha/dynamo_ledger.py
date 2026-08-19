@@ -72,11 +72,14 @@ class DynamoPaperLedger:
         target_quantity: int | None = None,
         runner_stage: str = "STARTER",
         sector: str = "Unknown",
+        initial_risk_basis: float | None = None,
     ) -> PaperTrade:
         if instrument not in {InstrumentSelected.OPTION, InstrumentSelected.STOCK}:
             raise ValueError("Paper trade instrument must be OPTION or STOCK")
         if quantity <= 0 or entry_price <= 0:
             raise ValueError("Paper trade quantity and entry price must be positive")
+        if initial_risk_basis is not None and initial_risk_basis <= 0:
+            raise ValueError("Paper trade initial risk basis must be positive")
         target = target_quantity or quantity
         if target < quantity:
             raise ValueError("Paper trade target quantity cannot be below current quantity")
@@ -104,6 +107,7 @@ class DynamoPaperLedger:
             target_quantity=target,
             runner_stage=runner_stage,
             sector=sector,
+            initial_risk_basis=initial_risk_basis,
         )
         current = self._current_item(trade)
         audit = self._audit_item("OPEN", trade, entry_time, event_signal_id=signal_id)
