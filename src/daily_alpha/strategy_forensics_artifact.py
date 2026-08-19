@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from .strategy_forensics import (
     ForensicsDiagnostic,
