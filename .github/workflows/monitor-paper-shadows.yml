@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 * * * 1-5"
+  pull_request:
+    paths:
+      - ".github/workflows/monitor-paper-shadows.yml"
+      - "scripts/shadow_monitor.py"
+      - "tests/test_shadow_monitor.py"
   push:
     branches:
       - ops/automated-shadow-monitor
