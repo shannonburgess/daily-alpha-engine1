@@ -13,6 +13,12 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: daily-alpha-shadow-staging
+  cancel-in-progress: true
 
 jobs:
   test-and-deploy-shadow-staging:
@@ -137,3 +143,17 @@ jobs:
             --output text)"
           test "${SHADOW_START}" = "2026-08-19"
           echo "Shadow staging deployment verified; forward start=${SHADOW_START}"
+
+      - name: Report staging deployment success on PR 211
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment 211 --repo "${GITHUB_REPOSITORY}" --body "SHADOW STAGING DEPLOYMENT: SUCCESS ✅\n\nCommit: ${GITHUB_SHA}\nBranch: ${GITHUB_REF_NAME}\nRegion: us-east-2\nDeployed: daily-alpha-pine-ingress + daily-alpha-pine-processor only\nDAILY_ALPHA_SHADOW_FORWARD_START: 2026-08-19 verified before and after deployment\nPAPER_SHADOW_V24 / PAPER_SHADOW_V25 isolation check passed\ntrading_authorized=false\nlive_trading_enabled=false\n\nTradingView shadow toggles/webhooks remain intentionally OFF pending the real paper E2E proof."
+
+      - name: Report staging deployment failure on PR 211
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment 211 --repo "${GITHUB_REPOSITORY}" --body "SHADOW STAGING DEPLOYMENT: FAILED ❌\n\nCommit: ${GITHUB_SHA}\nBranch: ${GITHUB_REF_NAME}\nNo live-trading authorization was enabled. Review the workflow failure before any TradingView activation."
