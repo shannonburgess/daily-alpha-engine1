@@ -78,6 +78,7 @@ def test_pine_replayed_execution_uses_revalidated_underlying_price_and_receipt_t
         {
             "disposition": "EXECUTED_PAPER",
             "reason": "PAPER_POSITION_OPENED",
+            "evaluated_at": "2026-08-19T14:30:59+00:00",
             "context": {
                 "replayed_from_armed_signal": True,
                 "replay_market_price": 102.0,
@@ -95,7 +96,21 @@ def test_pine_replayed_execution_uses_revalidated_underlying_price_and_receipt_t
     assert decision.observed_at == datetime(2026, 8, 19, 14, 31, tzinfo=UTC)
 
 
-def test_pine_replay_nonfill_requires_explicit_evaluation_time():
+def test_pine_replay_nonfill_uses_persisted_evaluation_time():
+    execution = {
+        "disposition": "CANCELLED_REPLAY",
+        "reason": "REPLAY_ENTRY_CHASE_LIMIT_EXCEEDED",
+        "evaluated_at": "2026-08-19T14:32:00+00:00",
+        "context": {"replay_attempted": True, "market_price": 106.0},
+    }
+    decision = decision_observation_from_pine_outcome(_pine_ingress(), execution)
+
+    assert decision.decision == "WAIT"
+    assert decision.reference_price == 106.0
+    assert decision.observed_at == datetime(2026, 8, 19, 14, 32, tzinfo=UTC)
+
+
+def test_legacy_replay_nonfill_without_evaluation_time_fails_closed():
     execution = {
         "disposition": "CANCELLED_REPLAY",
         "reason": "REPLAY_ENTRY_CHASE_LIMIT_EXCEEDED",
@@ -103,14 +118,6 @@ def test_pine_replay_nonfill_requires_explicit_evaluation_time():
     }
     with pytest.raises(ValueError, match="REPLAY_OBSERVED_AT_REQUIRED"):
         decision_observation_from_pine_outcome(_pine_ingress(), execution)
-
-    observed_at = datetime(2026, 8, 19, 14, 32, tzinfo=UTC)
-    decision = decision_observation_from_pine_outcome(
-        _pine_ingress(), execution, observed_at=observed_at
-    )
-    assert decision.decision == "WAIT"
-    assert decision.reference_price == 106.0
-    assert decision.observed_at == observed_at
 
 
 def test_pine_forensics_mapping_fails_closed_without_underlying_stop():
