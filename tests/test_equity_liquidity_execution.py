@@ -13,22 +13,22 @@ from daily_alpha.equity_liquidity import (
 NOW = datetime(2026, 8, 19, 19, 0, tzinfo=UTC)
 
 
-def _write_csv(path, date_text):
+def _write_csv(path):
     path.write_text(
         "Ticker,Signal,Industry,Last Close Price ($),30-Day Avg Volume,Security Type\n"
-        f"ABOVE,Buy,Software,100,1500001,Common Stock\n"
-        f"EQUAL,Buy,Software,100,1500000,Common Stock\n"
-        f"BELOW,Buy,Software,100,1499999,Common Stock\n"
-        f"MISSING,Buy,Software,100,,Common Stock\n"
-        f"ETF1,Buy,ETF,100,100000,ETF\n",
+        "ABOVE,Buy,Software,100,1500001,Common Stock\n"
+        "EQUAL,Buy,Software,100,1500000,Common Stock\n"
+        "BELOW,Buy,Software,100,1499999,Common Stock\n"
+        "MISSING,Buy,Software,100,,Common Stock\n"
+        "ETF1,Buy,ETF,100,100000,ETF\n",
         encoding="utf-8",
     )
     return path
 
 
 def test_prepare_inputs_filters_companies_but_preserves_etf(tmp_path):
-    previous = _write_csv(tmp_path / "OVTLYR_2026-08-18.csv", "2026-08-18")
-    current = _write_csv(tmp_path / "OVTLYR_2026-08-19.csv", "2026-08-19")
+    previous = _write_csv(tmp_path / "OVTLYR_2026-08-18.csv")
+    current = _write_csv(tmp_path / "OVTLYR_2026-08-19.csv")
 
     prepared = prepare_actionable_liquidity_inputs(
         previous,
