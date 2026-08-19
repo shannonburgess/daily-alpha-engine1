@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 V24_SHADOW = REPO_ROOT / "tradingview" / "da_turtle_20_10_v2_4_shadow_control.pine"
 
