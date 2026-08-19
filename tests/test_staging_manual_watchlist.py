@@ -99,10 +99,10 @@ def test_staging_newsletter_publishes_pinned_nflx_outside_shortlist(tmp_path):
 
     newsletter_key = "daily-alpha/outputs/latest/newsletter.html"
     newsletter = s3.puts[newsletter_key][0].decode("utf-8")
-    assert "Persistent Manual Watch" in newsletter
+    assert "Manual Watch — Research Only" in newsletter
     assert "NFLX" in newsletter
     assert "ACTIVE_BUY" in newsletter
-    assert "Pinned visibility is not a trade signal" in newsletter
+    assert "Manual-watch status is not an entry signal" in newsletter
 
     watch_key = "daily-alpha/outputs/latest/manual_watchlist.json"
     watch_rows = json.loads(s3.puts[watch_key][0])
