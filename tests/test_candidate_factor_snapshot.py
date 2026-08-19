@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -115,18 +116,11 @@ def test_snapshot_identity_is_deterministic_and_evidence_sensitive() -> None:
         classified=_classified(),
         candidate=_candidate(),
     )
-    weaker = _candidate()
-    weaker = CandidateAssessment(
-        **{
-            **weaker.__dict__,
-            "sector_net_score": 10,
-        }
-    )
     changed = build_candidate_factor_snapshot(
         as_of="2026-08-18T20:00:00Z",
         source=_source(),
         classified=_classified(),
-        candidate=weaker,
+        candidate=replace(_candidate(), sector_net_score=10),
     )
 
     assert first.snapshot_id == same.snapshot_id
@@ -226,12 +220,8 @@ def test_snapshot_set_identity_is_order_independent(tmp_path) -> None:
         candidate=_candidate("META"),
     )
 
-    first_path = write_candidate_factor_snapshots(
-        tmp_path / "first.json", [nflx, meta]
-    )
-    second_path = write_candidate_factor_snapshots(
-        tmp_path / "second.json", [meta, nflx]
-    )
+    first_path = write_candidate_factor_snapshots(tmp_path / "first.json", [nflx, meta])
+    second_path = write_candidate_factor_snapshots(tmp_path / "second.json", [meta, nflx])
     first = json.loads(first_path.read_text(encoding="utf-8"))
     second = json.loads(second_path.read_text(encoding="utf-8"))
 
