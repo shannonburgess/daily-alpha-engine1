@@ -1,4 +1,4 @@
-name: Verify paper trader restored after roundtrip
+name: Restore paper trader after roundtrip
 
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 jobs:
-  verify-restored:
+  restore-and-verify:
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 5
@@ -26,10 +26,20 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
-          role-session-name: daily-alpha-paper-roundtrip-verify
+          role-session-name: daily-alpha-paper-roundtrip-restore
           aws-region: us-east-2
 
-      - name: Verify temporary account is not configured
+      - name: Restore original empty environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"Variables":{}}' > /tmp/restore-env.json
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-paper-trader \
+            --environment file:///tmp/restore-env.json >/dev/null
+          aws lambda wait function-updated --function-name daily-alpha-paper-trader
+
+      - name: Verify temporary account removed
         shell: bash
         run: |
           set -euo pipefail
