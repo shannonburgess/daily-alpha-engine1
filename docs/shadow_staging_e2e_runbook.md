@@ -1,6 +1,6 @@
 # Daily Alpha Shadow Staging E2E Runbook
 
-Status: **PAPER / STAGING ONLY — BACKEND PROOF PASSED; TRADINGVIEW-ORIGIN PROOF STILL PENDING**
+Status: **PAPER / STAGING ONLY — BACKEND + TRADINGVIEW TRANSPORT PROOFS PASSED; ACTUAL SH24/SH25 STRATEGY-ORIGIN PROOF STILL PENDING**
 
 This runbook proves the canonical `#185 -> #186 -> #196 -> #205 -> #207` integration without enabling live trading or production deployment.
 
@@ -53,9 +53,23 @@ Expected fail-closed result was observed:
 
 This proves authenticated ingress, queueing, processor persistence, model/account isolation and fail-closed lifecycle handling. It deliberately does **not** claim a paper fill or fresh ORATS/risk replay proof.
 
-## Stage 3B — TradingView-origin paper proof — PENDING
+## Stage 3B — TradingView webhook transport proof — PASSED 2026-08-19
 
-The remaining activation gate is one controlled signal originating from the actual SH24/SH25 TradingView copy. It must preserve the rotated secret outside chat/source control and capture evidence for this exact chain:
+A temporary non-trading TradingView connectivity indicator emitted one controlled v2.5 `ADD` event to the real public `/pine` endpoint. The event used the rotated staging secret inside TradingView only and did not place a strategy order.
+
+Observed result:
+
+- terminal proof output: `TRADINGVIEW -> AWS E2E: PASS`
+- `disposition=STATE_MISMATCH`
+- `paper_account=PAPER_SHADOW_V25`
+- `paper_execution_triggered=false`
+- `live_trading_enabled=false`
+
+The temporary alert/indicator is test-only and must not be treated as an ongoing strategy alert. This proof establishes TradingView -> API Gateway -> Pine ingress -> SQS -> processor transport/authentication and isolated V25 persistence. It does **not** prove that the actual SH24/SH25 strategy copy emitted its reviewed model/start/replay contract, and it does **not** exercise fresh ORATS/portfolio-risk execution revalidation.
+
+## Stage 3C — actual SH24/SH25 strategy-origin paper proof — PENDING
+
+The remaining activation gate is one controlled signal originating from the actual SH24 or SH25 TradingView copy. It must preserve the rotated secret outside chat/source control and capture evidence for this exact chain:
 
 1. TradingView emits a tagged shadow event with `model_id`, `forward_test_start`, and, for ENTRY, `replay_max_price`.
 2. Pine ingress authenticates and normalizes the event without retaining the webhook secret.
@@ -67,8 +81,8 @@ The remaining activation gate is one controlled signal originating from the actu
 8. `PAPER_SHADOW_V24` and `PAPER_SHADOW_V25` remain isolated from one another and from the legacy `paper-staging` book.
 9. Evidence shows `trading_authorized=false` and `live_trading_enabled=false`.
 
-A local/stubbed replay test does not satisfy this gate, and the Stage 3A orphan-ADD proof does not replace the fresh ORATS/risk execution proof.
+A local/stubbed replay test does not satisfy this gate. Stage 3A and Stage 3B prove backend/authenticated transport boundaries but do not replace the actual strategy-origin fresh ORATS/risk execution proof.
 
 ## Stage 4 — activation decision
 
-Only after Stage 3B passes may ongoing V24/V25 shadow alerts be considered. Enabling either TradingView forward-test/webhook toggle requires separate explicit approval. No live broker route is part of this process.
+Only after Stage 3C passes may ongoing V24/V25 shadow alerts be considered. Enabling either TradingView forward-test/webhook toggle requires separate explicit approval. No live broker route is part of this process.
