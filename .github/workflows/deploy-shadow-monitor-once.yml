@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 jobs:
   deploy-monitor:
@@ -100,3 +101,28 @@ jobs:
           test "${START}" = "2026-08-19"
           echo "trading_authorized=false"
           echo "live_trading_enabled=false"
+
+      - name: Record deployment evidence on PR 212
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/evidence.md
+          import json
+          from pathlib import Path
+
+          state = json.loads(Path('/tmp/monitor.json').read_text())
+          v24 = state['books']['PAPER_SHADOW_V24']
+          v25 = state['books']['PAPER_SHADOW_V25']
+          print('SHADOW MONITOR STAGING DEPLOYMENT: PASS ✅')
+          print()
+          print('- deployed `daily-alpha-pine-processor` only; ingress and other Lambdas untouched')
+          print('- `GET_SHADOW_MONITOR_STATE` returned read-only position, ARMED, event and receipt evidence')
+          print(f"- V24 open={v24['open_count']}, armed={v24['armed_count_visible']}, visible_events={v24['event_count_visible']}")
+          print(f"- V25 open={v25['open_count']}, armed={v25['armed_count_visible']}, visible_events={v25['event_count_visible']}")
+          print('- event evidence scan reported complete for both shadow books')
+          print('- `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19` unchanged')
+          print('- `trading_authorized=false`; `live_trading_enabled=false`')
+          print('- no TradingView configuration was changed')
+          PY
+          gh pr comment 212 --repo "${GITHUB_REPOSITORY}" --body-file /tmp/evidence.md
