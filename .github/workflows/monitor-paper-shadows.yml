@@ -9,13 +9,6 @@ on:
       - ".github/workflows/monitor-paper-shadows.yml"
       - "scripts/shadow_monitor.py"
       - "tests/test_shadow_monitor.py"
-  push:
-    branches:
-      - ops/automated-shadow-monitor
-    paths:
-      - ".github/workflows/monitor-paper-shadows.yml"
-      - "scripts/shadow_monitor.py"
-      - "tests/test_shadow_monitor.py"
 
 permissions:
   contents: read
