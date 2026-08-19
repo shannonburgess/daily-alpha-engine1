@@ -13,6 +13,7 @@ This map is a coordination artifact only. It does not authorize deployment, Trad
 - **Canonical roadmap:** draft PR #141 (`agent/project-roadmap-refresh-2026-08-17`).
 - **Superseded roadmap:** PR #90 — closed unmerged.
 - Current `main` remains the execution/configuration source of truth for already-landed behavior. Draft PRs remain proposed changes until separately reviewed/merged.
+- **Merged #215** is now the landed read-only SH24/SH25 paper-shadow monitoring layer for issue #213; it does not own or redefine strategy logic.
 
 ## Paper execution / zero-trade / receipt chain
 
@@ -26,7 +27,7 @@ Superseded:
 
 - **#192** — independent receipt implementation; closed unmerged after #196/#205 became the integrated canonical chain.
 
-Rule: do not create or merge a second execution-receipt implementation outside this chain. The local #205 E2E does not replace the still-required real staging proof with fresh market/ORATS/risk revalidation. The persisted `evaluated_at` boundary is canonical audit evidence for non-fill replay outcomes that do not have an execution receipt.
+Rule: do not create or merge a second execution-receipt implementation outside this chain. The local #205 E2E does not replace genuine prospective paper evidence with fresh market/ORATS/risk revalidation. The persisted `evaluated_at` boundary is canonical audit evidence for non-fill replay outcomes that do not have an execution receipt.
 
 ## v2.4 / v2.5 prospective shadow validation
 
@@ -36,10 +37,11 @@ Canonical stacked path:
 - **#186** — isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` routing and synchronized forward-test start.
 - **#207** — preserves and validates explicit `replay_max_price`, archives the exact v2.4/v2.5 shadow Pine sources, and documents the source-side contract.
 - **#212** — single main-based staging composite of #185/#186/#196/#205/#207 for receipt-aware isolated shadow routing and external proof. This is an integration/evidence branch, not a second implementation owner.
+- **Merged #215** — read-only operational monitor for #213. It consumes the staging processor's shadow state and updates one rolling status; it does not create strategy events or mutate TradingView.
 
 Duplicate staging PR **#211** was closed unmerged after #212 was designated canonical for the same head branch.
 
-The source-side blocker is cleared: both versioned shadow copies are archived, compile-verified in TradingView, FLAT, configured to the common `2026-08-19` forward boundary, and still have forward-test/webhook toggles OFF.
+The source-side blocker is cleared: both versioned shadow copies are archived and compile-verified. SH24 CONTROL and SH25 CHALLENGER are active in TradingView on **1D**, use the common `2026-08-19` forward boundary, and their validated configuration is frozen unless a verified defect or TradingView platform limitation requires a change.
 
 Verified staging evidence on 2026-08-19:
 
@@ -47,11 +49,24 @@ Verified staging evidence on 2026-08-19:
 - `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19` was verified before and after deployment;
 - isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` books were verified with both live-safety flags false;
 - the staging webhook secret was rotated outside GitHub/chat, with the new version becoming `AWSCURRENT` and the prior version `AWSPREVIOUS`;
-- the GitHub staging deployment role intentionally remains unable to read secret values; do not weaken that least-privilege boundary merely for test automation;
+- the GitHub staging deployment role intentionally remains unable to read secret values; do not weaken that least-privilege boundary merely for monitoring;
 - a manual authenticated backend proof passed through ingress -> SQS -> processor -> isolated `PAPER_SHADOW_V25` audit state using a harmless orphan `ADD`, producing the expected `STATE_MISMATCH / TRADINGVIEW_POSITION_NOT_IN_PAPER_LEDGER`, no paper fill, both shadow books FLAT, `trading_authorized=false`, and `live_trading_enabled=false`;
-- temporary branch-only deploy/E2E/diagnostic workflows used during proof collection were removed afterward so they cannot become parallel long-term deployment paths.
+- a temporary TradingView connectivity proof reached the public staging path and produced the expected fail-closed V25 state mismatch;
+- the staging processor now exposes read-only `GET_SHADOW_MONITOR_STATE`, returning each isolated book's positions, ARMED state, recent durable events and exact execution receipts without changing execution state;
+- the one-shot deployment workflow used to add that monitor endpoint was removed after the staging deployment, and #212 CI remained green (#578);
+- merged #215 now performs hourly weekday read-only monitoring, writes 30-day evidence artifacts, and updates one rolling issue #213 status instead of requiring Shannon to run CloudShell or reconcile books manually.
 
-The remaining activation gate is one controlled signal originating from the actual SH24/SH25 TradingView copy that proves tagged ingress plus fresh market/ORATS/portfolio-risk revalidation and a genuine PAPER fill/CANCEL/DATA_ERROR or other explicit fail-closed outcome with persisted receipt/evaluation evidence where applicable. The backend orphan-ADD proof does not replace this fresh execution-path proof. Both TradingView forward-test and webhook toggles remain OFF pending that controlled proof and separate explicit approval before ongoing shadow alerts are enabled.
+The first exact automated snapshot at `2026-08-19T20:53:25Z` found:
+
+- V24: 0 open positions, 0 ARMED signals, 0 genuine strategy events;
+- V25: 0 open positions, 0 ARMED signals, 0 genuine strategy events;
+- three stored V25 events were prior E2E/connectivity proof events (`TV-SHADOW-E2E-*`, `API-GATEWAY-SHADOW-E2E-*`, `STAGING-SHADOW-E2E-*`) and are explicitly excluded from genuine trade diagnosis;
+- 0 paper fills;
+- `trading_authorized=false` and `live_trading_enabled=false` with no isolation violation.
+
+Operational activation is therefore complete; an actual SH24/SH25 event is no longer a precondition for turning on paper shadow monitoring. The first genuine strategy-origin event is prospective forward-test evidence. When one arrives, preserve its tagged model/start contract, fresh market/ORATS/portfolio-risk revalidation, PAPER fill/CANCEL/DATA_ERROR or other explicit fail-closed result, and exact receipt/evaluation evidence where applicable.
+
+Monitoring limitation: there is no supported connected TradingView API in this control loop that can inspect the private alert engine or watchlist membership before an event fires. Do **not** compensate by repeatedly editing/recreating validated alerts. Detect model/start/account drift from durable events, keep the active TradingView configuration frozen, and treat absence of a genuine event as exactly that—not proof of an alert defect and not a fabricated rejection.
 
 ## Persistent candidate/watch visibility
 
@@ -63,10 +78,11 @@ These are complementary, not duplicate: ACTIVE_BUY is model state; MANUAL_WATCH 
 
 ## Candidate alert lifecycle
 
-- **Canonical:** #144 — current-main dry-run desired-state planner.
+- **Canonical desired-state planner:** #144 — current-main dry-run desired-state planner.
+- **Operational read-only state monitor:** merged #215 — observes AWS-side SH24/SH25 results and safety; it never creates/deletes TradingView alerts.
 - **Superseded:** #102 — closed unmerged.
 
-No real TradingView mutation is authorized by either path.
+No automatic TradingView mutation is authorized by these paths. Any future watchlist/alert mutation layer requires a supported API and a separate reviewed boundary; until then validated SH24/SH25 configuration stays frozen.
 
 ## Commercial identity / subscriptions / entitlements
 
@@ -136,7 +152,7 @@ Historical duplicates/replaced foundations such as #110, #137 and #190 are close
 
 Every automated engineering or reporting job must reconcile against:
 
-1. current `main` for landed behavior and configuration;
+1. current `main` for landed behavior and configuration, including merged #215 operational monitoring;
 2. this canonical workstream map / PR #141 for proposed ownership and roadmap state;
 3. explicitly labeled draft research for non-production hypotheses.
 
@@ -148,6 +164,6 @@ If an older automation instruction conflicts with current `main`, current `main`
 - `live_trading_enabled=false`
 - no live brokerage execution
 - no AWS production deployment
-- no TradingView mutation/webhook enablement
+- no unapproved TradingView mutation; validated active SH24/SH25 alerts remain frozen unless a verified defect/platform limitation requires intervention
 - no customer launch or public performance claim
 - no research challenger self-promotes into paper/live execution
