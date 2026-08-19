@@ -8,6 +8,7 @@ on:
     paths:
       - "src/daily_alpha/**"
       - "lambda_handlers/**"
+      - "config/manual_watchlist.json"
       - "pyproject.toml"
       - ".github/workflows/deploy-staging-lambdas.yml"
 
@@ -44,11 +45,13 @@ jobs:
       - name: Build Lambda deployment package
         run: |
           rm -rf build deployment.zip
-          mkdir -p build
+          mkdir -p build/config
           pip install . --target build --no-deps
           cp -R lambda_handlers build/lambda_handlers
+          cp config/manual_watchlist.json build/config/manual_watchlist.json
           (cd build && zip -qr ../deployment.zip .)
           unzip -l deployment.zip | grep -E "lambda_handlers/(engine|report|paper_trader|pine_webhook|pine_processor)\.py"
+          unzip -l deployment.zip | grep "config/manual_watchlist.json"
 
       - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
