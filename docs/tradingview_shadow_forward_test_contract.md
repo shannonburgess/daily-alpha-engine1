@@ -2,40 +2,90 @@
 
 Status: **PAPER SHADOW / NOT ACTIVATED**
 
-This document defines the source-side payload contract required before the isolated `PAPER_SHADOW_V24` and `PAPER_SHADOW_V25` books can be enabled for a prospective comparison. It does not choose a v2.5 strategy, choose a no-chase threshold, enable TradingView alerts, deploy AWS, or authorize live trading.
+This is the source-side contract for the isolated `PAPER_SHADOW_V24` control and `PAPER_SHADOW_V25` challenger. It does not enable alerts, deploy AWS, authorize a broker route, or authorize live trading.
 
-## Current repository gap
+## Canonical ownership
 
-The current v2.4 Pine source emits the legacy runner webhook fields but does **not** yet emit the three shadow-control fields required by the backend contract:
+The prospective shadow chain is `#185 -> #186 -> #207`:
 
-- `model_id`
-- `forward_test_start`
-- `replay_max_price` on ENTRY events
+1. `#185` — durable ARMED replay/revalidation and orphan-state reconciliation.
+2. `#186` — isolated v2.4/v2.5 shadow books plus one synchronized forward-test start.
+3. `#207` — explicit `replay_max_price` preservation/validation and source contract.
 
-A dedicated v2.5 Pine source is not yet present in the repository. Do not manufacture a v2.5 TradingView alert from research/backtest branches or from a chart carrying a historical simulated position.
+Do not create another shadow implementation beside this chain.
 
-## Required common start boundary
+## Source status after the 2026-08-19 TradingView audit
+
+### v2.4 CONTROL — source prepared
+
+`tradingview/da_turtle_20_10_v2_4_shadow_control.pine` is a versioned copy of the current v2.4 strategy with only shadow-control additions:
+
+- `model_id = PAPER_SHADOW_V24` on all lifecycle events;
+- configurable `forward_test_start` on all lifecycle events;
+- explicit deterministic `replay_max_price` on ENTRY;
+- forward-test strategy gating so the shadow copy starts FLAT before the chosen boundary;
+- paper-shadow enable toggle defaults **OFF**;
+- webhook attachment defaults **OFF**;
+- webhook secret defaults blank and no secret is committed.
+
+The underlying v2.4 entry, add, harvest, failed-breakout, Turtle-exit and adaptive-trend-exit rules are preserved.
+
+### v2.5 CHALLENGER — exact source capture still required
+
+The exact Pine source currently loaded in TradingView as `DA-T20/10-ARM25` is **not archived in the repository or available uploaded-file library**. The screenshots are enough to verify its inputs, but not enough to reconstruct its state-transition logic without guessing. Therefore no fabricated v2.5 source has been committed and v2.5 activation remains fail-closed.
+
+The audited source gate is recorded in `tradingview/v2_5_shadow_challenger_source_gate.json`. The verified settings include:
+
+- 20-bar entry / legacy 10-bar exit reference / Close confirmation;
+- ATR 10, adaptive factors 2/4, efficiency lookback 20;
+- ADX required, 14/14, minimum ADX **25**;
+- trend-efficiency floor **0.20**;
+- minimum underlying price **$25**;
+- Persistent Armed Breakout ON;
+- maximum armed window **10 bars**;
+- maximum entry distance above breakout **1.0 ATR**;
+- invalidate below breakout by **0.5 ATR**;
+- runner adds at +1 ATR / +2 ATR and 25% harvest at +3 ATR;
+- Structural Runner Exit ON, 20-bar lookback, 1 confirmation bar;
+- break-even-after-harvest OFF;
+- legacy adaptive bear-flip exit OFF;
+- legacy 10-bar Turtle exit OFF;
+- v2.5 webhook attachment OFF and secret blank.
+
+The exact current TradingView Pine source must be exported/captured before adding shadow metadata. Do not infer hidden state logic from chart labels or screenshots.
+
+## Common forward-test boundary
 
 Both shadow models must:
 
 1. start from a clean **FLAT** TradingView strategy state;
 2. use the same declared `forward_test_start` date;
 3. send that exact date on every tagged shadow event;
-4. match the backend `DAILY_ALPHA_SHADOW_FORWARD_START` setting;
-5. reject any event whose bar/event time predates the declared start.
+4. match backend `DAILY_ALPHA_SHADOW_FORWARD_START` exactly;
+5. reject any event whose bar/event time predates that date.
 
-The shared date is a synchronization boundary, not a performance-tuning parameter.
+The v2.4 shadow source defaults its proposed boundary to **2026-08-19** but keeps the entire shadow forward test disabled until explicitly enabled. The shared date is synchronization metadata, not a performance-tuning parameter. If v2.5 cannot be source-captured and configured to the same clean boundary, do not start an asymmetric comparison.
 
-## Required model identities
+## Model identities
 
-- v2.4 control: `PAPER_SHADOW_V24`
-- v2.5 challenger: `PAPER_SHADOW_V25`
+- v2.4 control: `PAPER_SHADOW_V24`, strategy version `2.4`.
+- v2.5 challenger: `PAPER_SHADOW_V25`, strategy version `2.5`.
 
-A tagged v2.5 event must identify strategy version `2.5`. A tagged v2.4 control event must identify strategy version `2.4`. No untagged event may be silently migrated into either shadow book.
+No untagged event may be silently migrated into either shadow book.
 
-## ENTRY payload requirements
+## Reviewed replay no-chase rule
 
-Every tagged shadow ENTRY must carry the legacy canonical fields plus:
+The TradingView audit verified the v2.5 entry envelope at **1.0 ATR above the breakout**.
+
+For the v2.4 control, the replay-only ceiling is:
+
+`max(original confirmed signal close, breakout level + 1.0 * ATR)`
+
+This does not change when v2.4 itself generates an entry. It only prevents an after-hours replay from buying above the reviewed +1 ATR envelope; if the original valid v2.4 signal close was already above that envelope, replay may not exceed the original signal close. This satisfies the backend requirement that `replay_max_price` cannot be below the source signal price without silently widening the strategy's entry rule.
+
+For v2.5, the exact archived source must derive the replay ceiling from its existing armed-breakout/no-chase state using the already-audited **1.0 ATR** threshold. Do not invent variable names or a second state machine before source capture.
+
+Every tagged shadow ENTRY must carry:
 
 ```json
 {
@@ -45,85 +95,45 @@ Every tagged shadow ENTRY must carry the legacy canonical fields plus:
 }
 ```
 
-`replay_max_price` must be a finite positive numeric ceiling and cannot be below the signal price. The Pine/source strategy must supply the deliberately reviewed ceiling. The backend must never infer, widen, or guess it.
+`replay_max_price` must be finite, positive, and at least the original signal price. The backend never infers or widens it.
 
-If the ceiling is absent, invalid, or lost in transit, an after-hours ENTRY may remain visibly armed but cannot be replay-filled.
+ADD / PARTIAL / EXIT events carry `model_id` and `forward_test_start`; they do not invent an ENTRY replay ceiling.
 
-## ADD / PARTIAL / EXIT payload requirements
+## Exact TradingView activation sequence
 
-Tagged lifecycle events must carry:
+Do not enable ongoing alerts until all gates below are complete.
 
-- `model_id`
-- `forward_test_start`
-- the canonical signal/action/version/timeframe/bar identity fields
-- the canonical runner-stage / position-fraction fields where applicable
-
-`replay_max_price` is an ENTRY no-chase field and is not required to invent a price ceiling for runner-management events. Runner events outside the tradable window still require fresh quote/state revalidation before paper mutation.
-
-## Example v2.4 control ENTRY shape
-
-```json
-{
-  "webhook_secret": "<configured in TradingView; never committed>",
-  "signal_id": "<deterministic signal id>",
-  "symbol": "AMD",
-  "action": "ENTRY_LONG",
-  "strategy": "DA_TURTLE_ADAPTIVE_TREND",
-  "strategy_version": "2.4",
-  "model_id": "PAPER_SHADOW_V24",
-  "forward_test_start": "YYYY-MM-DD",
-  "timeframe": "1D",
-  "price": 0.0,
-  "bar_time": "<UTC timestamp>",
-  "replay_max_price": 0.0
-}
-```
-
-The actual payload may contain the existing earnings, stop, liquidity and lifecycle context fields as required by the current v2.4 contract.
-
-## Example v2.5 challenger ENTRY shape
-
-```json
-{
-  "webhook_secret": "<configured in TradingView; never committed>",
-  "signal_id": "<deterministic signal id>",
-  "symbol": "AMD",
-  "action": "ENTRY_LONG",
-  "strategy": "DA_TURTLE_ADAPTIVE_TREND",
-  "strategy_version": "2.5",
-  "model_id": "PAPER_SHADOW_V25",
-  "forward_test_start": "YYYY-MM-DD",
-  "timeframe": "1D",
-  "price": 0.0,
-  "bar_time": "<UTC timestamp>",
-  "replay_max_price": 0.0
-}
-```
-
-This shape is not permission to create a v2.5 Pine implementation. The challenger rules must be frozen and reviewed separately before a source script is activated.
+1. **Load the v2.4 control as a new copy**, using `da_turtle_20_10_v2_4_shadow_control.pine`. Do not overwrite the existing v2.4 chart instance.
+2. Keep `Enable Paper Shadow Forward Test` **OFF** and `Attach v2.4 Shadow Webhook Messages` **OFF** while loading and checking the script.
+3. Verify the v2.4 control inputs match the audited control values. Confirm its Strategy Tester shows no position before the intended common boundary.
+4. **Capture/export the exact current `DA-T20/10-ARM25` Pine source** into the canonical #207 branch. Preserve its existing strategy logic and audited inputs before making any metadata change.
+5. Add only the shadow contract to that exact v2.5 source: `PAPER_SHADOW_V25`, configurable common start, ENTRY `replay_max_price`, forward-start gating, blank secret default, webhook OFF default.
+6. Set both new shadow copies to the **same** forward-test date and verify both are FLAT at the boundary. Do not use a v2.5 chart carrying a historical simulated position.
+7. Configure staging `DAILY_ALPHA_SHADOW_FORWARD_START` to the identical date. This is a staging configuration change only; do not deploy production.
+8. Use a rotated/configured webhook secret only at the activation step. Never commit it or paste it into source. The previously exposed value is not repeated here.
+9. Run one paper-only staging proof: TradingView signal -> ingress -> durable event -> ARMED when applicable -> fresh market/ORATS/risk revalidation -> PAPER fill/CANCEL/DATA_ERROR -> exact persisted receipt/audit record.
+10. Verify model/account isolation, `trading_authorized=false`, and `live_trading_enabled=false` in the resulting evidence.
+11. Only after that proof passes should ongoing v2.4 CONTROL and v2.5 CHALLENGER shadow alerts be enabled with separate explicit approval.
 
 ## Activation checklist
 
-No ongoing shadow alerts until all are true:
-
-- [ ] v2.4 control Pine emits the reviewed shadow fields.
-- [ ] v2.5 challenger Pine exists as a versioned repository source with frozen prospective rules.
-- [ ] both strategy instances are FLAT at the same start boundary.
-- [ ] both emit the identical `forward_test_start`.
-- [ ] every tagged ENTRY emits an explicit reviewed `replay_max_price`.
+- [x] v2.4 control source emits model/start/ceiling fields and defaults fail-closed.
+- [ ] exact v2.5 TradingView source archived in the repository.
+- [ ] v2.5 source emits model/start/ceiling fields and defaults fail-closed.
+- [ ] both shadow copies start FLAT on the identical boundary.
 - [ ] backend `DAILY_ALPHA_SHADOW_FORWARD_START` matches the payload date.
-- [ ] ingress rejects model/version/start mismatch in staging tests.
-- [ ] durable ARMED replay preserves the explicit ceiling end to end.
-- [ ] ordinary realtime and durable replay paper fills emit the same execution-receipt contract.
-- [ ] paper ledgers remain isolated by model/account identity.
-- [ ] one paper-only end-to-end staging proof completes: receive -> persist -> ARMED if required -> fresh revalidation -> PAPER fill/CANCEL/DATA_ERROR -> receipt/audit state.
-- [ ] `trading_authorized=false` and `live_trading_enabled=false` verified in the final staging artifact.
-- [ ] TradingView/webhook activation receives separate explicit approval.
+- [x] ingress validates model/version/start and explicit replay ceiling in the canonical branch.
+- [x] durable ARMED replay preserves explicit ceiling in the canonical branch.
+- [x] realtime/replay receipt integration exists in canonical #185 -> #196 -> #205 chain.
+- [ ] one real paper-only staging E2E proof passes with fresh market/ORATS/risk evidence.
+- [ ] TradingView/webhook activation separately approved.
 
 ## Safety invariants
 
-- No source-side fallback may invent `forward_test_start` or `replay_max_price`.
-- No stale market/ORATS failure may become a substitute stock/option fill.
-- No orphan ADD/PARTIAL/EXIT may manufacture a paper position.
-- No shadow model may read or mutate the other model's ledger state.
+- No source-side fallback invents `forward_test_start` or `replay_max_price`.
+- No stale market/ORATS failure becomes a substitute stock/option fill.
+- No orphan ADD/PARTIAL/EXIT manufactures a paper position.
+- No shadow model reads or mutates the other model's ledger state.
+- `trading_authorized=false`.
+- `live_trading_enabled=false`.
 - No live brokerage execution path is authorized.
