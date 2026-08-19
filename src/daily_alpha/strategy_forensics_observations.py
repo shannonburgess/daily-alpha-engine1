@@ -80,8 +80,8 @@ def decision_observation_from_pine_outcome(
     The diagnostic studies the underlying signal path rather than option P/L. It
     therefore requires the strategy's explicit ``stock_stop_price``. Replayed
     outcomes must expose an execution-time underlying price and a trustworthy
-    execution timestamp; the caller may supply ``observed_at`` for non-fill replay
-    outcomes whose current execution contract does not yet persist one.
+    execution timestamp; the caller may supply ``observed_at`` only for legacy
+    outcomes that predate persisted evaluation timestamps.
     """
     if not isinstance(ingress, Mapping) or not isinstance(execution, Mapping):
         raise TypeError("FORENSICS_PINE_OUTCOME_MUST_BE_OBJECT")
@@ -234,6 +234,9 @@ def _execution_observed_at(
     receipt = execution.get("execution_receipt")
     if isinstance(receipt, Mapping) and receipt.get("occurred_at"):
         return _timestamp(receipt.get("occurred_at"), "FORENSICS_PINE_RECEIPT_TIME_INVALID")
+    evaluated_at = execution.get("evaluated_at")
+    if evaluated_at:
+        return _timestamp(evaluated_at, "FORENSICS_PINE_EVALUATED_TIME_INVALID")
     armed_at = context.get("armed_at")
     if armed_at:
         return _timestamp(armed_at, "FORENSICS_PINE_ARMED_TIME_INVALID")
