@@ -85,14 +85,18 @@ def decision_observation_from_pine_outcome(
     """
     if not isinstance(ingress, Mapping) or not isinstance(execution, Mapping):
         raise ValueError("FORENSICS_PINE_OUTCOME_MUST_BE_OBJECT")
-    action = _required_text(ingress.get("action"), "FORENSICS_PINE_ACTION_REQUIRED").upper()
+    action = _required_text(
+        ingress.get("action"), "FORENSICS_PINE_ACTION_REQUIRED"
+    ).upper()
     if action != "ENTRY_LONG":
         raise ValueError("FORENSICS_PINE_ENTRY_REQUIRED")
 
     decision_id = _required_text(
         ingress.get("signal_id"), "FORENSICS_PINE_SIGNAL_ID_REQUIRED"
     )
-    symbol = _required_text(ingress.get("symbol"), "FORENSICS_PINE_SYMBOL_REQUIRED").upper()
+    symbol = _required_text(
+        ingress.get("symbol"), "FORENSICS_PINE_SYMBOL_REQUIRED"
+    ).upper()
     strategy_version = _required_text(
         ingress.get("strategy_version"), "FORENSICS_PINE_STRATEGY_VERSION_REQUIRED"
     )
@@ -295,7 +299,7 @@ def _timestamp(value: Any, message: str) -> datetime:
     if value in (None, ""):
         raise ValueError(message)
     try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value))
     except ValueError as exc:
         raise ValueError(message) from exc
     _require_aware(parsed, message)
