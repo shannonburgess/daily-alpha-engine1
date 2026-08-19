@@ -7,7 +7,6 @@ from daily_alpha.armed_replay import (
 )
 from daily_alpha.pine_paper_reconciliation import prepare_armed_replay
 
-
 NOW = datetime(2026, 8, 19, 14, 0, tzinfo=UTC)
 
 
