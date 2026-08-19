@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from daily_alpha.research_shortlist import build_research_shortlist
 from daily_alpha.sources import OratsBatchResult
 
-
 NOW = datetime(2026, 8, 19, 14, 0, tzinfo=UTC)
 
 
