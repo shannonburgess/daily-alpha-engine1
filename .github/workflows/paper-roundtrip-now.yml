@@ -44,7 +44,7 @@ jobs:
             python3 - <<'PY'
           import json
           from pathlib import Path
-          vars_ = json.loads(Path('/tmp/orig-vars.json').read_text())
+          vars_ = json.loads(Path('/tmp/orig-vars.json').read_text()) or {}
           Path('/tmp/orig-env.json').write_text(json.dumps({'Variables': vars_}))
           PY
             aws lambda update-function-configuration \
@@ -57,7 +57,7 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
-          vars_ = json.loads(Path('/tmp/orig-vars.json').read_text())
+          vars_ = json.loads(Path('/tmp/orig-vars.json').read_text()) or {}
           vars_['DAILY_ALPHA_PAPER_ACCOUNT_ID'] = 'PAPER_SYSTEM_TEST'
           Path('/tmp/test-env.json').write_text(json.dumps({'Variables': vars_}))
           PY
@@ -114,7 +114,6 @@ jobs:
               },
           }
 
-          close_now = now + timedelta(seconds=10)
           close_event = {
               'operation': 'CLOSE_FROM_SIGNAL',
               'signal': {
@@ -125,7 +124,7 @@ jobs:
                   'strategy_version': '2026-08-19',
                   'timeframe': '1D',
                   'price': 100.25,
-                  'bar_time': close_now.isoformat(),
+                  'bar_time': now.isoformat(),
               },
               'pricing': {'stock_exit_price': 100.25},
           }
