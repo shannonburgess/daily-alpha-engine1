@@ -54,10 +54,10 @@ def test_v25_archived_shadow_decodes_to_exact_reviewed_source() -> None:
     assert 'enableShadowForwardTest = input.bool(' in source
     assert 'enableWebhookOrders = input.bool(' in source
     assert '"Attach v2.5 Shadow Webhook Messages"' in source
-    assert '"PAPER_SHADOW_V25"' in source
-    assert 'shadowForwardStartIso' in source
-    assert '"forward_test_start"' in source
-    assert '"replay_max_price"' in source
+    assert "PAPER_SHADOW_V25" in source
+    assert "shadowForwardStartIso" in source
+    assert "forward_test_start" in source
+    assert "replay_max_price" in source
     assert 'maxChaseAtr = input.float(' in source
     assert '1.0,' in source
 
