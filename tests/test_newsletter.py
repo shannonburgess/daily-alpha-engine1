@@ -272,6 +272,15 @@ def _seed_staging_s3(client):
       {"sector":"Industrials","new_buys":1,"leaders":2,"net_score":3}
     ]'''
     client.objects["ovtlyr/shortlist/latest/shortlist.csv"] = b"rank,symbol\n1,AAPL\n2,XYZ\n"
+    client.objects["ovtlyr/shortlist/latest/classifications.json"] = b'''[
+      {"symbol":"AAPL","status":"LEADER","display_label":"LEADER","reason":"Sustained leadership."},
+      {"symbol":"NVDA","status":"EMERGING","display_label":"EMERGING","reason":"Momentum accelerating."},
+      {"symbol":"META","status":"NEW_BUY","display_label":"NEW BUY","reason":"New BUY transition."},
+      {"symbol":"MSFT","status":"ENTRY_WATCH","display_label":"ENTRY WATCH","reason":"Approaching entry."},
+      {"symbol":"AMZN","status":"RE_ENTRY","display_label":"RE-ENTRY","reason":"Fresh re-entry setup."},
+      {"symbol":"TSLA","status":"DETERIORATING","display_label":"DETERIORATING","reason":"Momentum weakening."},
+      {"symbol":"XYZ","status":"REMOVED","display_label":"REMOVED","reason":"No longer BUY."}
+    ]'''
 
 
 def test_staging_publisher_writes_newsletter_csvs_and_manifest():
@@ -307,6 +316,19 @@ def test_staging_publisher_writes_newsletter_csvs_and_manifest():
     assert "Daily Alpha &amp; Risk" in html
     assert "AAPL" in html
     assert "XYZ" in html
+    assert "Complete OVTLYR Classification Universe" in html
+    assert "New Buy (1)" in html
+    assert "Emerging (1)" in html
+    assert "Leaders (1)" in html
+    assert "Entry Watch (1)" in html
+    assert "Re-entry (1)" in html
+    assert "Deteriorating (1)" in html
+    assert "Removed (1)" in html
+    assert "META" in html
+    assert "NVDA" in html
+    assert "MSFT" in html
+    assert "AMZN" in html
+    assert "TSLA" in html
     assert "Data Error" in html
     assert "ACCOUNT#paper-unit#POSITION#OPTION#AAPL" in ledger_csv
     assert "Technology" in sector_csv
