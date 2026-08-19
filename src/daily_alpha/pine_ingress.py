@@ -12,7 +12,7 @@ import hmac
 import json
 import math
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from .signals import PineSignal, SignalAction, parse_pine_signal
@@ -26,7 +26,7 @@ class PineIngressAuthError(PineIngressError):
     """Webhook authentication failed."""
 
 
-ENTRY_TYPES = {"NORMAL_BREAKOUT", "EARNINGS_GAP_GO"}
+ENTRY_TYPES = {"NORMAL_BREAKOUT", "ARMED_BREAKOUT_CONFIRM", "EARNINGS_GAP_GO"}
 EARNINGS_GAP_CLASSES = {
     "NONE",
     "EARNINGS_GAP_GO",
@@ -34,6 +34,7 @@ EARNINGS_GAP_CLASSES = {
     "EARNINGS_GAP_CRAP",
     "EARNINGS_WAIT",
 }
+SHADOW_MODEL_IDS = {"PAPER_SHADOW_V24", "PAPER_SHADOW_V25"}
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,9 @@ class PineIngressRecord:
     received_at: str
     position_fraction: float | None = None
     runner_stage: str | None = None
+    model_id: str | None = None
+    forward_test_start: str | None = None
+    replay_max_price: float | None = None
     stock_stop_price: float | None = None
     average_daily_dollar_volume: float | None = None
     entry_type: str | None = None
@@ -134,6 +138,18 @@ def _record_from_signal(
         "earnings_gap_class",
         EARNINGS_GAP_CLASSES,
     )
+    model_id = _optional_model_id(payload.get("model_id"), signal.strategy_version)
+    forward_test_start = _forward_test_start(
+        payload.get("forward_test_start"),
+        model_id=model_id,
+        bar_time=signal.bar_time,
+    )
+    replay_max_price = _replay_max_price(
+        payload.get("replay_max_price"),
+        action=signal.action,
+        model_id=model_id,
+        signal_price=signal.price,
+    )
     earnings_gap_pct = None
     earnings_gap_atr = None
     earnings_close_location = None
@@ -163,8 +179,10 @@ def _record_from_signal(
                     "average_daily_dollar_volume must be non-negative"
                 )
 
-        if signal.strategy_version == "2.4" and entry_type is None:
-            raise PineIngressError("entry_type is required for strategy 2.4 entries")
+        if signal.strategy_version in {"2.4", "2.5"} and entry_type is None:
+            raise PineIngressError(
+                f"entry_type is required for strategy {signal.strategy_version} entries"
+            )
 
         earnings_gap_pct = _optional_float(payload.get("earnings_gap_pct"), "earnings_gap_pct")
         earnings_gap_atr = _optional_float(payload.get("earnings_gap_atr"), "earnings_gap_atr")
@@ -195,8 +213,13 @@ def _record_from_signal(
                     "EARNINGS_GAP_GO entry requires complete earnings metrics"
                 )
 
+    schema_version = (
+        "2026-08-18-v5"
+        if signal.strategy_version == "2.5" or model_id is not None
+        else "2026-08-16-v4"
+    )
     return PineIngressRecord(
-        schema_version="2026-08-16-v4",
+        schema_version=schema_version,
         source="TRADINGVIEW_PINE",
         signal_id=signal.signal_id,
         symbol=signal.symbol,
@@ -209,6 +232,9 @@ def _record_from_signal(
         received_at=signal.received_at.isoformat(),
         position_fraction=signal.position_fraction,
         runner_stage=signal.runner_stage,
+        model_id=model_id,
+        forward_test_start=forward_test_start,
+        replay_max_price=replay_max_price,
         stock_stop_price=stock_stop_price,
         average_daily_dollar_volume=average_daily_dollar_volume,
         entry_type=entry_type,
@@ -219,6 +245,64 @@ def _record_from_signal(
         earnings_gap_retention=earnings_gap_retention,
         earnings_relative_volume=earnings_relative_volume,
     )
+
+
+def _optional_model_id(value: Any, strategy_version: str) -> str | None:
+    if value in (None, ""):
+        if strategy_version == "2.5":
+            raise PineIngressError("model_id PAPER_SHADOW_V25 is required for strategy 2.5")
+        return None
+    model_id = str(value).strip().upper()
+    if model_id not in SHADOW_MODEL_IDS:
+        raise PineIngressError("model_id is invalid")
+    expected = {
+        "2.4": "PAPER_SHADOW_V24",
+        "2.5": "PAPER_SHADOW_V25",
+    }.get(strategy_version)
+    if expected is not None and model_id != expected:
+        raise PineIngressError(
+            f"model_id {model_id} does not match strategy version {strategy_version}"
+        )
+    return model_id
+
+
+def _forward_test_start(value: Any, *, model_id: str | None, bar_time: datetime) -> str | None:
+    if model_id is None:
+        return None
+    text = str(value or "").strip()
+    if not text:
+        raise PineIngressError("forward_test_start is required for shadow models")
+    try:
+        start = date.fromisoformat(text)
+    except ValueError as exc:
+        raise PineIngressError("forward_test_start must be YYYY-MM-DD") from exc
+    if bar_time.astimezone(UTC).date() < start:
+        raise PineIngressError("shadow signal predates forward_test_start")
+    return start.isoformat()
+
+
+def _replay_max_price(
+    value: Any,
+    *,
+    action: SignalAction,
+    model_id: str | None,
+    signal_price: float,
+) -> float | None:
+    if action != SignalAction.ENTRY_LONG:
+        return None
+    if value in (None, ""):
+        if model_id is not None:
+            raise PineIngressError("replay_max_price is required for shadow entries")
+        return None
+    try:
+        ceiling = float(value)
+    except (TypeError, ValueError) as exc:
+        raise PineIngressError("replay_max_price must be numeric") from exc
+    if not math.isfinite(ceiling) or ceiling <= 0:
+        raise PineIngressError("replay_max_price must be positive and finite")
+    if ceiling < signal_price:
+        raise PineIngressError("replay_max_price cannot be below signal price")
+    return ceiling
 
 
 def _optional_tag(value: Any, name: str, allowed: set[str]) -> str | None:
