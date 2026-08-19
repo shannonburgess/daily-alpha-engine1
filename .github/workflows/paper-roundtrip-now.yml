@@ -1,0 +1,208 @@
+name: One-shot isolated paper stock roundtrip
+
+on:
+  push:
+    branches:
+      - ops/paper-roundtrip-20260819
+    paths:
+      - .github/workflows/paper-roundtrip-now.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  roundtrip:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-paper-roundtrip
+          aws-region: us-east-2
+
+      - name: Run isolated PAPER stock open-close test
+        shell: bash
+        run: |
+          set -euo pipefail
+          FN="daily-alpha-paper-trader"
+
+          aws lambda get-function-configuration \
+            --function-name "$FN" \
+            --query 'Environment.Variables' \
+            --output json > /tmp/orig-vars.json
+
+          cleanup() {
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          vars_ = json.loads(Path('/tmp/orig-vars.json').read_text())
+          Path('/tmp/orig-env.json').write_text(json.dumps({'Variables': vars_}))
+          PY
+            aws lambda update-function-configuration \
+              --function-name "$FN" \
+              --environment file:///tmp/orig-env.json >/dev/null || true
+            aws lambda wait function-updated --function-name "$FN" || true
+          }
+          trap cleanup EXIT
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          vars_ = json.loads(Path('/tmp/orig-vars.json').read_text())
+          vars_['DAILY_ALPHA_PAPER_ACCOUNT_ID'] = 'PAPER_SYSTEM_TEST'
+          Path('/tmp/test-env.json').write_text(json.dumps({'Variables': vars_}))
+          PY
+
+          aws lambda update-function-configuration \
+            --function-name "$FN" \
+            --environment file:///tmp/test-env.json >/dev/null
+          aws lambda wait function-updated --function-name "$FN"
+
+          python3 - <<'PY'
+          import json
+          from datetime import UTC, datetime, timedelta
+          from pathlib import Path
+
+          now = datetime.now(UTC)
+          entry_signal_id = 'SYSTEM-ROUNDTRIP-AAPL-20260819-ENTRY'
+          exit_signal_id = 'SYSTEM-ROUNDTRIP-AAPL-20260819-EXIT'
+
+          open_event = {
+              'operation': 'OPEN_FROM_DECISION',
+              'engine_result': {
+                  'ok': True,
+                  'mode': 'PAPER',
+                  'live_trading_enabled': False,
+                  'signal': {
+                      'signal_id': entry_signal_id,
+                      'symbol': 'AAPL',
+                      'action': 'ENTRY_LONG',
+                      'strategy': 'SYSTEM_ROUNDTRIP_TEST',
+                      'strategy_version': '2026-08-19',
+                      'timeframe': '1D',
+                      'price': 100.0,
+                      'bar_time': (now - timedelta(seconds=5)).isoformat(),
+                      'received_at': now.isoformat(),
+                  },
+                  'risk': {
+                      'status': 'APPROVED',
+                      'policy_version': 'SYSTEM_TEST_ONLY',
+                      'nav': 100000.0,
+                      'risk_snapshot': {'proposed': {'sector': 'Technology'}},
+                  },
+                  'decision': {
+                      'symbol': 'AAPL',
+                      'status': 'SELECTED',
+                      'instrument_selected': 'STOCK',
+                      'fallback_reason': 'SYSTEM_TEST_SYNTHETIC_STOCK',
+                      'selected_contract': None,
+                      'created_at': now.isoformat(),
+                  },
+              },
+              'pricing': {
+                  'stock_price': 100.0,
+                  'stock_stop_price': 95.0,
+              },
+          }
+
+          close_now = now + timedelta(seconds=10)
+          close_event = {
+              'operation': 'CLOSE_FROM_SIGNAL',
+              'signal': {
+                  'signal_id': exit_signal_id,
+                  'symbol': 'AAPL',
+                  'action': 'EXIT',
+                  'strategy': 'SYSTEM_ROUNDTRIP_TEST',
+                  'strategy_version': '2026-08-19',
+                  'timeframe': '1D',
+                  'price': 100.25,
+                  'bar_time': close_now.isoformat(),
+              },
+              'pricing': {'stock_exit_price': 100.25},
+          }
+
+          Path('/tmp/open.json').write_text(json.dumps(open_event))
+          Path('/tmp/close.json').write_text(json.dumps(close_event))
+          PY
+
+          aws lambda invoke \
+            --function-name "$FN" \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/open.json \
+            /tmp/open-result.json >/dev/null
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('/tmp/open-result.json').read_text())
+          assert r['ok'] is True, r
+          assert r['paper_trading'] is True, r
+          assert r['live_trading_enabled'] is False, r
+          assert r['status'] in {'OPENED', 'ALREADY_OPEN'}, r
+          assert r['trade']['instrument'] == 'STOCK', r
+          assert r['trade']['symbol'] == 'AAPL', r
+          assert r['trade']['fallback_reason'] == 'SYSTEM_TEST_SYNTHETIC_STOCK', r
+          print('PAPER STOCK OPEN: PASS')
+          print('account_id=' + str(r.get('account_id')))
+          print('trade_id=' + str(r['trade']['trade_id']))
+          print('quantity=' + str(r['trade']['quantity']))
+          print('entry_price=' + str(r['trade']['entry_price']))
+          print('live_trading_enabled=false')
+          PY
+
+          aws lambda invoke \
+            --function-name "$FN" \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/close.json \
+            /tmp/close-result.json >/dev/null
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('/tmp/close-result.json').read_text())
+          assert r['ok'] is True, r
+          assert r['paper_trading'] is True, r
+          assert r['live_trading_enabled'] is False, r
+          assert r['status'] == 'CLOSED', r
+          t = r['closed_trades'][0]
+          assert t['state'] == 'CLOSED', r
+          assert t['instrument'] == 'STOCK', r
+          assert t['symbol'] == 'AAPL', r
+          print('PAPER STOCK CLOSE: PASS')
+          print('trade_id=' + str(t['trade_id']))
+          print('exit_price=' + str(t['exit_price']))
+          print('realized_pnl=' + str(t['realized_pnl']))
+          print('live_trading_enabled=false')
+          PY
+
+          python3 - <<'PY'
+          import json
+          from datetime import UTC, datetime
+          from pathlib import Path
+          event = {'operation': 'GET_OPEN', 'symbol': 'AAPL'}
+          Path('/tmp/get-open.json').write_text(json.dumps(event))
+          PY
+
+          aws lambda invoke \
+            --function-name "$FN" \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/get-open.json \
+            /tmp/get-open-result.json >/dev/null
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('/tmp/get-open-result.json').read_text())
+          assert r['ok'] is True, r
+          assert r['live_trading_enabled'] is False, r
+          assert r['status'] == 'NO_OPEN_POSITION', r
+          assert r['count'] == 0, r
+          print('PAPER ROUNDTRIP FINAL STATE: PASS')
+          print('open_positions=0')
+          print('isolated_account=PAPER_SYSTEM_TEST')
+          print('live_trading_enabled=false')
+          PY
