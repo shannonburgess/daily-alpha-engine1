@@ -39,6 +39,7 @@ ACTIONABLE_STATUSES = {
     OvtlyrStatus.LEADER,
     OvtlyrStatus.ENTRY_WATCH,
     OvtlyrStatus.RE_ENTRY,
+    OvtlyrStatus.ACTIVE_BUY,
 }
 
 _DATE_PATTERN = re.compile(r"(20\d{2}-\d{2}-\d{2})")
@@ -357,6 +358,9 @@ def build_research_shortlist(
         "current_universe_count": len(current),
         "current_buy_count": sum(record.signal == "BUY" for record in current),
         "actionable_ranked_count": len(ranked),
+        "persistent_active_buy_count": sum(
+            item.ovtlyr_status == OvtlyrStatus.ACTIVE_BUY.value for item in ranked
+        ),
         "excluded_not_optionable": excluded_not_optionable,
         "excluded_orats_no_45_75_dte_options": excluded_orats_no_dte,
         "excluded_partial_data": excluded_partial,
@@ -503,6 +507,9 @@ def _base_score(
         OvtlyrStatus.RE_ENTRY: 34,
         OvtlyrStatus.ENTRY_WATCH: 30,
         OvtlyrStatus.LEADER: 26,
+        # Persist ongoing BUYs for continuity, but rank them below fresh/confirmed
+        # setup transitions so scarce ORATS calls still favor newer opportunities.
+        OvtlyrStatus.ACTIVE_BUY: 18,
     }.get(classified.status, 0)
     points = float(status_points)
     if source.trend in {"UP", "UPTREND", "BULLISH", "RISING"}:
