@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 SHADOW_ACCOUNTS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
 NEW_YORK = ZoneInfo("America/New_York")
+MAX_RENDERED_EVENTS_PER_ACCOUNT = 10
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -33,6 +34,20 @@ def _session_events(events: list[dict[str, Any]], session_date: str) -> list[dic
         if received and received.astimezone(NEW_YORK).date().isoformat() == session_date:
             selected.append(event)
     return selected
+
+
+def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "signal_id": event.get("signal_id"),
+        "symbol": event.get("symbol"),
+        "action": event.get("action"),
+        "model_id": event.get("model_id"),
+        "received_at": event.get("received_at"),
+        "evaluated_at": event.get("evaluated_at"),
+        "disposition": event.get("disposition"),
+        "reason": event.get("reason"),
+        "paper_execution_triggered": event.get("paper_execution_triggered") is True,
+    }
 
 
 def _safety_violations(state: dict[str, Any]) -> list[str]:
@@ -104,6 +119,11 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
             events = []
         typed_events = [event for event in events if isinstance(event, dict)]
         session_events = _session_events(typed_events, session_date)
+        session_events.sort(
+            key=lambda event: _parse_time(event.get("received_at"))
+            or datetime.min.replace(tzinfo=UTC),
+            reverse=True,
+        )
         fills = [
             event for event in session_events if event.get("disposition") == "EXECUTED_PAPER"
         ]
@@ -138,6 +158,7 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
             "armed_count": armed_count,
             "session_event_count": len(session_events),
             "session_fill_count": len(fills),
+            "session_events": [_compact_event(event) for event in session_events],
             "session_receipts": receipts,
             "reason_counts": dict(sorted(reasons.items())),
             "latest_event_at": latest.isoformat() if latest else None,
@@ -209,6 +230,17 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"`{reason}`={count}" for reason, count in state["reason_counts"].items()
             )
             lines.append(f"Outcomes/blockers: {reasons}")
+        if state["session_events"]:
+            lines.append("Recent session events:")
+            for event in state["session_events"][:MAX_RENDERED_EVENTS_PER_ACCOUNT]:
+                lines.append(
+                    "- "
+                    f"`{event.get('received_at')}` "
+                    f"`{event.get('signal_id')}` "
+                    f"{event.get('symbol') or '?'} {event.get('action') or '?'} -> "
+                    f"`{event.get('disposition') or '?'}` / "
+                    f"`{event.get('reason') or '?'}`"
+                )
         if state["session_receipts"]:
             lines.append("Receipts:")
             for receipt in state["session_receipts"]:
