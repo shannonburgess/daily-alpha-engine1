@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
@@ -302,7 +302,10 @@ def derive_source_signal(
     prior7 = _window_total(daily, as_of_day, 7, 13)
     prior_prior7 = _window_total(daily, as_of_day, 14, 20)
     trailing28 = _window_values(daily, as_of_day, 0, 27)
-    if prior7 <= 0 or prior_prior7 <= 0 or len(trailing28) < 14:
+    available_days = sum(
+        (as_of_day - timedelta(days=offset)) in daily for offset in range(28)
+    )
+    if prior7 <= 0 or prior_prior7 <= 0 or available_days < 14:
         return SourceSignal(
             source=source,
             as_of=as_of,
@@ -374,7 +377,9 @@ def build_behavioral_snapshot(
         behavioral_score = None
     else:
         average_score = statistics.fmean(
-            signal.prototype_score for signal in complete if signal.prototype_score is not None
+            signal.prototype_score
+            for signal in complete
+            if signal.prototype_score is not None
         )
         behavioral_score = round(0.8 * average_score + 0.2 * confirmation, 2)
 
