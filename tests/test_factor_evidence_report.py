@@ -39,6 +39,41 @@ def test_factor_report_surfaces_horizon_decay_and_cross_sectional_slices():
     assert len(report["by_sector"]) == 4
     assert all(row["sufficient_sample"] for row in report["by_regime"])
     assert all(row["sufficient_sample"] for row in report["by_sector"])
+    assert [row["horizon_bars"] for row in report["outlier_sensitivity"]] == [5, 20]
+    assert all(
+        row["interpretation"] == "OUTLIER_SENSITIVITY_ONLY"
+        for row in report["outlier_sensitivity"]
+    )
+    assert all(
+        row["without_largest_absolute_return"] is not None
+        for row in report["outlier_sensitivity"]
+    )
     assert report["research_only"] is True
     assert report["trading_authorized"] is False
     assert report["live_trading_enabled"] is False
+
+
+def test_factor_report_exposes_dependence_on_largest_absolute_return():
+    rows = _observations(5)
+    rows.append(
+        FactorReturnObservation(
+            symbol="OUTLIER",
+            factor="momentum",
+            factor_value=-0.95,
+            forward_return=1.25,
+            as_of="2026-08-19",
+            horizon_bars=5,
+            regime="TREND",
+            sector="Technology",
+        )
+    )
+
+    report = build_factor_evidence_report(rows, minimum_sample=10)
+    sensitivity = report["outlier_sensitivity"][0]
+
+    assert sensitivity["excluded_symbol"] == "OUTLIER"
+    assert sensitivity["excluded_forward_return"] == 1.25
+    assert sensitivity["excluded_absolute_return"] == 1.25
+    assert sensitivity["full_sample"]["observations"] == 41
+    assert sensitivity["without_largest_absolute_return"]["observations"] == 40
+    assert sensitivity["without_largest_absolute_return"]["rank_ic"] == 1.0
