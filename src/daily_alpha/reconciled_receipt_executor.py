@@ -34,6 +34,7 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
         before_trade = self._before_trade(ingress)
         self._receipt_quote = None
         result = super().execute(ingress, now=timestamp)
+        result["evaluated_at"] = timestamp.isoformat()
         return self._attach_receipt(
             ingress=ingress,
             result=result,
@@ -52,6 +53,7 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
         before_trade = self._before_trade(ingress)
         self._receipt_quote = None
         result = super().replay_armed(ingress, now=timestamp)
+        result["evaluated_at"] = timestamp.isoformat()
         return self._attach_receipt(
             ingress=ingress,
             result=result,
