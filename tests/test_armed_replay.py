@@ -5,7 +5,11 @@ from daily_alpha.armed_replay import (
     list_armed_ingress,
     replay_armed_events,
 )
-from daily_alpha.pine_paper_reconciliation import prepare_armed_replay
+from daily_alpha.pine_paper_reconciliation import (
+    ReconciledAwsPinePaperExecutor,
+    prepare_armed_replay,
+)
+from daily_alpha.reconciled_receipt_executor import ReceiptReconciledAwsPinePaperExecutor
 
 NOW = datetime(2026, 8, 19, 14, 0, tzinfo=UTC)
 
@@ -137,3 +141,100 @@ def test_durable_worker_scans_only_armed_event_contract_and_persists_outcome():
     assert result["live_trading_enabled"] is False
     assert store.marked[0][0] == "AMD-ENTRY-1"
     assert store.marked[0][1]["paper_execution_triggered"] is False
+
+
+class _Trade:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def to_dict(self):
+        return dict(self.payload)
+
+
+class _Ledger:
+    account_id = "paper-shadow-v24"
+
+    def __init__(self, trade):
+        self.trade = trade
+
+    def find_open(self, symbol, instrument=None):
+        return [_Trade(self.trade)]
+
+
+def test_durable_worker_persists_replay_receipt_with_risk_basis(monkeypatch):
+    ingress = _entry(
+        signal_id="CAT-ADD-ORIGIN",
+        symbol="CAT",
+        action="ADD",
+        price=99.0,
+        runner_stage="ADD_1_ATR",
+        position_fraction=0.2,
+    )
+    store = FakeStore(ingress)
+    before = {
+        "trade_id": "trade-1",
+        "signal_id": "entry-1",
+        "symbol": "CAT",
+        "instrument": "STOCK",
+        "quantity": 10,
+        "entry_price": 100.0,
+        "entry_time": NOW.isoformat(),
+        "state": "OPEN",
+        "realized_pnl": 0.0,
+        "target_quantity": 12,
+        "runner_stage": "STARTER",
+        "sector": "Industrials",
+        "initial_risk_basis": 500.0,
+    }
+    replay_signal_id = "CAT-ADD-ORIGIN-REPLAY-20260819T140000"
+    after = {
+        **before,
+        "quantity": 12,
+        "entry_price": 100.83333333,
+        "runner_stage": "ADD_1_ATR",
+        "add1_signal_id": replay_signal_id,
+    }
+    executor = ReceiptReconciledAwsPinePaperExecutor(
+        ledger=_Ledger(before),
+        secrets_client=object(),
+        paper_nav=1_000_000,
+        orats_factory=lambda token: None,
+    )
+
+    def fake_replay(self, ingress, *, now=None):
+        return {
+            "disposition": "EXECUTED_PAPER",
+            "reason": "PAPER_ADD_APPLIED",
+            "action": "ADD",
+            "symbol": "CAT",
+            "paper_execution_triggered": True,
+            "paper_ledger_updated": True,
+            "trading_authorized": False,
+            "live_trading_enabled": False,
+            "paper": {
+                "updated_trades": [after],
+                "runner_stage": "ADD_1_ATR",
+                "paper_ledger_updated": True,
+            },
+            "context": {
+                "replayed_from_armed_signal": True,
+                "origin_signal_id": "CAT-ADD-ORIGIN",
+                "replay_market_price": 105.0,
+            },
+        }
+
+    monkeypatch.setattr(ReconciledAwsPinePaperExecutor, "replay_armed", fake_replay)
+    result = replay_armed_events(store, executor, now=NOW, limit=5)
+
+    assert result["outcome_counts"] == {"EXECUTED_PAPER": 1}
+    persisted_signal_id, persisted_execution = store.marked[0]
+    assert persisted_signal_id == "CAT-ADD-ORIGIN"
+    receipt = persisted_execution["execution_receipt"]
+    assert receipt["signal_id"] == replay_signal_id
+    assert receipt["fill_price"] == 105.0
+    assert receipt["fill_quantity"] == 2
+    assert receipt["fill_notional"] == 210.0
+    assert receipt["initial_risk_basis"] == 500.0
+    assert receipt["r_basis_status"] == "AVAILABLE"
+    assert receipt["trading_authorized"] is False
+    assert receipt["live_trading_enabled"] is False
