@@ -1,0 +1,180 @@
+name: Diagnose Daily Alpha shadow staging E2E
+
+on:
+  push:
+    branches:
+      - staging/shadow-e2e-integration
+    paths:
+      - ".github/workflows/shadow-staging-e2e-diagnostic.yml"
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: staging
+
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-shadow-e2e-diagnostic
+          aws-region: us-east-2
+
+      - name: Diagnose E2E stages without exposing secret
+        id: diag
+        shell: bash
+        run: |
+          set +e
+          stage="START"
+          detail=""
+
+          fail() {
+            echo "stage=$1" >> "$GITHUB_OUTPUT"
+            echo "detail=$2" >> "$GITHUB_OUTPUT"
+            exit 1
+          }
+
+          stage="LAMBDA_CONFIG"
+          SHADOW_START="$(aws lambda get-function-configuration --function-name daily-alpha-pine-processor --query 'Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START' --output text 2>/tmp/err)"
+          rc=$?
+          [ $rc -eq 0 ] || fail "$stage" "lambda-config-access"
+          [ "$SHADOW_START" = "2026-08-19" ] || fail "$stage" "shadow-start-mismatch"
+
+          TABLE_NAME="$(aws lambda get-function-configuration --function-name daily-alpha-pine-processor --query 'Environment.Variables.DAILY_ALPHA_PAPER_LEDGER_TABLE' --output text 2>/tmp/err)"
+          rc=$?
+          [ $rc -eq 0 ] || fail "$stage" "ledger-table-config-access"
+          [ -n "$TABLE_NAME" ] && [ "$TABLE_NAME" != "None" ] || fail "$stage" "ledger-table-missing"
+
+          stage="SECRET_READ"
+          SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id daily-alpha/pine-webhook/staging --query SecretString --output text 2>/tmp/err)"
+          rc=$?
+          [ $rc -eq 0 ] || fail "$stage" "secretsmanager-get-secret-value-denied-or-failed"
+
+          WEBHOOK_SECRET="$(SECRET_JSON="$SECRET_JSON" python - <<'PY'
+          import json, os
+          p=json.loads(os.environ['SECRET_JSON'])
+          v=p.get('webhook_secret')
+          if not isinstance(v,str) or not v:
+              raise SystemExit(2)
+          print(v)
+          PY
+          )"
+          rc=$?
+          [ $rc -eq 0 ] || fail "$stage" "webhook-secret-json-invalid"
+          echo "::add-mask::$WEBHOOK_SECRET"
+
+          stage="INGRESS_INVOKE"
+          SIGNAL_ID="STAGING-SHADOW-DIAG-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export SIGNAL_ID WEBHOOK_SECRET
+          python - <<'PY' >/tmp/event.json
+          import json, os
+          from datetime import UTC, datetime
+          now=datetime.now(UTC).isoformat()
+          body={
+            'webhook_secret':os.environ['WEBHOOK_SECRET'],
+            'signal_id':os.environ['SIGNAL_ID'],
+            'symbol':'DAE2E',
+            'action':'ADD',
+            'strategy':'DA_TURTLE_ADAPTIVE_TREND',
+            'strategy_version':'2.5',
+            'timeframe':'D',
+            'price':100.0,
+            'bar_time':now,
+            'position_fraction':0.25,
+            'runner_stage':'ADD_1_ATR',
+            'model_id':'PAPER_SHADOW_V25',
+            'forward_test_start':'2026-08-19'
+          }
+          print(json.dumps({'body':body},separators=(',',':')))
+          PY
+          aws lambda invoke --function-name daily-alpha-pine-ingress --cli-binary-format raw-in-base64-out --payload file:///tmp/event.json /tmp/response.json >/tmp/meta.json 2>/tmp/err
+          rc=$?
+          [ $rc -eq 0 ] || fail "$stage" "lambda-invoke-denied-or-failed"
+
+          SIGNAL_ID="$SIGNAL_ID" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads(Path('/tmp/response.json').read_text())
+          if r.get('statusCode') != 202:
+              raise SystemExit(2)
+          b=json.loads(r['body'])
+          if b.get('status')!='ACCEPTED' or b.get('signal_id')!=os.environ['SIGNAL_ID']:
+              raise SystemExit(3)
+          PY
+          rc=$?
+          [ $rc -eq 0 ] || fail "$stage" "ingress-response-not-accepted"
+
+          stage="DDB_READ"
+          PK="ACCOUNT#PAPER_SHADOW_V25#PINE_EVENT#$SIGNAL_ID"
+          export PK
+          python - <<'PY' >/tmp/key.json
+          import json, os
+          print(json.dumps({'pk':{'S':os.environ['PK']},'sk':{'S':'RECEIVED'}}))
+          PY
+          aws dynamodb get-item --table-name "$TABLE_NAME" --key file:///tmp/key.json --consistent-read /tmp/item.json 2>/tmp/err
+          rc=$?
+          [ $rc -eq 0 ] || fail "$stage" "dynamodb-get-item-denied-or-failed"
+
+          stage="PROCESSOR_PERSISTENCE"
+          found=0
+          for _ in $(seq 1 30); do
+            aws dynamodb get-item --table-name "$TABLE_NAME" --key file:///tmp/key.json --consistent-read /tmp/item.json >/dev/null 2>/tmp/err
+            rc=$?
+            [ $rc -eq 0 ] || fail "DDB_READ" "dynamodb-get-item-denied-or-failed"
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/item.json').read_text())
+          i=d.get('Item',{})
+          raise SystemExit(0 if i.get('execution_json',{}).get('S') else 1)
+          PY
+            if [ $? -eq 0 ]; then found=1; break; fi
+            sleep 2
+          done
+          [ "$found" = "1" ] || fail "$stage" "processor-event-not-found-with-execution"
+
+          stage="RESULT_VALIDATION"
+          SIGNAL_ID="$SIGNAL_ID" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          d=json.loads(Path('/tmp/item.json').read_text())['Item']
+          ingress=json.loads(d['ingress_json']['S'])
+          execution=json.loads(d['execution_json']['S'])
+          assert 'webhook_secret' not in ingress
+          assert ingress['model_id']=='PAPER_SHADOW_V25'
+          assert execution['disposition']=='STATE_MISMATCH'
+          assert execution['reason']=='TRADINGVIEW_POSITION_NOT_IN_PAPER_LEDGER'
+          assert execution['paper_account_id']=='PAPER_SHADOW_V25'
+          assert execution['paper_execution_triggered'] is False
+          assert execution['trading_authorized'] is False
+          assert execution['live_trading_enabled'] is False
+          PY
+          rc=$?
+          [ $rc -eq 0 ] || fail "$stage" "unexpected-execution-result"
+
+          echo "stage=SUCCESS" >> "$GITHUB_OUTPUT"
+          echo "detail=all-stages-passed" >> "$GITHUB_OUTPUT"
+          echo "signal_id=$SIGNAL_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Report diagnostic result on PR 211
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGE: ${{ steps.diag.outputs.stage }}
+          DETAIL: ${{ steps.diag.outputs.detail }}
+          SIGNAL_ID: ${{ steps.diag.outputs.signal_id }}
+        shell: bash
+        run: |
+          if [ "$STAGE" = "SUCCESS" ]; then
+            BODY="SHADOW STAGING E2E DIAGNOSTIC: SUCCESS ✅\n\nAll stages passed: secret read (not exposed), ingress invoke, SQS/processor persistence, isolated PAPER_SHADOW_V25 audit record, expected STATE_MISMATCH, and live-disabled safety. Signal: ${SIGNAL_ID}."
+          else
+            BODY="SHADOW STAGING E2E DIAGNOSTIC: FAILED ❌\n\nFailing stage: ${STAGE:-UNKNOWN}\nSanitized detail: ${DETAIL:-unknown}\nNo TradingView activation should occur; no secret value was printed."
+          fi
+          gh api repos/${GITHUB_REPOSITORY}/issues/211/comments -f body="$BODY"
