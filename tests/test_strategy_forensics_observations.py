@@ -4,9 +4,9 @@ import pytest
 
 from daily_alpha.strategy_forensics import diagnose_opportunity
 from daily_alpha.strategy_forensics_observations import (
+    build_forensics_path,
     DecisionObservation,
     PriceBarObservation,
-    build_forensics_path,
 )
 
 
