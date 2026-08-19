@@ -13,9 +13,8 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+
+from daily_alpha.orats_history_fetch import fetch_daily_earnings_rows
 
 CANONICAL_GAP_GO_CLOSE_LOCATION = 0.70
 EARLY_GAP_GO_CLOSE_LOCATION = 0.60
@@ -69,23 +68,6 @@ def gap_go_close_location_band(close_location: float) -> str:
     return "BELOW"
 
 
-def _request_json(url: str, *, token: str, header_auth: bool) -> Any:
-    headers = {"Accept": "application/json"}
-    if header_auth:
-        headers["Authorization"] = token
-    request = Request(url, headers=headers)
-    try:
-        with urlopen(request, timeout=45) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        body = exc.read(400).decode("utf-8", errors="replace")
-        raise RuntimeError(f"ORATS HTTP {exc.code}: {body[:200]}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"ORATS network error: {type(exc.reason).__name__}") from exc
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("ORATS returned invalid JSON") from exc
-
-
 def _rows(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, dict) and isinstance(payload.get("data"), list):
         return [r for r in payload["data"] if isinstance(r, dict)]
@@ -102,48 +84,14 @@ def fetch_orats_history(
     token: str,
 ) -> tuple[list[Bar], list[dict[str, Any]]]:
     warm_start = start - timedelta(days=730)
-    base = "https://api.orats.io/data"
-    daily_query = urlencode(
-        {
-            "tickers": ticker,
-            "tradeDate": f"{warm_start.isoformat()},{end.isoformat()}",
-            "fields[dailies]": "ticker,tradeDate,clsPx,hiPx,loPx,open,stockVolume",
-        }
+    history = fetch_daily_earnings_rows(
+        ticker,
+        warm_start=warm_start,
+        end=end,
+        token=token,
     )
-    earnings_query = urlencode(
-        {
-            "tickers": ticker,
-            "fields[earnings]": "ticker,earnDate,anncTod",
-        }
-    )
-    try:
-        daily_payload = _request_json(
-            f"{base}/hist/dailies?{daily_query}", token=token, header_auth=True
-        )
-        earnings_payload = _request_json(
-            f"{base}/hist/earnings?{earnings_query}", token=token, header_auth=True
-        )
-        source = "ORATS_DATA_API"
-    except RuntimeError:
-        # Compatibility fallback for accounts provisioned on the datav2 route.
-        base2 = "https://api.orats.io/datav2"
-        daily_query2 = urlencode(
-            {
-                "token": token,
-                "ticker": ticker,
-                "fields": "ticker,tradeDate,clsPx,hiPx,loPx,open,stockVolume",
-            }
-        )
-        earnings_query2 = urlencode({"token": token, "ticker": ticker})
-        daily_payload = _request_json(
-            f"{base2}/hist/dailies?{daily_query2}", token=token, header_auth=False
-        )
-        earnings_payload = _request_json(
-            f"{base2}/hist/earnings?{earnings_query2}", token=token, header_auth=False
-        )
-        source = "ORATS_DATAV2_API"
 
-    earnings = _rows(earnings_payload)
+    earnings = list(history.earnings_rows)
     earnings_dates = {
         date.fromisoformat(str(row["earnDate"])[:10])
         for row in earnings
@@ -151,7 +99,7 @@ def fetch_orats_history(
     }
 
     bars: list[Bar] = []
-    for row in _rows(daily_payload):
+    for row in history.daily_rows:
         raw_date = row.get("tradeDate")
         if not raw_date:
             continue
@@ -179,7 +127,14 @@ def fetch_orats_history(
     bars.sort(key=lambda b: b.trade_date)
     if len(bars) < 80:
         raise RuntimeError(f"Insufficient ORATS bars for {ticker}: {len(bars)}")
-    return bars, [{"source": source, **row} for row in earnings]
+
+    provenance = {
+        "daily_source": history.daily_source,
+        "earnings_source": history.earnings_source,
+        "daily_used_compatibility_fallback": history.daily_used_compatibility_fallback,
+        "earnings_used_compatibility_fallback": history.earnings_used_compatibility_fallback,
+    }
+    return bars, [{**row, **provenance} for row in earnings]
 
 
 def sma(values: list[float | None], length: int) -> list[float | None]:
@@ -542,7 +497,6 @@ def run_strategy(
                 }
             )
 
-        # Pine mutates entry variables on the signal bar before later signal expressions.
         if long_entry:
             entry_breakout_level = float(row["upper20"])
             entry_signal_bar = i
@@ -629,7 +583,6 @@ def run_strategy(
         elif trend_exit:
             exit_reason = "TREND_FLIP"
 
-        # Orders execute at the close, matching process_orders_on_close=true.
         if long_entry:
             qty = 2.0
             position_qty = qty
@@ -734,7 +687,6 @@ def run_strategy(
             add2_bar = None
             break_even_level = None
 
-    # Mark an open trade to the final close so the comparison is complete as of end date.
     if current is not None and position_qty > 0:
         last_idx = max(i for i, b in enumerate(bars) if b.trade_date <= end)
         bar = bars[last_idx]
