@@ -1,14 +1,15 @@
-"""Point-in-time observation adapter for research-only strategy forensics.
+"""Point-in-time observation adapters for research-only strategy forensics.
 
-This module converts an immutable Daily Alpha decision plus subsequently observed
-price bars into the fixed path consumed by ``strategy_forensics``. The adapter
-makes the evaluation cutoff explicit so later bars cannot silently leak into an
-earlier forensic horizon.
+This module converts immutable Daily Alpha decisions plus subsequently observed
+price bars into the fixed path consumed by ``strategy_forensics``. Evaluation
+cutoffs are explicit so later bars cannot silently leak into an earlier forensic
+horizon. Pine outcome mapping is deliberately fail-closed when a trustworthy
+underlying stop, execution-time price, or timestamp is unavailable.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
@@ -66,6 +67,92 @@ class ForensicsPathEvidence:
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         return payload
+
+
+def decision_observation_from_pine_outcome(
+    ingress: Mapping[str, Any],
+    execution: Mapping[str, Any],
+    *,
+    observed_at: datetime | None = None,
+) -> DecisionObservation:
+    """Map one canonical Pine ENTRY outcome into underlying-price forensics.
+
+    The diagnostic studies the underlying signal path rather than option P/L. It
+    therefore requires the strategy's explicit ``stock_stop_price``. Replayed
+    outcomes must expose an execution-time underlying price and a trustworthy
+    execution timestamp; the caller may supply ``observed_at`` for non-fill replay
+    outcomes whose current execution contract does not yet persist one.
+    """
+    if not isinstance(ingress, Mapping) or not isinstance(execution, Mapping):
+        raise ValueError("FORENSICS_PINE_OUTCOME_MUST_BE_OBJECT")
+    action = _required_text(ingress.get("action"), "FORENSICS_PINE_ACTION_REQUIRED").upper()
+    if action != "ENTRY_LONG":
+        raise ValueError("FORENSICS_PINE_ENTRY_REQUIRED")
+
+    decision_id = _required_text(
+        ingress.get("signal_id"), "FORENSICS_PINE_SIGNAL_ID_REQUIRED"
+    )
+    symbol = _required_text(ingress.get("symbol"), "FORENSICS_PINE_SYMBOL_REQUIRED").upper()
+    strategy_version = _required_text(
+        ingress.get("strategy_version"), "FORENSICS_PINE_STRATEGY_VERSION_REQUIRED"
+    )
+    stop_price = _positive_float(
+        ingress.get("stock_stop_price"), "FORENSICS_PINE_STOP_PRICE_REQUIRED"
+    )
+
+    disposition = _required_text(
+        execution.get("disposition"), "FORENSICS_PINE_DISPOSITION_REQUIRED"
+    ).upper()
+    reason = _required_text(execution.get("reason"), "FORENSICS_PINE_REASON_REQUIRED")
+    context = execution.get("context")
+    if not isinstance(context, Mapping):
+        context = {}
+
+    replay_attempted = bool(context.get("replay_attempted")) or bool(
+        context.get("replayed_from_armed_signal")
+    )
+    replay_price = _optional_positive_float(context.get("replay_market_price"))
+    if replay_price is None and replay_attempted:
+        replay_price = _optional_positive_float(context.get("market_price"))
+    reference_price = replay_price or _positive_float(
+        ingress.get("price"), "FORENSICS_PINE_REFERENCE_PRICE_REQUIRED"
+    )
+    if stop_price >= reference_price:
+        raise ValueError("FORENSICS_PINE_STOP_MUST_BE_BELOW_REFERENCE")
+
+    event_time = observed_at or _execution_observed_at(
+        ingress=ingress,
+        execution=execution,
+        context=context,
+        replay_attempted=replay_attempted,
+    )
+    _require_aware(event_time, "FORENSICS_PINE_TIME_MUST_BE_TIMEZONE_AWARE")
+
+    if disposition == "EXECUTED_PAPER":
+        decision = "ENTRY"
+        executed = True
+    elif disposition in {
+        "ARMED_FOR_NEXT_TRADABLE_WINDOW",
+        "NO_TRADE",
+        "CANCELLED_REPLAY",
+        "DATA_ERROR",
+    }:
+        decision = "WAIT"
+        executed = False
+    else:
+        raise ValueError("FORENSICS_PINE_DISPOSITION_UNSUPPORTED")
+
+    return DecisionObservation(
+        decision_id=decision_id,
+        symbol=symbol,
+        strategy_version=strategy_version,
+        decision=decision,
+        reason=reason,
+        observed_at=event_time,
+        reference_price=reference_price,
+        stop_price=stop_price,
+        executed=executed,
+    )
 
 
 def build_forensics_path(
@@ -133,6 +220,25 @@ def build_forensics_path(
     )
 
 
+def _execution_observed_at(
+    *,
+    ingress: Mapping[str, Any],
+    execution: Mapping[str, Any],
+    context: Mapping[str, Any],
+    replay_attempted: bool,
+) -> datetime:
+    receipt = execution.get("execution_receipt")
+    if isinstance(receipt, Mapping) and receipt.get("occurred_at"):
+        return _timestamp(receipt.get("occurred_at"), "FORENSICS_PINE_RECEIPT_TIME_INVALID")
+    armed_at = context.get("armed_at")
+    if armed_at:
+        return _timestamp(armed_at, "FORENSICS_PINE_ARMED_TIME_INVALID")
+    if replay_attempted:
+        raise ValueError("FORENSICS_PINE_REPLAY_OBSERVED_AT_REQUIRED")
+    raw = ingress.get("received_at") or ingress.get("bar_time")
+    return _timestamp(raw, "FORENSICS_PINE_TIME_REQUIRED")
+
+
 def _validate_decision(decision: DecisionObservation) -> None:
     if not decision.decision_id.strip():
         raise ValueError("FORENSICS_DECISION_ID_REQUIRED")
@@ -159,6 +265,41 @@ def _validate_bar(bar: PriceBarObservation) -> None:
         raise ValueError("FORENSICS_BAR_RANGE_INVALID")
     if not bar.low <= bar.close <= bar.high:
         raise ValueError("FORENSICS_BAR_CLOSE_OUTSIDE_RANGE")
+
+
+def _required_text(value: Any, message: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(message)
+    return text
+
+
+def _positive_float(value: Any, message: str) -> float:
+    number = _optional_positive_float(value)
+    if number is None:
+        raise ValueError(message)
+    return number
+
+
+def _optional_positive_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _timestamp(value: Any, message: str) -> datetime:
+    if value in (None, ""):
+        raise ValueError(message)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(message) from exc
+    _require_aware(parsed, message)
+    return parsed
 
 
 def _require_aware(value: datetime, message: str) -> None:
