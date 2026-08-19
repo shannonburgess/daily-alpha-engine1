@@ -93,10 +93,14 @@ jobs:
         run: |
           import os
           from datetime import UTC, datetime
+          from pathlib import Path
 
+          from daily_alpha.equity_liquidity import (
+              CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
+              prepare_actionable_liquidity_inputs,
+          )
           from daily_alpha.orats import OratsClient
           from daily_alpha.research_shortlist import (
-              CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
               build_research_shortlist,
               discover_daily_pair,
               write_research_shortlist_outputs,
@@ -110,8 +114,16 @@ jobs:
           from daily_alpha.trump_policy import rank_trump_policy_companies
           from daily_alpha.white_house_policy import fetch_white_house_investments
 
-          previous, current = discover_daily_pair("data/incoming")
+          previous_raw, current_raw = discover_daily_pair("data/incoming")
           now = datetime.now(UTC)
+          liquidity = prepare_actionable_liquidity_inputs(
+              previous_raw,
+              current_raw,
+              output_dir="data/liquidity-filtered",
+              as_of=now,
+              threshold=CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
+          )
+          previous, current = liquidity.previous_path, liquidity.current_path
 
           smart_client = StockDataSmartMoneyClient()
           congress_trades = smart_client.fetch_congressional_purchases(days=90, limit=500)
@@ -153,16 +165,30 @@ jobs:
               congressional=congressional,
               institutional=institutional,
               trump_policy=policy_watch,
-              min_company_average_volume=CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
+          )
+          summary = result.summary
+          summary.update(
+              {
+                  "company_average_volume_gate_enabled": True,
+                  "company_min_average_volume": CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
+                  "excluded_liquidity_filtered": liquidity.company_filtered_count,
+                  "excluded_liquidity_missing": liquidity.company_missing_volume_count,
+                  "etf_separate_liquidity_count": liquidity.etf_count,
+                  "liquidity_evidence_file": "company_liquidity_eligibility.json",
+              }
           )
           outputs = write_research_shortlist_outputs("data/shortlist", result)
-          summary = result.summary
+          liquidity_destination = Path("data/shortlist/company_liquidity_eligibility.json")
+          liquidity_destination.write_bytes(liquidity.snapshot_path.read_bytes())
+          outputs["company_liquidity_eligibility_json"] = liquidity_destination
+
           print(
               f"Compared {result.previous_file} -> {result.current_file}; "
               f"ranked {summary['actionable_ranked_count']} actionable candidates, "
               f"liquidity-filtered {summary['excluded_liquidity_filtered']} companies "
               f"at/below {summary['company_min_average_volume']:.0f} average shares and "
-              f"{summary['excluded_liquidity_missing']} with missing volume, "
+              f"{summary['excluded_liquidity_missing']} with missing volume; "
+              f"preserved {summary['etf_separate_liquidity_count']} ETFs on separate rules, "
               f"excluded {summary['excluded_not_optionable']} OVTLYR non-optionable symbols, "
               f"excluded {summary['excluded_orats_no_45_75_dte_options']} ORATS symbols "
               f"without a 45-75 DTE chain, requested {summary['orats_requests']} ORATS chains, "
@@ -203,6 +229,9 @@ jobs:
               )
               handle.write(
                   f"liquidity_missing_count={summary['excluded_liquidity_missing']}\n"
+              )
+              handle.write(
+                  f"etf_separate_count={summary['etf_separate_liquidity_count']}\n"
               )
               handle.write(
                   "orats_no_dte_count="
@@ -298,6 +327,7 @@ jobs:
             echo "- Company liquidity gate: 30D average volume strictly > 1,500,000 shares"
             echo "- Liquidity-filtered companies: ${{ steps.shortlist.outputs.liquidity_filtered_count }}"
             echo "- Companies missing valid average-volume evidence: ${{ steps.shortlist.outputs.liquidity_missing_count }}"
+            echo "- ETFs preserved on separate liquidity/capacity rules: ${{ steps.shortlist.outputs.etf_separate_count }}"
             echo "- Smart-money matches in actionable universe: ${{ steps.shortlist.outputs.smart_money_matches }}"
             echo "- Trump policy-watch matches in actionable universe: ${{ steps.shortlist.outputs.trump_policy_matches }}"
             echo "- Congressional Top 5: ${{ steps.shortlist.outputs.congress_top }}"
@@ -306,6 +336,7 @@ jobs:
             echo "- 13F comparison: ${{ steps.shortlist.outputs.previous_13f_period }} -> ${{ steps.shortlist.outputs.current_13f_period }}"
             echo "- ORATS exclusions with no 45-75 DTE chain: ${{ steps.shortlist.outputs.orats_no_dte_count }}"
             echo "- Qualified 45-75 DTE option setups in ORATS-enriched top 20: ${{ steps.shortlist.outputs.qualified_count }}"
+            echo "- Liquidity evidence: company_liquidity_eligibility.json is published beside shortlist.json for PAPER entry enforcement."
             echo "- Outputs: newsletter HTML, research shortlist CSV, paper ledger CSV, sector rotation CSV, report manifest JSON."
             echo "- Latest S3 prefix: s3://${STAGING_BUCKET}/daily-alpha/outputs/latest/"
             echo "- Research/paper only; live trading remains disabled."
