@@ -34,9 +34,10 @@ Canonical stacked path:
 
 - **#185** — replay/reconciliation foundation.
 - **#186** — isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` routing and synchronized forward-test start.
-- **#207** — preserves and validates explicit `replay_max_price` for tagged shadow entries and documents the source-side Pine contract.
+- **#207** — preserves and validates explicit `replay_max_price`, archives the exact v2.4/v2.5 shadow Pine sources, and documents the source-side contract.
+- **#212** — staging-only composite of #185/#186/#196/#205/#207 for receipt-aware isolated shadow routing and the real AWS paper E2E proof. This is an integration/evidence branch, not a second implementation owner.
 
-Remaining source-side blocker: prospective Pine payloads must deliberately emit `model_id`, the common `forward_test_start`, and a reviewed no-chase ceiling before any webhook activation. Both strategy instances must start FLAT on the same boundary.
+The source-side blocker is cleared: both versioned shadow copies are archived, compile-verified in TradingView, FLAT, configured to the common `2026-08-19` forward boundary, and still have forward-test/webhook toggles OFF. Staging `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19` is configured. The remaining activation gates are staging deployment of the composite candidate, post-deploy configuration re-verification, secret rotation/configuration without disclosure, one genuine TradingView -> staging -> fresh market/ORATS/risk -> PAPER fill/CANCEL/DATA_ERROR -> persisted receipt proof, isolated V24/V25 audit evidence, and separate explicit approval before ongoing shadow alerts are enabled.
 
 ## Persistent candidate/watch visibility
 
@@ -125,7 +126,7 @@ Every automated engineering or reporting job must reconcile against:
 2. this canonical workstream map / PR #141 for proposed ownership and roadmap state;
 3. explicitly labeled draft research for non-production hypotheses.
 
-If an older automation instruction conflicts with current `main`, current `main` wins. If two draft PRs claim the same objective, stop parallel implementation and designate one canonical chain before adding more code.
+If an older automation instruction conflicts with current `main`, current `main` wins. If two draft PRs claim the same objective, stop parallel implementation and designate one canonical chain before adding more code. Staging integration PR #212 may compose canonical draft branches for external proof, but it must not redefine strategy/risk rules or become a parallel production implementation.
 
 ## Safety invariants
 
