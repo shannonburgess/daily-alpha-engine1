@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from .dynamo_ledger import DynamoPaperLedger
@@ -22,6 +22,7 @@ SHADOW_MODELS = {
     PAPER_SHADOW_V24: "2.4",
     PAPER_SHADOW_V25: "2.5",
 }
+SHADOW_FORWARD_START_ENV = "DAILY_ALPHA_SHADOW_FORWARD_START"
 
 
 def account_id_for_ingress(ingress: Mapping[str, Any]) -> str:
@@ -40,7 +41,30 @@ def account_id_for_ingress(ingress: Mapping[str, Any]) -> str:
         raise PineProcessorError("PINE_SHADOW_MODEL_VERSION_MISMATCH")
     if str(ingress.get("source", "")).strip() != "TRADINGVIEW_PINE":
         raise PineProcessorError("PINE_SHADOW_SOURCE_INVALID")
+    _validate_forward_test_start(ingress)
     return model_id
+
+
+def _validate_forward_test_start(ingress: Mapping[str, Any]) -> str:
+    """Require both shadow models to identify the same configured start date."""
+    configured = os.getenv(SHADOW_FORWARD_START_ENV, "").strip()
+    if not configured:
+        raise PineProcessorError("PINE_SHADOW_FORWARD_START_NOT_CONFIGURED")
+    try:
+        configured_date = date.fromisoformat(configured)
+    except ValueError as exc:
+        raise PineProcessorError("PINE_SHADOW_FORWARD_START_CONFIG_INVALID") from exc
+
+    supplied = str(ingress.get("forward_test_start", "") or "").strip()
+    if not supplied:
+        raise PineProcessorError("PINE_SHADOW_FORWARD_START_REQUIRED")
+    try:
+        supplied_date = date.fromisoformat(supplied)
+    except ValueError as exc:
+        raise PineProcessorError("PINE_SHADOW_FORWARD_START_INVALID") from exc
+    if supplied_date != configured_date:
+        raise PineProcessorError("PINE_SHADOW_FORWARD_START_MISMATCH")
+    return configured_date.isoformat()
 
 
 class ShadowRoutedPineEventStore:
@@ -138,6 +162,11 @@ class ShadowRoutedPinePaperExecutor:
         execution["paper_account_id"] = account_id
         execution["model_id"] = (
             account_id if account_id in SHADOW_MODELS else ingress.get("model_id")
+        )
+        execution["forward_test_start"] = (
+            _validate_forward_test_start(ingress)
+            if account_id in SHADOW_MODELS
+            else ingress.get("forward_test_start")
         )
         execution["trading_authorized"] = False
         execution["live_trading_enabled"] = False
