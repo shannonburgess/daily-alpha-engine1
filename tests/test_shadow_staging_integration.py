@@ -8,8 +8,21 @@ class FakeStore:
         self.account_id = account_id or "paper-staging"
 
 
+class FakeLedger:
+    def __init__(self, account_id=None):
+        self.account_id = account_id or "paper-staging"
+
+
 class FakeExecutor:
     pass
+
+
+class FakeTrade:
+    def __init__(self, symbol):
+        self.symbol = symbol
+
+    def to_dict(self):
+        return {"symbol": self.symbol}
 
 
 def test_replay_all_paper_accounts_scans_default_and_both_shadows(monkeypatch):
@@ -96,3 +109,87 @@ def test_replay_all_paper_accounts_honors_global_limit(monkeypatch):
     assert result["accounts_scanned"] == ["paper-staging"]
     assert result["trading_authorized"] is False
     assert result["live_trading_enabled"] is False
+
+
+def test_shadow_monitor_state_is_read_only_and_keeps_books_isolated(monkeypatch):
+    monkeypatch.setattr(handler, "DynamoPaperLedger", FakeLedger)
+    monkeypatch.setattr(handler, "DynamoPineEventStore", FakeStore)
+
+    def fake_open_trades(ledger):
+        if ledger.account_id == handler.PAPER_SHADOW_V24:
+            return [FakeTrade("MU")]
+        return []
+
+    def fake_list_armed(store, *, limit):
+        if store.account_id == handler.PAPER_SHADOW_V25:
+            return [
+                {
+                    "_persisted_signal_id": "PERSISTED-V25-1",
+                    "signal_id": "SIG-V25-1",
+                    "symbol": "NVDA",
+                    "action": "ENTRY_LONG",
+                    "model_id": handler.PAPER_SHADOW_V25,
+                    "forward_test_start": "2026-08-19",
+                    "received_at": "2026-08-19T19:00:00+00:00",
+                    "replay_max_price": 200.0,
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(handler, "_all_open_trades", fake_open_trades)
+    monkeypatch.setattr(handler, "list_armed_ingress", fake_list_armed)
+    now = datetime(2026, 8, 19, 19, 30, tzinfo=UTC)
+
+    result = handler._shadow_monitor_state(now=now, armed_limit=25)
+
+    assert result["operation"] == "GET_SHADOW_MONITOR_STATE"
+    assert result["snapshot_at"] == now.isoformat()
+    assert result["books"][handler.PAPER_SHADOW_V24]["open_count"] == 1
+    assert result["books"][handler.PAPER_SHADOW_V24]["open_positions"] == [
+        {"symbol": "MU"}
+    ]
+    assert result["books"][handler.PAPER_SHADOW_V24]["armed_count_visible"] == 0
+    v25 = result["books"][handler.PAPER_SHADOW_V25]
+    assert v25["open_count"] == 0
+    assert v25["armed_count_visible"] == 1
+    assert v25["armed_limit_reached"] is False
+    assert v25["armed_signals"] == [
+        {
+            "persisted_signal_id": "PERSISTED-V25-1",
+            "signal_id": "SIG-V25-1",
+            "symbol": "NVDA",
+            "action": "ENTRY_LONG",
+            "model_id": handler.PAPER_SHADOW_V25,
+            "forward_test_start": "2026-08-19",
+            "received_at": "2026-08-19T19:00:00+00:00",
+            "replay_max_price": 200.0,
+        }
+    ]
+    assert result["trading_authorized"] is False
+    assert result["live_trading_enabled"] is False
+
+
+def test_shadow_monitor_operation_fails_closed_for_invalid_armed_limit(monkeypatch):
+    class Context:
+        aws_request_id = "REQ-1"
+
+    monkeypatch.setattr(handler, "DynamoPaperLedger", FakeLedger)
+    monkeypatch.setattr(handler, "DynamoPineEventStore", FakeStore)
+    monkeypatch.setattr(handler, "_all_open_trades", lambda ledger: [])
+
+    def fake_list_armed(store, *, limit):
+        raise ValueError("ARMED_REPLAY_LIMIT_INVALID")
+
+    monkeypatch.setattr(handler, "list_armed_ingress", fake_list_armed)
+
+    result = handler.lambda_handler(
+        {"operation": "GET_SHADOW_MONITOR_STATE", "armed_limit": 0},
+        Context(),
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "REJECTED"
+    assert result["error_code"] == "ARMED_REPLAY_LIMIT_INVALID"
+    assert result["trading_authorized"] is False
+    assert result["live_trading_enabled"] is False
+    assert result["request_id"] == "REQ-1"
