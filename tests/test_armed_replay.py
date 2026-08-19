@@ -1,7 +1,10 @@
 import json
 from datetime import UTC, datetime
 
-from daily_alpha.armed_replay import list_armed_ingress, replay_armed_events
+from daily_alpha.armed_replay import (
+    list_armed_ingress,
+    replay_armed_events,
+)
 from daily_alpha.pine_paper_reconciliation import prepare_armed_replay
 
 
