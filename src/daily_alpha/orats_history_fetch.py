@@ -1,8 +1,10 @@
 """Strict historical ORATS daily/earnings fetch adapter for research backtests.
 
-This module prepares the final `fetch_orats_history()` wiring without changing any
-strategy rule. It delegates all network behavior to the bounded historical transport
-and the narrow compatibility-route policy.
+This module wires historical research to documented ORATS routes without changing
+any strategy rule. The token-authenticated ``datav2`` endpoints are primary for the
+current account; the header-authenticated ``data`` endpoints are compatibility-only.
+Authentication, rate-limit, network, and malformed-data failures never trigger a
+route substitution.
 """
 
 from __future__ import annotations
@@ -60,51 +62,57 @@ def fetch_daily_earnings_payloads(
 ) -> HistoricalDailyEarningsPayloads:
     """Fetch daily bars and earnings through the strict historical route policy."""
 
-    if not ticker.strip():
+    ticker = ticker.strip().upper()
+    if not ticker:
         raise ValueError("ticker is required")
     if warm_start > end:
         raise ValueError("warm_start must not be after end")
     if not token:
         raise ValueError("token is required")
 
-    primary_base = "https://api.orats.io/data"
-    fallback_base = "https://api.orats.io/datav2"
+    primary_base = "https://api.orats.io/datav2"
+    compatibility_base = "https://api.orats.io/data"
 
     daily_primary_query = urlencode(
+        {
+            "token": token,
+            "ticker": ticker,
+            "tradeDate": f"{warm_start.isoformat()},{end.isoformat()}",
+            "fields": "ticker,tradeDate,clsPx,hiPx,loPx,open,stockVolume",
+        }
+    )
+    earnings_primary_query = urlencode({"token": token, "ticker": ticker})
+    daily_compatibility_query = urlencode(
         {
             "tickers": ticker,
             "tradeDate": f"{warm_start.isoformat()},{end.isoformat()}",
             "fields[dailies]": "ticker,tradeDate,clsPx,hiPx,loPx,open,stockVolume",
         }
     )
-    earnings_primary_query = urlencode(
+    earnings_compatibility_query = urlencode(
         {
             "tickers": ticker,
             "fields[earnings]": "ticker,earnDate,anncTod",
         }
     )
-    daily_fallback_query = urlencode(
-        {
-            "token": token,
-            "ticker": ticker,
-            "fields": "ticker,tradeDate,clsPx,hiPx,loPx,open,stockVolume",
-        }
-    )
-    earnings_fallback_query = urlencode({"token": token, "ticker": ticker})
 
     daily = router(
         f"{primary_base}/hist/dailies?{daily_primary_query}",
-        f"{fallback_base}/hist/dailies?{daily_fallback_query}",
+        f"{compatibility_base}/hist/dailies?{daily_compatibility_query}",
         token=token,
-        primary_header_auth=True,
-        fallback_header_auth=False,
+        primary_header_auth=False,
+        fallback_header_auth=True,
+        primary_source="ORATS_DATAV2_API",
+        fallback_source="ORATS_DATA_API",
     )
     earnings = router(
         f"{primary_base}/hist/earnings?{earnings_primary_query}",
-        f"{fallback_base}/hist/earnings?{earnings_fallback_query}",
+        f"{compatibility_base}/hist/earnings?{earnings_compatibility_query}",
         token=token,
-        primary_header_auth=True,
-        fallback_header_auth=False,
+        primary_header_auth=False,
+        fallback_header_auth=True,
+        primary_source="ORATS_DATAV2_API",
+        fallback_source="ORATS_DATA_API",
     )
 
     return HistoricalDailyEarningsPayloads(
