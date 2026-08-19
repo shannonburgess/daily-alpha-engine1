@@ -107,7 +107,8 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
             fill_price=fill_price,
             before_trade=before_trade,
             account_id=getattr(self.ledger, "account_id", None),
-            initial_risk_basis=_initial_risk_from_result(result),
+            initial_risk_basis=_persisted_initial_risk(paper, before_trade)
+            or _initial_risk_from_result(result),
             occurred_at=occurred_at,
         ).to_dict()
         paper["execution_receipt"] = receipt
@@ -159,6 +160,24 @@ def _receipt_signal_id(
     if not replayed:
         return signal_id
     return f"{signal_id}-REPLAY-{occurred_at.strftime('%Y%m%dT%H%M%S')}"
+
+
+def _persisted_initial_risk(
+    paper: Mapping[str, Any], before_trade: Mapping[str, Any] | None
+) -> float | None:
+    if before_trade is not None:
+        value = _positive_float_or_none(before_trade.get("initial_risk_basis"))
+        if value is not None:
+            return value
+    trade = paper.get("trade")
+    if isinstance(trade, Mapping):
+        value = _positive_float_or_none(trade.get("initial_risk_basis"))
+        if value is not None:
+            return value
+    values = paper.get("updated_trades") or paper.get("closed_trades")
+    if isinstance(values, list) and len(values) == 1 and isinstance(values[0], Mapping):
+        return _positive_float_or_none(values[0].get("initial_risk_basis"))
+    return None
 
 
 def _initial_risk_from_result(result: Mapping[str, Any]) -> float | None:
