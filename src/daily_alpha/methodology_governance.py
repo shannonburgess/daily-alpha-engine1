@@ -58,11 +58,10 @@ class MethodologyVersion:
         missing = [name for name, value in required.items() if not str(value).strip()]
         if missing:
             raise ValueError(f"METHOD_IDENTITY_INCOMPLETE:{','.join(sorted(missing))}")
-        if self.state == MethodologyState.ACTIVE:
-            if not self.effective_from:
-                raise ValueError("ACTIVE_METHODOLOGY_REQUIRES_EFFECTIVE_FROM")
-            if not self.release_manifest_id:
-                raise ValueError("ACTIVE_METHODOLOGY_REQUIRES_RELEASE_MANIFEST")
+        if self.state == MethodologyState.ACTIVE and not self.effective_from:
+            raise ValueError("ACTIVE_METHODOLOGY_REQUIRES_EFFECTIVE_FROM")
+        if self.state == MethodologyState.ACTIVE and not self.release_manifest_id:
+            raise ValueError("ACTIVE_METHODOLOGY_REQUIRES_RELEASE_MANIFEST")
 
 
 @dataclass(frozen=True)
@@ -110,9 +109,11 @@ def transition_methodology(
             f"METHODOLOGY_TRANSITION_NOT_ALLOWED:{methodology.state.value}->{target.value}"
         )
 
-    if target == MethodologyState.APPROVED_FOR_FUTURE_RELEASE:
-        if not evidence.validation_evidence_ids:
-            raise ValueError("METHODOLOGY_VALIDATION_EVIDENCE_REQUIRED")
+    if (
+        target == MethodologyState.APPROVED_FOR_FUTURE_RELEASE
+        and not evidence.validation_evidence_ids
+    ):
+        raise ValueError("METHODOLOGY_VALIDATION_EVIDENCE_REQUIRED")
 
     if target == MethodologyState.ACTIVE:
         if not evidence.validation_evidence_ids:
