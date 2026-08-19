@@ -35,9 +35,23 @@ Canonical stacked path:
 - **#185** — replay/reconciliation foundation.
 - **#186** — isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` routing and synchronized forward-test start.
 - **#207** — preserves and validates explicit `replay_max_price`, archives the exact v2.4/v2.5 shadow Pine sources, and documents the source-side contract.
-- **#212** — staging-only composite of #185/#186/#196/#205/#207 for receipt-aware isolated shadow routing and the real AWS paper E2E proof. This is an integration/evidence branch, not a second implementation owner.
+- **#212** — single main-based staging composite of #185/#186/#196/#205/#207 for receipt-aware isolated shadow routing and external proof. This is an integration/evidence branch, not a second implementation owner.
 
-The source-side blocker is cleared: both versioned shadow copies are archived, compile-verified in TradingView, FLAT, configured to the common `2026-08-19` forward boundary, and still have forward-test/webhook toggles OFF. Staging `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19` is configured. The remaining activation gates are staging deployment of the composite candidate, post-deploy configuration re-verification, secret rotation/configuration without disclosure, one genuine TradingView -> staging -> fresh market/ORATS/risk -> PAPER fill/CANCEL/DATA_ERROR -> persisted receipt proof, isolated V24/V25 audit evidence, and separate explicit approval before ongoing shadow alerts are enabled.
+Duplicate staging PR **#211** was closed unmerged after #212 was designated canonical for the same head branch.
+
+The source-side blocker is cleared: both versioned shadow copies are archived, compile-verified in TradingView, FLAT, configured to the common `2026-08-19` forward boundary, and still have forward-test/webhook toggles OFF.
+
+Verified staging evidence on 2026-08-19:
+
+- staging `daily-alpha-pine-ingress` + `daily-alpha-pine-processor` deployment passed in `us-east-2`;
+- `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19` was verified before and after deployment;
+- isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` books were verified with both live-safety flags false;
+- the staging webhook secret was rotated outside GitHub/chat, with the new version becoming `AWSCURRENT` and the prior version `AWSPREVIOUS`;
+- the GitHub staging deployment role intentionally remains unable to read secret values; do not weaken that least-privilege boundary merely for test automation;
+- a manual authenticated backend proof passed through ingress -> SQS -> processor -> isolated `PAPER_SHADOW_V25` audit state using a harmless orphan `ADD`, producing the expected `STATE_MISMATCH / TRADINGVIEW_POSITION_NOT_IN_PAPER_LEDGER`, no paper fill, both shadow books FLAT, `trading_authorized=false`, and `live_trading_enabled=false`;
+- temporary branch-only deploy/E2E/diagnostic workflows used during proof collection were removed afterward so they cannot become parallel long-term deployment paths.
+
+The remaining activation gate is one controlled signal originating from the actual SH24/SH25 TradingView copy that proves tagged ingress plus fresh market/ORATS/portfolio-risk revalidation and a genuine PAPER fill/CANCEL/DATA_ERROR or other explicit fail-closed outcome with persisted receipt/evaluation evidence where applicable. The backend orphan-ADD proof does not replace this fresh execution-path proof. Both TradingView forward-test and webhook toggles remain OFF pending that controlled proof and separate explicit approval before ongoing shadow alerts are enabled.
 
 ## Persistent candidate/watch visibility
 
