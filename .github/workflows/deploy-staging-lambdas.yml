@@ -2,6 +2,15 @@ name: Deploy Daily Alpha staging Lambdas
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: "Staging deployment scope"
+        required: true
+        default: pine
+        type: choice
+        options:
+          - pine
+          - all
   push:
     branches:
       - main
@@ -61,6 +70,7 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: Deploy engine
+        if: github.event_name == 'push' || inputs.scope == 'all'
         run: |
           aws lambda update-function-code \
             --function-name daily-alpha-engine \
@@ -73,6 +83,7 @@ jobs:
           aws lambda wait function-updated --function-name daily-alpha-engine
 
       - name: Deploy report service
+        if: github.event_name == 'push' || inputs.scope == 'all'
         run: |
           aws lambda update-function-code \
             --function-name daily-alpha-report \
@@ -85,6 +96,7 @@ jobs:
           aws lambda wait function-updated --function-name daily-alpha-report
 
       - name: Deploy paper trader
+        if: github.event_name == 'push' || inputs.scope == 'all'
         run: |
           aws lambda update-function-code \
             --function-name daily-alpha-paper-trader \
@@ -120,7 +132,8 @@ jobs:
             --handler lambda_handlers.pine_processor.lambda_handler
           aws lambda wait function-updated --function-name daily-alpha-pine-processor
 
-      - name: Verify deployed configuration
+      - name: Verify full deployed configuration
+        if: github.event_name == 'push' || inputs.scope == 'all'
         run: |
           aws lambda get-function-configuration --function-name daily-alpha-engine \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
@@ -128,10 +141,26 @@ jobs:
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
           aws lambda get-function-configuration --function-name daily-alpha-paper-trader \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
+
+      - name: Verify Pine staging configuration
+        shell: bash
+        env:
+          EXPECTED_SHADOW_START: "2026-08-19"
+        run: |
+          set -euo pipefail
           aws lambda get-function-configuration --function-name daily-alpha-pine-ingress \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
           aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
+          actual_shadow_start="$(aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query 'Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START' \
+            --output text)"
+          if [ "$actual_shadow_start" != "$EXPECTED_SHADOW_START" ]; then
+            echo "Expected DAILY_ALPHA_SHADOW_FORWARD_START=$EXPECTED_SHADOW_START but found '$actual_shadow_start'" >&2
+            exit 1
+          fi
+          echo "Verified staging shadow forward start: $actual_shadow_start"
 
       - name: Rehearse paper processor fail-closed safety gate
         shell: bash
