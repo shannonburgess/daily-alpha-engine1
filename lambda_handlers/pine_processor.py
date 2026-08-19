@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 
 from daily_alpha.dynamo_ledger import DynamoPaperLedger
 from daily_alpha.execution_universe import build_scanner_ingress
-from daily_alpha.pine_paper_orchestrator import AwsPinePaperExecutor, _all_open_trades
+from daily_alpha.pine_paper_orchestrator import _all_open_trades
+from daily_alpha.pine_paper_reconciliation import ReconciledAwsPinePaperExecutor
 from daily_alpha.pine_processor import (
     DynamoPineEventStore,
     PineProcessorResult,
@@ -51,7 +52,7 @@ def lambda_handler(event, context):
             )
             store = DynamoPineEventStore()
             persisted = store.persist(ingress, processor_result)
-            executor = AwsPinePaperExecutor()
+            executor = ReconciledAwsPinePaperExecutor()
             execution = executor.execute(ingress, now=now)
             store.mark_execution(processor_result.signal_id, execution)
             return {
@@ -81,5 +82,5 @@ def lambda_handler(event, context):
             }
 
     store = DynamoPineEventStore()
-    executor = AwsPinePaperExecutor()
+    executor = ReconciledAwsPinePaperExecutor()
     return process_sqs_batch(event, store, executor=executor)
