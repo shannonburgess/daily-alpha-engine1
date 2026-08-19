@@ -8,7 +8,9 @@ on:
     paths:
       - ".github/workflows/monitor-paper-shadows.yml"
       - "scripts/shadow_monitor.py"
+      - "scripts/shadow_contract_monitor.py"
       - "tests/test_shadow_monitor.py"
+      - "tests/test_shadow_contract_monitor.py"
 
 permissions:
   contents: read
@@ -28,6 +30,7 @@ jobs:
       AWS_REGION: us-east-2
       REPO: ${{ github.repository }}
       EVIDENCE_DIR: shadow-monitor-artifacts
+      EXPECTED_SHADOW_FORWARD_START: "2026-08-19"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -44,10 +47,24 @@ jobs:
           role-session-name: daily-alpha-shadow-monitor
           aws-region: us-east-2
 
-      - name: Read isolated positions, ARMED state, events and receipts
+      - name: Capture sanitized staging runtime contract
         run: |
           set -euo pipefail
           mkdir -p "${EVIDENCE_DIR}"
+          aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query '{function_name:FunctionName,state:State,last_update_status:LastUpdateStatus,last_modified:LastModified,forward_test_start:Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START}' \
+            --output json > "${EVIDENCE_DIR}/shadow-runtime-contract.json"
+          jq --arg expected "${EXPECTED_SHADOW_FORWARD_START}" \
+            '. + {expected_forward_test_start: $expected}' \
+            "${EVIDENCE_DIR}/shadow-runtime-contract.json" \
+            > "${EVIDENCE_DIR}/shadow-runtime-contract.tmp.json"
+          mv "${EVIDENCE_DIR}/shadow-runtime-contract.tmp.json" \
+            "${EVIDENCE_DIR}/shadow-runtime-contract.json"
+
+      - name: Read isolated positions, ARMED state, events and receipts
+        run: |
+          set -euo pipefail
           aws lambda invoke \
             --function-name daily-alpha-pine-processor \
             --cli-binary-format raw-in-base64-out \
@@ -68,7 +85,7 @@ jobs:
           print('Read-only shadow monitor API: PASS')
           PY
 
-      - name: Build exact shadow status
+      - name: Build exact shadow status and contract drift guard
         id: summarize
         shell: bash
         run: |
@@ -77,10 +94,27 @@ jobs:
             --monitor-state "${EVIDENCE_DIR}/shadow-monitor-state.json" \
             --output-json "${EVIDENCE_DIR}/shadow-status.json" \
             --output-md "${EVIDENCE_DIR}/shadow-status.md"
-          CODE=$?
-          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          STATUS_CODE=$?
+
+          python scripts/shadow_contract_monitor.py \
+            --monitor-state "${EVIDENCE_DIR}/shadow-monitor-state.json" \
+            --runtime-contract "${EVIDENCE_DIR}/shadow-runtime-contract.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-contract-status.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-contract-status.md"
+          CONTRACT_CODE=$?
+
+          cat "${EVIDENCE_DIR}/shadow-contract-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
           cat "${EVIDENCE_DIR}/shadow-status.json"
+          cat "${EVIDENCE_DIR}/shadow-contract-status.json"
+
+          if [ "${STATUS_CODE}" -ne 0 ] || [ "${CONTRACT_CODE}" -ne 0 ]; then
+            CODE=2
+          else
+            CODE=0
+          fi
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Update one rolling issue status
@@ -113,5 +147,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, or evidence-completeness violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, or runtime-contract violation."
           exit 1
