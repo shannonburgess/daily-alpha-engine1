@@ -20,13 +20,13 @@ Canonical stacked path:
 
 1. **#185** — durable `ARMED_FOR_NEXT_TRADABLE_WINDOW`, replay/revalidation, orphan lifecycle reconciliation.
 2. **#196** — exact ENTRY / ADD / PARTIAL / EXIT receipts integrated into realtime and durable replay execution.
-3. **#205** — durable initial-risk basis and realized-R continuity through lifecycle transitions, including the local processor/audit-store/ARMED/replay/receipt contract E2E.
+3. **#205** — durable initial-risk basis and realized-R continuity through lifecycle transitions, including the local processor/audit-store/ARMED/replay/receipt contract E2E and an explicit `evaluated_at` timestamp on every reconciled realtime/replay outcome, including non-fills.
 
 Superseded:
 
 - **#192** — independent receipt implementation; closed unmerged after #196/#205 became the integrated canonical chain.
 
-Rule: do not create or merge a second execution-receipt implementation outside this chain. The local #205 E2E does not replace the still-required real staging proof with fresh market/ORATS/risk revalidation.
+Rule: do not create or merge a second execution-receipt implementation outside this chain. The local #205 E2E does not replace the still-required real staging proof with fresh market/ORATS/risk revalidation. The persisted `evaluated_at` boundary is canonical audit evidence for non-fill replay outcomes that do not have an execution receipt.
 
 ## v2.4 / v2.5 prospective shadow validation
 
@@ -100,9 +100,11 @@ Neither may redefine execution logic, performance methodology, or entitlement en
 
 ## Research platform
 
-- **#193** — Strategy Forensics / missed-R diagnostics plus deterministic research artifacts.
-- **#209** — consolidated Factor Attribution foundation + candidate evidence adapter + horizon/regime/sector evidence reporting. It replaces closed drafts #194 and #208.
+- **#193** — Strategy Forensics / missed-R diagnostics plus deterministic research artifacts and point-in-time evidence cutoffs. It now maps canonical Pine ENTRY/ARMED/replay outcomes into immutable forensics observations using fresh replay underlying prices, receipt/evaluation timestamps, and explicit underlying stops; missing historical inputs fail closed rather than being reconstructed.
+- **#209** — consolidated Factor Attribution foundation + candidate evidence adapter + horizon/regime/sector evidence reporting. It replaces closed drafts #194 and #208. Point-in-time factor snapshots now carry deterministic SHA-256 snapshot identity, exact weight-set identity, validated timezone-aware timestamps, and deterministic order-independent snapshot-set identity for later forward-return joins.
 - Quant challengers remain disconnected research unless a separate model-governance path promotes them.
+
+Research integration rule: #193 may consume canonical execution audit evidence from #185/#196/#205, but it remains a downstream diagnostic and must never feed an execution authorization directly. #209 may join forward outcomes by immutable snapshot identity, but realized outcomes must not silently retune production ranking weights.
 
 ## ORATS reliability
 
