@@ -60,7 +60,21 @@ jobs:
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
+      - name: Verify shadow candidate preflight
+        if: github.ref_name == 'staging/shadow-e2e-integration'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "staging/shadow-e2e-integration"
+          SHADOW_START="$(aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query 'Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START' \
+            --output text)"
+          test "${SHADOW_START}" = "2026-08-19"
+          echo "Shadow staging preflight passed: forward start=${SHADOW_START}"
+
       - name: Deploy engine
+        if: github.ref_name != 'staging/shadow-e2e-integration'
         run: |
           aws lambda update-function-code \
             --function-name daily-alpha-engine \
@@ -73,6 +87,7 @@ jobs:
           aws lambda wait function-updated --function-name daily-alpha-engine
 
       - name: Deploy report service
+        if: github.ref_name != 'staging/shadow-e2e-integration'
         run: |
           aws lambda update-function-code \
             --function-name daily-alpha-report \
@@ -85,6 +100,7 @@ jobs:
           aws lambda wait function-updated --function-name daily-alpha-report
 
       - name: Deploy paper trader
+        if: github.ref_name != 'staging/shadow-e2e-integration'
         run: |
           aws lambda update-function-code \
             --function-name daily-alpha-paper-trader \
@@ -120,17 +136,49 @@ jobs:
             --handler lambda_handlers.pine_processor.lambda_handler
           aws lambda wait function-updated --function-name daily-alpha-pine-processor
 
-      - name: Verify deployed configuration
+      - name: Verify deployed Pine configuration
+        run: |
+          aws lambda get-function-configuration --function-name daily-alpha-pine-ingress \
+            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
+          aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
+            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus,ShadowForwardStart:Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START}'
+
+      - name: Verify shadow books remain paper-only and isolated
+        if: github.ref_name == 'staging/shadow-e2e-integration'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"LIST_SHADOW_PAPER_POSITIONS"}' \
+            /tmp/shadow-books.json
+          cat /tmp/shadow-books.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("/tmp/shadow-books.json").read_text())
+          assert result["ok"] is True
+          assert result["trading_authorized"] is False
+          assert result["live_trading_enabled"] is False
+          assert set(result["books"]) == {"PAPER_SHADOW_V24", "PAPER_SHADOW_V25"}
+          print("Shadow isolation preflight passed; no live authorization present.")
+          PY
+          SHADOW_START="$(aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query 'Environment.Variables.DAILY_ALPHA_SHADOW_FORWARD_START' \
+            --output text)"
+          test "${SHADOW_START}" = "2026-08-19"
+
+      - name: Verify full staging configuration
+        if: github.ref_name != 'staging/shadow-e2e-integration'
         run: |
           aws lambda get-function-configuration --function-name daily-alpha-engine \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
           aws lambda get-function-configuration --function-name daily-alpha-report \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
           aws lambda get-function-configuration --function-name daily-alpha-paper-trader \
-            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
-          aws lambda get-function-configuration --function-name daily-alpha-pine-ingress \
-            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
-          aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
 
       - name: Rehearse paper processor fail-closed safety gate
