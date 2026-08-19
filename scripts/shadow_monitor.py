@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""Summarize Daily Alpha SH24/SH25 paper-shadow state from read-only AWS evidence.
-
-This module never mutates trading state. It consumes the existing read-only shadow
-position response plus DynamoDB scan exports for the two isolated Pine-event books
-and emits one machine-readable status and one concise Markdown status.
-"""
+"""Summarize Daily Alpha SH24/SH25 paper-shadow state from read-only AWS evidence."""
 
 from __future__ import annotations
 
@@ -24,61 +18,12 @@ def _parse_time(value: Any) -> datetime | None:
     if value in (None, ""):
         return None
     try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value))
     except ValueError:
         return None
     if parsed.tzinfo is None:
         return None
     return parsed.astimezone(UTC)
-
-
-def _ddb_text(item: dict[str, Any], name: str) -> str | None:
-    value = item.get(name)
-    if not isinstance(value, dict):
-        return None
-    text = value.get("S")
-    return str(text) if text is not None else None
-
-
-def _json_text(item: dict[str, Any], name: str) -> dict[str, Any] | None:
-    raw = _ddb_text(item, name)
-    if not raw:
-        return None
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    return value if isinstance(value, dict) else None
-
-
-def decode_events(scan_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Decode the Pine-event fields used by monitoring from an AWS scan response."""
-    decoded: list[dict[str, Any]] = []
-    for item in scan_payload.get("Items", []):
-        if not isinstance(item, dict):
-            continue
-        ingress = _json_text(item, "ingress_json") or {}
-        result = _json_text(item, "result_json") or {}
-        execution = _json_text(item, "execution_json") or {}
-        decoded.append(
-            {
-                "signal_id": _ddb_text(item, "signal_id") or ingress.get("signal_id"),
-                "symbol": _ddb_text(item, "symbol") or ingress.get("symbol"),
-                "action": _ddb_text(item, "action") or ingress.get("action"),
-                "disposition": _ddb_text(item, "disposition")
-                or execution.get("disposition")
-                or result.get("disposition"),
-                "reason": _ddb_text(item, "reason")
-                or execution.get("reason")
-                or result.get("reason"),
-                "received_at": ingress.get("received_at") or result.get("received_at"),
-                "model_id": ingress.get("model_id"),
-                "forward_test_start": ingress.get("forward_test_start"),
-                "replay_max_price": ingress.get("replay_max_price"),
-                "execution": execution,
-            }
-        )
-    return decoded
 
 
 def _session_events(events: list[dict[str, Any]], session_date: str) -> list[dict[str, Any]]:
@@ -90,37 +35,44 @@ def _session_events(events: list[dict[str, Any]], session_date: str) -> list[dic
     return selected
 
 
-def _receipt(event: dict[str, Any]) -> dict[str, Any] | None:
-    execution = event.get("execution")
-    if not isinstance(execution, dict):
-        return None
-    receipt = execution.get("execution_receipt")
-    return receipt if isinstance(receipt, dict) else None
-
-
-def _safety_violations(
-    positions: dict[str, Any], events_by_account: dict[str, list[dict[str, Any]]]
-) -> list[str]:
+def _safety_violations(state: dict[str, Any]) -> list[str]:
     violations: list[str] = []
-    if positions.get("trading_authorized") is not False:
-        violations.append("POSITIONS_TRADING_AUTHORIZED_NOT_FALSE")
-    if positions.get("live_trading_enabled") is not False:
-        violations.append("POSITIONS_LIVE_TRADING_NOT_FALSE")
+    if state.get("trading_authorized") is not False:
+        violations.append("MONITOR_TRADING_AUTHORIZED_NOT_FALSE")
+    if state.get("live_trading_enabled") is not False:
+        violations.append("MONITOR_LIVE_TRADING_NOT_FALSE")
 
-    for account, events in events_by_account.items():
+    books = state.get("books")
+    if not isinstance(books, dict):
+        return [*violations, "MONITOR_BOOKS_MISSING"]
+
+    for account in SHADOW_ACCOUNTS:
+        book = books.get(account)
+        if not isinstance(book, dict):
+            violations.append(f"{account}:BOOK_MISSING")
+            continue
+        if book.get("scan_truncated") is True:
+            violations.append(f"{account}:EVENT_EVIDENCE_TRUNCATED")
+        events = book.get("events", [])
+        if not isinstance(events, list):
+            violations.append(f"{account}:EVENTS_INVALID")
+            continue
         for event in events:
-            execution = event.get("execution")
-            if not isinstance(execution, dict) or not execution:
+            if not isinstance(event, dict):
+                violations.append(f"{account}:EVENT_INVALID")
                 continue
-            if execution.get("trading_authorized", False) is not False:
-                violations.append(f"{account}:TRADING_AUTHORIZED_NOT_FALSE")
-            if execution.get("live_trading_enabled", False) is not False:
-                violations.append(f"{account}:LIVE_TRADING_NOT_FALSE")
-            paper_account = execution.get("paper_account_id")
+            model_id = event.get("model_id")
+            if model_id not in (None, "", account):
+                violations.append(f"{account}:MODEL_ID_MISMATCH:{model_id}")
+            paper_account = event.get("paper_account_id")
             if paper_account not in (None, "", account):
                 violations.append(f"{account}:EXECUTION_ACCOUNT_MISMATCH:{paper_account}")
-            receipt = _receipt(event)
-            if receipt:
+            if event.get("trading_authorized", False) is not False:
+                violations.append(f"{account}:TRADING_AUTHORIZED_NOT_FALSE")
+            if event.get("live_trading_enabled", False) is not False:
+                violations.append(f"{account}:LIVE_TRADING_NOT_FALSE")
+            receipt = event.get("execution_receipt")
+            if isinstance(receipt, dict):
                 receipt_account = receipt.get("account_id")
                 if receipt_account not in (None, "", account):
                     violations.append(
@@ -129,77 +81,79 @@ def _safety_violations(
     return sorted(set(violations))
 
 
-def summarize(
-    positions: dict[str, Any],
-    scans_by_account: dict[str, dict[str, Any]],
-    *,
-    now: datetime | None = None,
-) -> dict[str, Any]:
-    """Build the canonical read-only shadow status used by the scheduled monitor."""
+def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
+    """Build one exact read-only shadow status from GET_SHADOW_MONITOR_STATE."""
     timestamp = now or datetime.now(UTC)
     if timestamp.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     timestamp = timestamp.astimezone(UTC)
     session_date = timestamp.astimezone(NEW_YORK).date().isoformat()
+    violations = _safety_violations(state)
 
-    events_by_account = {
-        account: decode_events(scans_by_account.get(account, {}))
-        for account in SHADOW_ACCOUNTS
-    }
-    violations = _safety_violations(positions, events_by_account)
-    books = positions.get("books") if isinstance(positions.get("books"), dict) else {}
-
-    account_summaries: dict[str, Any] = {}
+    books = state.get("books") if isinstance(state.get("books"), dict) else {}
+    accounts: dict[str, Any] = {}
     total_session_events = 0
     total_session_fills = 0
+    total_armed = 0
     all_reasons: Counter[str] = Counter()
 
     for account in SHADOW_ACCOUNTS:
-        events = events_by_account[account]
-        session_events = _session_events(events, session_date)
-        receipts = [receipt for event in session_events if (receipt := _receipt(event))]
+        book = books.get(account, {}) if isinstance(books, dict) else {}
+        events = book.get("events", []) if isinstance(book, dict) else []
+        if not isinstance(events, list):
+            events = []
+        typed_events = [event for event in events if isinstance(event, dict)]
+        session_events = _session_events(typed_events, session_date)
         fills = [
-            event
-            for event in session_events
-            if isinstance(event.get("execution"), dict)
-            and event["execution"].get("disposition") == "EXECUTED_PAPER"
+            event for event in session_events if event.get("disposition") == "EXECUTED_PAPER"
         ]
-        reason_counts = Counter(
+        receipts = [
+            event["execution_receipt"]
+            for event in session_events
+            if isinstance(event.get("execution_receipt"), dict)
+        ]
+        reasons = Counter(
             str(event.get("reason") or event.get("disposition") or "UNKNOWN")
             for event in session_events
         )
-        all_reasons.update(reason_counts)
+        all_reasons.update(reasons)
         total_session_events += len(session_events)
         total_session_fills += len(fills)
-
+        armed_count = int(book.get("armed_count_visible", 0)) if isinstance(book, dict) else 0
+        total_armed += armed_count
         latest = max(
-            (_parse_time(event.get("received_at")) for event in events),
+            (_parse_time(event.get("received_at")) for event in typed_events),
             default=None,
             key=lambda value: value or datetime.min.replace(tzinfo=UTC),
         )
-        book = books.get(account, {}) if isinstance(books, dict) else {}
         open_positions = book.get("open_positions", []) if isinstance(book, dict) else []
         if not isinstance(open_positions, list):
             open_positions = []
 
-        account_summaries[account] = {
+        accounts[account] = {
             "open_count": int(book.get("open_count", len(open_positions)))
             if isinstance(book, dict)
             else len(open_positions),
             "open_positions": open_positions,
+            "armed_count": armed_count,
             "session_event_count": len(session_events),
             "session_fill_count": len(fills),
             "session_receipts": receipts,
-            "reason_counts": dict(sorted(reason_counts.items())),
+            "reason_counts": dict(sorted(reasons.items())),
             "latest_event_at": latest.isoformat() if latest else None,
+            "event_evidence_truncated": bool(book.get("scan_truncated"))
+            if isinstance(book, dict)
+            else True,
         }
 
     if violations:
-        diagnosis = "SAFETY_OR_ISOLATION_VIOLATION"
+        diagnosis = "SAFETY_OR_EVIDENCE_VIOLATION"
     elif total_session_fills:
         diagnosis = "TRADES_RECORDED"
     elif total_session_events:
         diagnosis = "STRATEGY_EVENTS_RECEIVED_NO_PAPER_FILL"
+    elif total_armed:
+        diagnosis = "ARMED_WAITING_FOR_REVALIDATION"
     else:
         diagnosis = "NO_STRATEGY_EVENT_RECEIVED"
 
@@ -210,11 +164,12 @@ def summarize(
         "diagnosis": diagnosis,
         "total_session_events": total_session_events,
         "total_session_fills": total_session_fills,
+        "total_armed": total_armed,
         "blocker_counts": dict(sorted(all_reasons.items())),
-        "accounts": account_summaries,
+        "accounts": accounts,
         "safety": {
-            "trading_authorized": False if not violations else positions.get("trading_authorized"),
-            "live_trading_enabled": False if not violations else positions.get("live_trading_enabled"),
+            "trading_authorized": False if not violations else state.get("trading_authorized"),
+            "live_trading_enabled": False if not violations else state.get("live_trading_enabled"),
             "violations": violations,
         },
         "tradingview_configuration_frozen": True,
@@ -223,7 +178,7 @@ def summarize(
 
 
 def render_markdown(summary: dict[str, Any]) -> str:
-    """Render one concise, rolling issue/status comment."""
+    """Render a concise rolling issue comment and workflow summary."""
     lines = [
         "<!-- daily-alpha-shadow-monitor -->",
         "## Daily Alpha PAPER Shadow Monitor",
@@ -232,6 +187,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"**Diagnosis:** `{summary['diagnosis']}`  ",
         f"**Strategy events today:** {summary['total_session_events']}  ",
         f"**Paper fills today:** {summary['total_session_fills']}  ",
+        f"**Currently ARMED:** {summary['total_armed']}  ",
         "**Safety:** `trading_authorized=false`, `live_trading_enabled=false`",
         "",
     ]
@@ -242,6 +198,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
             [
                 f"### {account}",
                 f"Open positions: **{state['open_count']}**  ",
+                f"ARMED: **{state['armed_count']}**  ",
                 f"Events today: **{state['session_event_count']}**  ",
                 f"Fills today: **{state['session_fill_count']}**  ",
                 f"Latest durable event: `{state['latest_event_at'] or 'none observed'}`",
@@ -271,14 +228,14 @@ def render_markdown(summary: dict[str, Any]) -> str:
         lines.extend(
             [
                 "### Exact no-fill / outcome evidence",
-                "No SH24/SH25 strategy-origin event reached the durable staging event store for this ET session. This is an observable no-event state, not an invented trade rejection. Alert/watchlist configuration remains frozen.",
+                "No SH24/SH25 strategy-origin event reached the durable staging store for this ET session. This is an observed no-event state, not an invented trade rejection. TradingView configuration remains frozen.",
                 "",
             ]
         )
 
     violations = summary["safety"]["violations"]
     if violations:
-        lines.extend(["### SAFETY VIOLATION", *[f"- `{item}`" for item in violations], ""])
+        lines.extend(["### FAIL-CLOSED MONITOR VIOLATION", *[f"- `{item}`" for item in violations], ""])
 
     lines.append(f"Last automated snapshot: `{summary['snapshot_at']}`")
     return "\n".join(lines) + "\n"
@@ -287,26 +244,18 @@ def render_markdown(summary: dict[str, Any]) -> str:
 def _load(path: str) -> dict[str, Any]:
     value = json.loads(Path(path).read_text())
     if not isinstance(value, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise TypeError(f"{path} must contain a JSON object")
     return value
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--positions", required=True)
-    parser.add_argument("--events-v24", required=True)
-    parser.add_argument("--events-v25", required=True)
+    parser.add_argument("--monitor-state", required=True)
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--output-md", required=True)
     args = parser.parse_args()
 
-    summary = summarize(
-        _load(args.positions),
-        {
-            "PAPER_SHADOW_V24": _load(args.events_v24),
-            "PAPER_SHADOW_V25": _load(args.events_v25),
-        },
-    )
+    summary = summarize(_load(args.monitor_state))
     Path(args.output_json).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     Path(args.output_md).write_text(render_markdown(summary))
     return 0 if summary["ok"] else 2
