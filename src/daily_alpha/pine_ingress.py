@@ -12,7 +12,7 @@ import hmac
 import json
 import math
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from .signals import PineSignal, SignalAction, parse_pine_signal
@@ -53,6 +53,7 @@ class PineIngressRecord:
     position_fraction: float | None = None
     runner_stage: str | None = None
     model_id: str | None = None
+    forward_test_start: str | None = None
     stock_stop_price: float | None = None
     average_daily_dollar_volume: float | None = None
     entry_type: str | None = None
@@ -137,6 +138,11 @@ def _record_from_signal(
         EARNINGS_GAP_CLASSES,
     )
     model_id = _optional_model_id(payload.get("model_id"), signal.strategy_version)
+    forward_test_start = _forward_test_start(
+        payload.get("forward_test_start"),
+        model_id=model_id,
+        bar_time=signal.bar_time,
+    )
     earnings_gap_pct = None
     earnings_gap_atr = None
     earnings_close_location = None
@@ -220,6 +226,7 @@ def _record_from_signal(
         position_fraction=signal.position_fraction,
         runner_stage=signal.runner_stage,
         model_id=model_id,
+        forward_test_start=forward_test_start,
         stock_stop_price=stock_stop_price,
         average_daily_dollar_volume=average_daily_dollar_volume,
         entry_type=entry_type,
@@ -249,6 +256,21 @@ def _optional_model_id(value: Any, strategy_version: str) -> str | None:
             f"model_id {model_id} does not match strategy version {strategy_version}"
         )
     return model_id
+
+
+def _forward_test_start(value: Any, *, model_id: str | None, bar_time: datetime) -> str | None:
+    if model_id is None:
+        return None
+    text = str(value or "").strip()
+    if not text:
+        raise PineIngressError("forward_test_start is required for shadow models")
+    try:
+        start = date.fromisoformat(text)
+    except ValueError as exc:
+        raise PineIngressError("forward_test_start must be YYYY-MM-DD") from exc
+    if bar_time.astimezone(UTC).date() < start:
+        raise PineIngressError("shadow signal predates forward_test_start")
+    return start.isoformat()
 
 
 def _optional_tag(value: Any, name: str, allowed: set[str]) -> str | None:
