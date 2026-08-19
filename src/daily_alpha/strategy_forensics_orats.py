@@ -9,12 +9,12 @@ can be tied back to the exact historical rows used.
 
 from __future__ import annotations
 
+import json
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, time
 from hashlib import sha256
-import json
-import math
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -76,9 +76,7 @@ def fetch_orats_forensics_bars(
         router=router,
     )
     selected_rows = tuple(
-        row
-        for row in history.daily_rows
-        if start <= _trade_date(row) <= end
+        row for row in history.daily_rows if start <= _trade_date(row) <= end
     )
     bars = price_bars_from_orats_daily_rows(
         selected_rows,
