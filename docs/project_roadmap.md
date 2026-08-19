@@ -8,6 +8,21 @@ Daily Alpha remains a research and **paper-trading** platform. Canonical v2.4 us
 
 The current production-research split is intentional: stable v2.4 paper behavior stays distinct from new R2 Long-Runner, portfolio-overlay, options, sector-ETF, SGOV, downside-risk and commercialization ideas, which remain disconnected research/draft work unless separately approved.
 
+## Quant platform expansion
+
+The institutional multi-strategy expansion is now tracked in `docs/quant_platform_expansion_roadmap.md`. It adds eight evidence-gated platform initiatives:
+
+1. Factor Attribution Engine.
+2. Strategy Forensics & Model Health Engine.
+3. Portfolio Risk-Contribution Engine.
+4. Relative Value / Statistical Arbitrage Engine.
+5. Stress & Tail-Risk Engine.
+6. Implementation Cost & Market-Impact Engine.
+7. Machine-Learning Meta-Ranker.
+8. Cross-Asset Regime Engine.
+
+These initiatives are additive to the existing roadmap, remain research/paper-only, and cannot bypass deterministic signal, risk, instrument-quality, execution, audit, or model-governance controls. The build order deliberately creates clean labeled factor/execution/model-health data before allowing ML to influence research ranking.
+
 ## Workstream A — Paper-trading and staging readiness
 
 ### Completed / landed
@@ -273,68 +288,12 @@ Required:
 - research/staging/production separation;
 - least-privilege roles and secret lifecycle;
 - no repository/customer-output secrets;
-- tenant isolation and privileged-action audit;
-- MFA/strong authentication for privileged/admin access;
-- privacy-minimized analytics and retention/deletion hooks;
-- monitored auth/authorization/secret-access anomalies;
-- recovery and credential-rotation runbooks.
+- tenant isolation and authorization tests;
+- data retention/deletion controls;
+- incident and restore evidence;
+- explicit separation between research publication and trading execution;
+- future production promotion must remain gated by evidence and separate approval.
 
-### Legal/compliance-readiness and claims
-Track: #86 / #97 / PR #96.
+## Safety boundary
 
-Repository controls must remain questions/gates, not legal conclusions. Before any public launch or performance marketing require:
-- disclosure inventory by channel;
-- terms/privacy/support requirements;
-- marketing-claim evidence registry;
-- hypothetical/backtest/paper labeling rules;
-- feature-change triggers that reopen external review;
-- external legal/compliance review reference for the actual product scope.
-
-No repository document may represent the service as approved, registered, exempt, certified or compliant without independent evidence and applicable external review.
-
-### Website, positioning, pricing and analytics
-Track: #107 / PR #108, #88 / PR #101, PR #117.
-
-Plan but do not publish:
-- brand hierarchy and consistent visual/readability standards;
-- ideal customer / non-target user / product promise;
-- home / how-it-works / sample report / methodology / evidence / pricing / disclosures / privacy-security / FAQ-support / sign-in-account surfaces;
-- provider-neutral pricing hypotheses and conservative unit economics;
-- acquisition → account → acknowledgement → subscription → first report → first-week activation → retained subscriber → cancellation funnel;
-- privacy-minimized activation/engagement/retention/churn/feedback events;
-- commercial beta launch and rollback/no-launch checklist.
-
-## Commercial beta launch gate
-
-Commercial beta is NO-GO until all are evidenced:
-1. reproducible research outputs from immutable/versioned inputs;
-2. performance bases cannot mix;
-3. benchmark/cost/option-mark methodology is versioned and tested;
-4. report delivery is monitored and replay-safe;
-5. authentication/entitlement/tenant isolation tests pass;
-6. billing events are idempotent and reconciled with entitlements;
-7. customer-facing provenance/replay evidence exists;
-8. security/privacy launch evidence passes;
-9. backup/restore and incident-disable drills pass;
-10. disclosures/terms/privacy/support requirements are complete for external review;
-11. applicable external legal/compliance review is documented for the exact launch scope;
-12. support owner, customer feedback loop and rollback path exist;
-13. no public claim exceeds its evidence/review status;
-14. no live trading, brokerage execution or personalized managed-account functionality is implied or enabled.
-
-## Long-term Convex Ridge path
-
-Track: #118.
-
-Progression remains deliberately staged:
-research system → forward paper fund → proprietary-capital readiness → separately approved proprietary live track record → institutional manager/fund readiness → only then any outside-capital consideration.
-
-Daily Alpha Research can become a commercial research/distribution product without forcing changes that weaken the investment process or collapsing the separation between research, paper, actual and hypothetical evidence.
-
-## Non-negotiable safety boundaries
-
-- No live trading is authorized.
-- No disconnected research rule self-promotes into paper/live execution.
-- No stale ORATS/data failure silently becomes stock, option, leveraged ETF or other exposure.
-- No leverage increase occurs merely because volatility is low or idle capital exists.
-- No paid service, public website, customer outreach, public performance claim, production AWS deployment, real TradingView alert mutation, capital deployment, fundraising or legal/compliance conclusion occurs without the required explicit approval and review gates.
+This roadmap does not authorize AWS production deployment, TradingView mutation, paid-service activation, customer outreach, public publishing, capital deployment, fundraising, fund formation, legal/compliance claims or live trading. Live brokerage execution remains disabled.
