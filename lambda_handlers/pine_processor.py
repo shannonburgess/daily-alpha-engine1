@@ -13,6 +13,10 @@ from daily_alpha.pine_processor import (
     PineProcessorResult,
     process_sqs_batch,
 )
+from daily_alpha.shadow_routing import (
+    ShadowRoutedPineEventStore,
+    ShadowRoutedPinePaperExecutor,
+)
 
 
 def lambda_handler(event, context):
@@ -81,6 +85,9 @@ def lambda_handler(event, context):
                 "request_id": getattr(context, "aws_request_id", None),
             }
 
-    store = DynamoPineEventStore()
-    executor = ReconciledAwsPinePaperExecutor()
+    # Authenticated TradingView SQS events use explicit model routing when a
+    # shadow model_id is present. Untagged legacy traffic remains on the default
+    # paper account, so enabling this code cannot silently migrate existing state.
+    store = ShadowRoutedPineEventStore()
+    executor = ShadowRoutedPinePaperExecutor()
     return process_sqs_batch(event, store, executor=executor)
