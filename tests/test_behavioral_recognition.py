@@ -5,7 +5,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from daily_alpha.behavioral_change import BehavioralSnapshot
+from daily_alpha.behavioral_factors import build_behavioral_research_factors
 from daily_alpha.behavioral_recognition import (
+    InformationImbalanceResult,
     RecognitionFamily,
     RecognitionStatus,
     WallStreetRecognitionObservation,
@@ -69,6 +71,48 @@ def test_two_independent_recognition_families_enable_information_imbalance():
     assert result.promotion_authorized is False
     assert result.trading_authorized is False
     assert result.live_trading_enabled is False
+
+
+def test_information_imbalance_can_flow_into_named_research_factor_only():
+    wall_street = build_wall_street_recognition_snapshot(
+        [
+            recognition(RecognitionFamily.ANALYST_REVISIONS, 20.0),
+            recognition(RecognitionFamily.CONSENSUS_ESTIMATES, 40.0),
+        ],
+        ticker="NVDA",
+        as_of=AS_OF,
+    )
+    behavior = behavioral_snapshot()
+    imbalance = build_information_imbalance(behavior, wall_street)
+    factors = build_behavioral_research_factors(
+        behavior,
+        information_imbalance=imbalance,
+    )
+
+    assert factors.information_imbalance_score == 56.0
+    assert "INFORMATION_IMBALANCE_SCORE" not in dict(factors.unavailable_reasons)
+    assert factors.research_only is True
+    assert factors.trading_authorized is False
+    assert factors.live_trading_enabled is False
+
+
+def test_named_factor_rejects_mismatched_information_imbalance_binding():
+    behavior = behavioral_snapshot()
+    mismatched = InformationImbalanceResult(
+        ticker="AMD",
+        as_of=AS_OF,
+        behavioral_change_score=80.0,
+        wall_street_recognition_score=30.0,
+        information_imbalance_score=56.0,
+        unrecognized_fraction=0.7,
+        reason="",
+    )
+
+    with pytest.raises(ValueError, match="information imbalance ticker mismatch"):
+        build_behavioral_research_factors(
+            behavior,
+            information_imbalance=mismatched,
+        )
 
 
 def test_multiple_providers_do_not_overweight_one_recognition_family():
