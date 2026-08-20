@@ -177,8 +177,9 @@ def test_calendar_outside_coverage_fails_closed() -> None:
 
 
 def test_naive_now_is_rejected() -> None:
+    naive = datetime(2026, 8, 20, 14, 17, tzinfo=UTC).replace(tzinfo=None)
     with pytest.raises(ValueError, match="timezone-aware"):
-        evaluate_replay_scheduler([], now=datetime(2026, 8, 20, 14, 17))
+        evaluate_replay_scheduler([], now=naive)
 
 
 def test_exact_direct_cli_invocation_works(tmp_path: Path) -> None:
