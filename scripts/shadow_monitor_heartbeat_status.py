@@ -1,8 +1,9 @@
 """Evaluate whether the canonical PAPER-shadow monitor is actually running on schedule.
 
 The primary monitor can only diagnose AWS state after GitHub starts it. This watchdog
-closes the remaining gap where a missed scheduler invocation could leave an older
-green issue comment looking current. It never talks to AWS or TradingView.
+closes the remaining gap where a missed scheduler invocation or a monitor run on stale
+monitoring source could leave an older green issue comment looking current. It never
+talks to AWS or TradingView.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from typing import Any
 FRESH_SUCCESS_SECONDS = 95 * 60
 MAX_PENDING_SECONDS = 60 * 60
 PENDING_STATUSES = frozenset({"queued", "in_progress", "waiting", "requested", "pending"})
+MONITOR_HEAD_UNAVAILABLE = "__MONITOR_HEAD_UNAVAILABLE__"
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class HeartbeatStatus:
     age_seconds: float | None
     checked_at: str
     reason: str
+    source_drift_paths: tuple[str, ...] = ()
     tradingview_configuration_frozen: bool = True
     tradingview_mutation_attempted: bool = False
     runtime_safety_state: str = "UNVERIFIED_BY_HEARTBEAT"
@@ -44,10 +47,12 @@ def evaluate_heartbeat(
     runs: list[dict[str, Any]],
     *,
     now: datetime,
+    source_drift_paths: tuple[str, ...] = (),
 ) -> HeartbeatStatus:
-    """Classify scheduler health without reusing an old AWS state snapshot."""
+    """Classify scheduler health without reusing old or stale-code AWS evidence."""
     _require_aware(now, "now")
     checked = now.astimezone(UTC)
+    drift_paths = tuple(sorted({str(path).strip() for path in source_drift_paths if str(path).strip()}))
     latest = _latest_run(runs)
     if latest is None:
         return _status(
@@ -55,6 +60,7 @@ def evaluate_heartbeat(
             diagnosis="MONITOR_HEARTBEAT_MISSING",
             needs_issue_update=True,
             reason="No canonical monitor workflow run is visible on main.",
+            source_drift_paths=drift_paths,
         )
 
     created = _parse_aware(latest.get("createdAt"))
@@ -70,6 +76,7 @@ def evaluate_heartbeat(
             needs_issue_update=True,
             latest=latest,
             reason="Latest canonical monitor run has no valid timezone-aware timestamp.",
+            source_drift_paths=drift_paths,
         )
 
     age = (checked - reference).total_seconds()
@@ -81,8 +88,45 @@ def evaluate_heartbeat(
             latest=latest,
             age_seconds=age,
             reason="Latest canonical monitor timestamp is implausibly in the future.",
+            source_drift_paths=drift_paths,
         )
     age = max(0.0, age)
+
+    if run_status == "completed" and conclusion and conclusion != "success":
+        return _status(
+            checked,
+            diagnosis="MONITOR_COMPLETED_NON_SUCCESS",
+            needs_issue_update=False,
+            latest=latest,
+            age_seconds=age,
+            reason=(
+                "Latest monitor completed non-successfully; the workflow_run failure receipt "
+                "owns the exact rolling issue status and heartbeat will not overwrite it."
+            ),
+            source_drift_paths=drift_paths,
+        )
+
+    if drift_paths:
+        if MONITOR_HEAD_UNAVAILABLE in drift_paths:
+            reason = (
+                "The watchdog could not resolve the latest canonical monitor head commit, so "
+                "it cannot prove that the latest run used the current monitor-critical source."
+            )
+        else:
+            reason = (
+                "Current main contains monitor-critical source changes that were not present "
+                "in the latest canonical monitor run. A fresh monitor run must execute the "
+                "current controls before prior green AWS evidence can be treated as current."
+            )
+        return _status(
+            checked,
+            diagnosis="MONITOR_SOURCE_DRIFT",
+            needs_issue_update=True,
+            latest=latest,
+            age_seconds=age,
+            reason=reason,
+            source_drift_paths=drift_paths,
+        )
 
     if run_status in PENDING_STATUSES:
         if age <= MAX_PENDING_SECONDS:
@@ -111,7 +155,10 @@ def evaluate_heartbeat(
                 needs_issue_update=False,
                 latest=latest,
                 age_seconds=age,
-                reason="Latest canonical monitor completed successfully within the freshness window.",
+                reason=(
+                    "Latest canonical monitor completed successfully within the freshness "
+                    "window using the current monitor-critical source."
+                ),
                 ok=True,
             )
         return _status(
@@ -121,19 +168,6 @@ def evaluate_heartbeat(
             latest=latest,
             age_seconds=age,
             reason="Latest successful canonical monitor run is older than 95 minutes.",
-        )
-
-    if run_status == "completed" and conclusion and conclusion != "success":
-        return _status(
-            checked,
-            diagnosis="MONITOR_COMPLETED_NON_SUCCESS",
-            needs_issue_update=False,
-            latest=latest,
-            age_seconds=age,
-            reason=(
-                "Latest monitor completed non-successfully; the workflow_run failure receipt "
-                "owns the exact rolling issue status and heartbeat will not overwrite it."
-            ),
         )
 
     return _status(
@@ -158,6 +192,7 @@ def render_markdown(status: HeartbeatStatus) -> str:
         f"Latest run status/conclusion: `{status.latest_run_status or 'none'}` / "
         f"`{status.latest_run_conclusion or 'none'}`  "
     )
+    source_drift = ", ".join(status.source_drift_paths) or "none"
     lines = [
         "<!-- daily-alpha-shadow-monitor -->",
         "## Daily Alpha PAPER Shadow Monitor",
@@ -178,6 +213,7 @@ def render_markdown(status: HeartbeatStatus) -> str:
         f"Latest run created: `{status.latest_run_created_at or 'none'}`  ",
         f"Latest run updated: `{status.latest_run_updated_at or 'none'}`  ",
         f"Latest run head SHA: `{status.latest_run_head_sha or 'none'}`  ",
+        f"Monitor-critical source drift: `{source_drift}`  ",
         f"Heartbeat age: `{age}`  ",
         f"Checked at: `{status.checked_at}`",
         "",
@@ -221,6 +257,7 @@ def _status(
     latest: dict[str, Any] | None = None,
     age_seconds: float | None = None,
     ok: bool = False,
+    source_drift_paths: tuple[str, ...] = (),
 ) -> HeartbeatStatus:
     latest = latest or {}
     return HeartbeatStatus(
@@ -238,6 +275,7 @@ def _status(
         age_seconds=age_seconds,
         checked_at=checked.isoformat(),
         reason=reason,
+        source_drift_paths=source_drift_paths,
     )
 
 
@@ -255,9 +293,19 @@ def _require_aware(value: datetime, name: str) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs-json", type=Path, required=True)
+    parser.add_argument("--source-drift-json", type=Path)
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--output-md", type=Path, required=True)
     return parser.parse_args()
+
+
+def _load_source_drift(path: Path | None) -> tuple[str, ...]:
+    if path is None:
+        return ()
+    raw = json.loads(path.read_text())
+    if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
+        raise TypeError("source drift JSON must contain a list of paths")
+    return tuple(raw)
 
 
 def main() -> int:
@@ -265,7 +313,11 @@ def main() -> int:
     raw = json.loads(args.runs_json.read_text())
     if not isinstance(raw, list):
         raise TypeError("runs JSON must contain a list")
-    status = evaluate_heartbeat(raw, now=datetime.now(UTC))
+    status = evaluate_heartbeat(
+        raw,
+        now=datetime.now(UTC),
+        source_drift_paths=_load_source_drift(args.source_drift_json),
+    )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(status.__dict__, indent=2, sort_keys=True) + "\n")
     args.output_md.write_text(render_markdown(status))
