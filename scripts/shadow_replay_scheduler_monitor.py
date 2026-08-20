@@ -91,7 +91,9 @@ def evaluate_replay_scheduler(
             reason="The first replay-health checkpoint is not due before the NYSE core session.",
         )
 
-    scheduled = _scheduled_runs_for_session(runs, session_date=date.fromisoformat(session.session_date_et))
+    scheduled = _scheduled_runs_for_session(
+        runs, session_date=date.fromisoformat(session.session_date_et)
+    )
 
     if session.session_phase == "REGULAR_SESSION":
         if local_now.time().replace(tzinfo=None) < FIRST_REPLAY_HEALTH_CHECK:
@@ -368,8 +370,10 @@ def _scheduled_runs_for_session(
         if not isinstance(run, dict) or _text(run.get("event")).lower() != "schedule":
             continue
         created = _parse_aware(run.get("createdAt"))
+        # A malformed createdAt can never prove that a scheduled run belongs to the
+        # current ET session. Drop it rather than allowing a fresh updatedAt to mask
+        # a missing scheduler invocation.
         if created is None:
-            result.append(run)
             continue
         if created.astimezone(NEW_YORK).date() == session_date:
             result.append(run)
