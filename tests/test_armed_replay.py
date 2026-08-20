@@ -138,7 +138,12 @@ def test_durable_worker_scans_only_armed_event_contract_and_persists_outcome():
     store = FakeStore(ingress)
     executor = FakeExecutor()
 
-    armed = list_armed_ingress(store, limit=5, now=NOW)
+    armed = list_armed_ingress(
+        store,
+        limit=5,
+        now=NOW,
+        claimable_only=True,
+    )
     assert len(armed) == 1
     assert armed[0]["_persisted_signal_id"] == "AMD-ENTRY-1"
     scan = store.client.scans[0]
