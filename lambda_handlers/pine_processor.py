@@ -10,6 +10,10 @@ from daily_alpha.armed_replay import (
     replay_armed_events,
 )
 from daily_alpha.dynamo_ledger import DynamoPaperLedger
+from daily_alpha.equity_liquidity import (
+    LiquidityGatedPaperExecutor,
+    S3ActionableLiquidityStore,
+)
 from daily_alpha.execution_universe import build_scanner_ingress
 from daily_alpha.pine_paper_orchestrator import _all_open_trades
 from daily_alpha.pine_processor import (
@@ -29,6 +33,10 @@ from daily_alpha.shadow_routing import (
 )
 
 
+def _liquidity_store() -> S3ActionableLiquidityStore:
+    return S3ActionableLiquidityStore()
+
+
 def _replay_all_paper_accounts(*, now: datetime, limit: int) -> dict:
     accounts = [default_paper_account_id(), PAPER_SHADOW_V24, PAPER_SHADOW_V25]
     remaining = limit
@@ -41,7 +49,7 @@ def _replay_all_paper_accounts(*, now: datetime, limit: int) -> dict:
         if remaining <= 0:
             break
         store = DynamoPineEventStore(account_id=account_id)
-        executor = ShadowRoutedPinePaperExecutor()
+        executor = ShadowRoutedPinePaperExecutor(liquidity_store=_liquidity_store())
         result = replay_armed_events(store, executor, now=now, limit=remaining)
         scanned.append(account_id)
         found = int(result.get("armed_found", 0))
@@ -218,7 +226,10 @@ def lambda_handler(event, context):
             )
             store = DynamoPineEventStore()
             persisted = store.persist(ingress, processor_result)
-            executor = ReceiptReconciledAwsPinePaperExecutor()
+            executor = LiquidityGatedPaperExecutor(
+                ReceiptReconciledAwsPinePaperExecutor(),
+                _liquidity_store(),
+            )
             execution = executor.execute(ingress, now=now)
             store.mark_execution(processor_result.signal_id, execution)
             return {
@@ -247,9 +258,6 @@ def lambda_handler(event, context):
                 "request_id": getattr(context, "aws_request_id", None),
             }
 
-    # Authenticated TradingView SQS events route tagged v2.4/v2.5 traffic into
-    # isolated receipt-aware shadow books. Untagged legacy traffic stays on the
-    # configured default paper account.
     store = ShadowRoutedPineEventStore()
-    executor = ShadowRoutedPinePaperExecutor()
+    executor = ShadowRoutedPinePaperExecutor(liquidity_store=_liquidity_store())
     return process_sqs_batch(event, store, executor=executor)
