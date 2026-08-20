@@ -91,10 +91,16 @@ jobs:
         id: shortlist
         shell: python
         run: |
+          import json
           import os
           from datetime import UTC, datetime
           from pathlib import Path
 
+          from daily_alpha.buy_continuity import (
+              apply_liquidity_snapshot,
+              build_buy_continuity_from_csv_directory,
+              write_buy_continuity_output,
+          )
           from daily_alpha.equity_liquidity import (
               CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
               prepare_actionable_liquidity_inputs,
@@ -115,6 +121,7 @@ jobs:
           from daily_alpha.white_house_policy import fetch_white_house_investments
 
           previous_raw, current_raw = discover_daily_pair("data/incoming")
+          continuity = build_buy_continuity_from_csv_directory("data/incoming")
           now = datetime.now(UTC)
           liquidity = prepare_actionable_liquidity_inputs(
               previous_raw,
@@ -122,6 +129,11 @@ jobs:
               output_dir="data/liquidity-filtered",
               as_of=now,
               threshold=CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
+          )
+          continuity = apply_liquidity_snapshot(
+              continuity,
+              json.loads(liquidity.snapshot_path.read_text(encoding="utf-8")),
+              expected_source_file=current_raw.name,
           )
           previous, current = liquidity.previous_path, liquidity.current_path
 
@@ -178,9 +190,25 @@ jobs:
               }
           )
           outputs = write_research_shortlist_outputs("data/shortlist", result)
+          outputs["buy_continuity_json"] = write_buy_continuity_output(
+              "data/shortlist/buy_continuity.json",
+              continuity,
+          )
           liquidity_destination = Path("data/shortlist/company_liquidity_eligibility.json")
           liquidity_destination.write_bytes(liquidity.snapshot_path.read_bytes())
           outputs["company_liquidity_eligibility_json"] = liquidity_destination
+
+          active_continuity = [item for item in continuity if item.active_buy]
+          eligible_continuity = [
+              item
+              for item in active_continuity
+              if item.research_eligibility == "ACTIVE_BUY_ELIGIBLE"
+          ]
+          liquidity_filtered_continuity = [
+              item
+              for item in active_continuity
+              if item.research_eligibility == "ACTIVE_BUY_LIQUIDITY_FILTERED"
+          ]
 
           print(
               f"Compared {result.previous_file} -> {result.current_file}; "
@@ -195,6 +223,12 @@ jobs:
               f"found {summary['qualified_option_count']} qualified option setups, matched "
               f"{summary['smart_money_matched_candidates']} smart-money candidates and "
               f"{summary['trump_policy_matched_candidates']} policy-watch candidates."
+          )
+          print(
+              "Persistent BUY continuity: "
+              f"active={len(active_continuity)} eligible={len(eligible_continuity)} "
+              f"liquidity_filtered={len(liquidity_filtered_continuity)} "
+              f"observed_symbols={len(continuity)}"
           )
           print(
               "Smart-money leaders: Congress="
@@ -224,6 +258,12 @@ jobs:
               handle.write(f"current_file={result.current_file}\n")
               handle.write(f"ranked_count={summary['actionable_ranked_count']}\n")
               handle.write(f"qualified_count={summary['qualified_option_count']}\n")
+              handle.write(f"persistent_buy_count={len(active_continuity)}\n")
+              handle.write(f"eligible_persistent_buy_count={len(eligible_continuity)}\n")
+              handle.write(
+                  "liquidity_filtered_persistent_buy_count="
+                  f"{len(liquidity_filtered_continuity)}\n"
+              )
               handle.write(
                   f"liquidity_filtered_count={summary['excluded_liquidity_filtered']}\n"
               )
@@ -324,6 +364,7 @@ jobs:
             echo "- Previous OVTLYR: ${{ steps.shortlist.outputs.previous_file }}"
             echo "- Current OVTLYR: ${{ steps.shortlist.outputs.current_file }}"
             echo "- Actionable ranked candidates: ${{ steps.shortlist.outputs.ranked_count }}"
+            echo "- Persistent BUY continuity: ${{ steps.shortlist.outputs.persistent_buy_count }} active / ${{ steps.shortlist.outputs.eligible_persistent_buy_count }} eligible / ${{ steps.shortlist.outputs.liquidity_filtered_persistent_buy_count }} liquidity-filtered"
             echo "- Company liquidity gate: 30D average volume strictly > 1,500,000 shares"
             echo "- Liquidity-filtered companies: ${{ steps.shortlist.outputs.liquidity_filtered_count }}"
             echo "- Companies missing valid average-volume evidence: ${{ steps.shortlist.outputs.liquidity_missing_count }}"
@@ -337,6 +378,7 @@ jobs:
             echo "- ORATS exclusions with no 45-75 DTE chain: ${{ steps.shortlist.outputs.orats_no_dte_count }}"
             echo "- Qualified 45-75 DTE option setups in ORATS-enriched top 20: ${{ steps.shortlist.outputs.qualified_count }}"
             echo "- Liquidity evidence: company_liquidity_eligibility.json is published beside shortlist.json for PAPER entry enforcement."
+            echo "- ACTIVE_BUY evidence: buy_continuity.json is published beside the same shortlist and consumes the exact current liquidity contract."
             echo "- Outputs: newsletter HTML, research shortlist CSV, paper ledger CSV, sector rotation CSV, report manifest JSON."
             echo "- Latest S3 prefix: s3://${STAGING_BUCKET}/daily-alpha/outputs/latest/"
             echo "- Research/paper only; live trading remains disabled."
