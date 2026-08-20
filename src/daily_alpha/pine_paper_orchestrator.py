@@ -377,7 +377,7 @@ def _regular_execution_window(value: datetime) -> bool:
     if local.weekday() >= 5:
         return False
     clock = local.time().replace(tzinfo=None)
-    return time(9, 40) <= clock < time(15, 50)
+    return time(9, 30) <= clock < time(16, 0)
 
 
 def _paper_nav_from_env() -> float:
