@@ -1,7 +1,7 @@
-from pathlib import Path
+import pathlib
 
 
-WORKFLOW = Path(".github/workflows/replay-paper-armed-signals.yml")
+WORKFLOW = pathlib.Path(".github/workflows/replay-paper-armed-signals.yml")
 
 
 def test_replay_workflow_is_staging_paper_only_and_session_gated():
