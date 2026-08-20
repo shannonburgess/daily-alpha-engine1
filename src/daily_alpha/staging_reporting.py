@@ -94,6 +94,11 @@ class AwsStagingReportPublisher:
         )
         if not isinstance(sector_rotation, list):
             raise StagingReportError("SECTOR_ROTATION_JSON_MUST_BE_ARRAY")
+        classifications = self._json_object(
+            f"{self.SHORTLIST_PREFIX}/classifications.json"
+        )
+        if not isinstance(classifications, list):
+            raise StagingReportError("CLASSIFICATIONS_JSON_MUST_BE_ARRAY")
         shortlist_csv = self._bytes(f"{self.SHORTLIST_PREFIX}/shortlist.csv")
 
         ledger_rows = self._paper_ledger_rows()
@@ -130,6 +135,12 @@ class AwsStagingReportPublisher:
             raise StagingReportError(
                 "NEWSLETTER_QUALITY_FAILED:" + ",".join(rendered.quality_warnings)
             )
+        classification_overview = _classification_overview_section(classifications)
+        if "<main>" not in rendered.html:
+            raise StagingReportError("NEWSLETTER_MAIN_CONTAINER_MISSING")
+        newsletter_html = rendered.html.replace(
+            "<main>", f"<main>{classification_overview}", 1
+        )
 
         date_key = local.date().isoformat()
         stamp = timestamp.strftime("%Y%m%dT%H%M%SZ")
@@ -139,7 +150,7 @@ class AwsStagingReportPublisher:
         latest_prefix = f"{self.OUTPUT_PREFIX}/latest"
 
         outputs: dict[str, tuple[bytes, str]] = {
-            "newsletter.html": (rendered.html.encode("utf-8"), "text/html; charset=utf-8"),
+            "newsletter.html": (newsletter_html.encode("utf-8"), "text/html; charset=utf-8"),
             "research_shortlist.csv": (shortlist_csv, "text/csv; charset=utf-8"),
             "paper_ledger.csv": (ledger_csv, "text/csv; charset=utf-8"),
             "sector_rotation.csv": (sector_csv, "text/csv; charset=utf-8"),
@@ -151,6 +162,8 @@ class AwsStagingReportPublisher:
             "generated_at": timestamp.isoformat(),
             "run_id": run_id,
             "research_candidate_count": len(shortlist),
+            "classification_count": len(classifications),
+            "classification_counts": _classification_counts(classifications),
             "qualified_option_count": int(summary.get("qualified_option_count", 0) or 0),
             "paper_ledger_row_count": len(ledger_rows),
             "open_paper_position_count": sum(
@@ -237,6 +250,83 @@ class AwsStagingReportPublisher:
             )
         except Exception as exc:
             raise StagingReportError(f"S3_WRITE_FAILED:{key}") from exc
+
+
+_CLASSIFICATION_ORDER = (
+    ("NEW_BUY", "New Buy"),
+    ("EMERGING", "Emerging"),
+    ("LEADER", "Leaders"),
+    ("ENTRY_WATCH", "Entry Watch"),
+    ("RE_ENTRY", "Re-entry"),
+    ("DETERIORATING", "Deteriorating"),
+    ("REMOVED", "Removed"),
+)
+
+
+def _classification_counts(rows: list[Any]) -> dict[str, int]:
+    counts = {status: 0 for status, _ in _CLASSIFICATION_ORDER}
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            continue
+        status = str(raw.get("status") or "").strip().upper()
+        if status in counts:
+            counts[status] += 1
+    return counts
+
+
+def _classification_overview_section(rows: list[Any]) -> str:
+    grouped: dict[str, list[Mapping[str, Any]]] = {
+        status: [] for status, _ in _CLASSIFICATION_ORDER
+    }
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            continue
+        status = str(raw.get("status") or "").strip().upper()
+        if status in grouped:
+            grouped[status].append(raw)
+
+    sections: list[str] = []
+    for status, label in _CLASSIFICATION_ORDER:
+        records = sorted(
+            grouped[status],
+            key=lambda item: str(item.get("symbol") or ""),
+        )
+        if records:
+            body = "".join(
+                "<tr>"
+                f"<td><strong>{_html(raw.get('symbol'))}</strong></td>"
+                f"<td>{_html(raw.get('display_label') or label)}</td>"
+                f"<td>{_html(raw.get('reason') or raw.get('classification_reason') or '')}</td>"
+                "</tr>"
+                for raw in records
+            )
+            detail = (
+                '<div class="table-wrap"><table><thead><tr>'
+                "<th>Symbol</th><th>Classification</th><th>Reason</th>"
+                f"</tr></thead><tbody>{body}</tbody></table></div>"
+            )
+        else:
+            detail = '<p class="section-note">No names in this category for this run.</p>'
+        sections.append(
+            f'<section class="classification-group" data-status="{status}">'
+            f"<h3>{label} ({len(records)})</h3>{detail}</section>"
+        )
+
+    return (
+        '<section class="report-section classification-overview">'
+        "<h2>Complete OVTLYR Classification Universe</h2>"
+        '<p class="section-note">Full day-over-day classification coverage. '
+        "The ranked actionable shortlist appears separately below after eligibility, "
+        "liquidity, optionability, and data-quality filters.</p>"
+        + "".join(sections)
+        + "</section>"
+    )
+
+
+def _html(value: Any) -> str:
+    from html import escape
+
+    return escape(str(value or ""))
 
 
 def _packet_from_shortlist(
