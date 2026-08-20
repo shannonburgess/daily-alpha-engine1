@@ -1,0 +1,111 @@
+name: Inspect staging shadow ARMED replay automation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/inspect-shadow-armed-replay.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-shadow-replay-inspect
+          aws-region: us-east-2
+
+      - name: Inspect read-only scheduler bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          FUNCTION_ARN="$(aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-processor \
+            --query FunctionArn \
+            --output text)"
+          echo "processor=${FUNCTION_ARN}"
+
+          EVENTS_STATUS="UNAVAILABLE"
+          EVENTS_RULES='[]'
+          if RULE_NAMES="$(aws events list-rule-names-by-target \
+            --target-arn "${FUNCTION_ARN}" \
+            --query 'RuleNames' \
+            --output json 2>/tmp/events-error.log)"; then
+            EVENTS_STATUS="AVAILABLE"
+            EVENTS_RULES="${RULE_NAMES}"
+          fi
+
+          SCHEDULER_STATUS="UNAVAILABLE"
+          SCHEDULES='[]'
+          if RAW_SCHEDULES="$(aws scheduler list-schedules \
+            --max-results 100 \
+            --query 'Schedules[].{Name:Name,GroupName:GroupName,State:State,TargetArn:Target.Arn}' \
+            --output json 2>/tmp/scheduler-error.log)"; then
+            SCHEDULER_STATUS="AVAILABLE"
+            SCHEDULES="$(printf '%s' "${RAW_SCHEDULES}" | jq --arg arn "${FUNCTION_ARN}" '[.[] | select(.TargetArn == $arn)]')"
+          fi
+
+          POLICY_STATUS="UNAVAILABLE"
+          POLICY='{}'
+          if RAW_POLICY="$(aws lambda get-policy \
+            --function-name daily-alpha-pine-processor \
+            --query Policy \
+            --output text 2>/tmp/policy-error.log)"; then
+            POLICY_STATUS="AVAILABLE"
+            POLICY="${RAW_POLICY}"
+          fi
+
+          jq -n \
+            --arg function_arn "${FUNCTION_ARN}" \
+            --arg events_status "${EVENTS_STATUS}" \
+            --argjson events_rules "${EVENTS_RULES}" \
+            --arg scheduler_status "${SCHEDULER_STATUS}" \
+            --argjson schedules "${SCHEDULES}" \
+            --arg policy_status "${POLICY_STATUS}" \
+            --argjson policy "${POLICY}" \
+            '{
+              function_arn: $function_arn,
+              eventbridge_rules_status: $events_status,
+              eventbridge_rules_targeting_processor: $events_rules,
+              scheduler_status: $scheduler_status,
+              scheduler_schedules_targeting_processor: $schedules,
+              lambda_policy_status: $policy_status,
+              lambda_policy_statements: [
+                ($policy.Statement // [])[] |
+                {
+                  Sid: .Sid,
+                  Principal: .Principal,
+                  Action: .Action,
+                  SourceArn: (.Condition.ArnLike."AWS:SourceArn" // .Condition.ArnEquals."AWS:SourceArn" // null)
+                }
+              ],
+              trading_authorized: false,
+              live_trading_enabled: false
+            }' > replay-automation-inspection.json
+
+          cat replay-automation-inspection.json
+
+          if [[ "${EVENTS_STATUS}" == "UNAVAILABLE" && \
+                "${SCHEDULER_STATUS}" == "UNAVAILABLE" && \
+                "${POLICY_STATUS}" == "UNAVAILABLE" ]]; then
+            echo "Unable to inspect any supported scheduler evidence with the existing least-privilege role." >&2
+            exit 2
+          fi
+
+      - name: Upload sanitized inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-armed-replay-inspection-${{ github.run_id }}
+          path: replay-automation-inspection.json
+          if-no-files-found: warn
+          retention-days: 7
