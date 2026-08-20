@@ -166,7 +166,6 @@ def evaluate_source_diagnostic(
 
     source_status = str(publication.get("source_data_status") or "").upper()
     complete = publication.get("source_diagnostic_complete") is True
-    interpretation = str(publication.get("interpretation") or "")
 
     if source_status == "COMPLETE" and complete:
         return _status(
