@@ -97,12 +97,6 @@ jobs:
           raw_path.unlink()
           PY
 
-          aws lambda invoke \
-            --function-name daily-alpha-pine-ingress \
-            --cli-binary-format raw-in-base64-out \
-            --payload '{}' \
-            "${EVIDENCE_DIR}/shadow-ingress-auth-probe.json" >/dev/null
-
           aws lambda list-event-source-mappings \
             --function-name daily-alpha-pine-processor \
             --query '{mappings:EventSourceMappings[].{state:State,last_processing_result:LastProcessingResult,event_source_arn:EventSourceArn}}' \
@@ -182,7 +176,6 @@ jobs:
 
           python scripts/shadow_transport_monitor.py \
             --ingress-runtime "${EVIDENCE_DIR}/shadow-ingress-runtime.json" \
-            --ingress-probe "${EVIDENCE_DIR}/shadow-ingress-auth-probe.json" \
             --event-source-mappings "${EVIDENCE_DIR}/shadow-event-source-mappings.json" \
             --output-json "${EVIDENCE_DIR}/shadow-transport-status.json" \
             --output-md "${EVIDENCE_DIR}/shadow-transport-status.md"
