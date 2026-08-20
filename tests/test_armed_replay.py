@@ -73,7 +73,7 @@ def test_armed_entry_revalidation_creates_fresh_execution_time_signal():
 
 
 class _ConditionalFailure(Exception):
-    response = {"Error": {"Code": "ConditionalCheckFailedException"}}
+    response = {"Error": {"Code": "ConditionalCheckFailedException"}}  # noqa: RUF012
 
 
 class FakeClient:
