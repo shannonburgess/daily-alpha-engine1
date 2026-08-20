@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from scripts.shadow_contract_monitor import inspect_contract, render_markdown
+
+NOW = datetime(2026, 8, 20, 9, 30, tzinfo=UTC)
 
 
 def runtime(**overrides):
@@ -58,6 +62,10 @@ def armed_signal(account: str, **overrides):
 
 def monitor_state(*, v24_events=None, v25_events=None, v24_armed=None, v25_armed=None):
     return {
+        "ok": True,
+        "service": "daily-alpha-pine-processor",
+        "operation": "GET_SHADOW_MONITOR_STATE",
+        "snapshot_at": NOW.isoformat(),
         "books": {
             "PAPER_SHADOW_V24": {
                 "armed_limit_reached": False,
@@ -69,7 +77,9 @@ def monitor_state(*, v24_events=None, v25_events=None, v24_armed=None, v25_armed
                 "armed_signals": v25_armed or [],
                 "events": v25_events or [],
             },
-        }
+        },
+        "trading_authorized": False,
+        "live_trading_enabled": False,
     }
 
 
@@ -79,13 +89,14 @@ def test_valid_runtime_strategy_and_armed_contract_passes():
         v25_armed=[armed_signal("PAPER_SHADOW_V25")],
     )
 
-    result = inspect_contract(state, runtime(), deployment())
+    result = inspect_contract(state, runtime(), deployment(), now=NOW)
 
     assert result["ok"] is True
     assert result["violations"] == []
     assert result["checked_strategy_events"] == 1
     assert result["checked_armed_signals"] == 1
     assert result["latest_staging_deployment_conclusion"] == "success"
+    assert result["monitor_snapshot_age_seconds"] == 0.0
     assert "none detected" in render_markdown(result)
 
 
@@ -190,3 +201,54 @@ def test_missing_staging_deploy_evidence_fails_closed():
 
     assert result["ok"] is False
     assert "STAGING_DEPLOYMENT_EVIDENCE_MISSING" in result["violations"]
+
+
+def test_wrong_monitor_service_or_operation_fails_closed():
+    state = monitor_state()
+    state["service"] = "daily-alpha-engine"
+    state["operation"] = "LIST_OPEN_PAPER_POSITIONS"
+
+    result = inspect_contract(state, runtime(), now=NOW)
+
+    assert result["ok"] is False
+    assert "MONITOR_SERVICE_MISMATCH:daily-alpha-engine" in result["violations"]
+    assert (
+        "MONITOR_OPERATION_MISMATCH:LIST_OPEN_PAPER_POSITIONS"
+        in result["violations"]
+    )
+
+
+def test_invalid_monitor_snapshot_timestamp_fails_closed():
+    state = monitor_state()
+    state["snapshot_at"] = "not-a-timestamp"
+
+    result = inspect_contract(state, runtime(), now=NOW)
+
+    assert result["ok"] is False
+    assert "MONITOR_SNAPSHOT_TIMESTAMP_INVALID" in result["violations"]
+
+
+def test_stale_monitor_snapshot_fails_closed():
+    state = monitor_state()
+    state["snapshot_at"] = (NOW - timedelta(minutes=6)).isoformat()
+
+    result = inspect_contract(state, runtime(), now=NOW)
+
+    assert result["ok"] is False
+    assert any(
+        item.startswith("MONITOR_SNAPSHOT_STALE:360.000s>300s")
+        for item in result["violations"]
+    )
+
+
+def test_materially_future_monitor_snapshot_fails_closed():
+    state = monitor_state()
+    state["snapshot_at"] = (NOW + timedelta(seconds=61)).isoformat()
+
+    result = inspect_contract(state, runtime(), now=NOW)
+
+    assert result["ok"] is False
+    assert any(
+        item.startswith("MONITOR_SNAPSHOT_FROM_FUTURE:61.000s")
+        for item in result["violations"]
+    )
