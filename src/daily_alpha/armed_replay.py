@@ -33,27 +33,39 @@ def list_armed_ingress(
     *,
     limit: int = DEFAULT_REPLAY_LIMIT,
     now: datetime | None = None,
+    claimable_only: bool = False,
 ) -> list[dict[str, Any]]:
-    """Return a bounded set of claimable durably armed ingress events."""
+    """Return a bounded set of durably armed ingress events from DynamoDB.
+
+    Monitoring sees every ARMED record, including a record with an active replay
+    lease. Replay workers request ``claimable_only=True`` so a short-lived lease
+    cannot make the same record execute concurrently.
+    """
     if limit <= 0 or limit > MAX_REPLAY_LIMIT:
         raise PineProcessorError("ARMED_REPLAY_LIMIT_INVALID")
     timestamp = _aware(now or datetime.now(UTC))
     prefix = f"ACCOUNT#{store.account_id}#PINE_EVENT#"
+    filter_expression = (
+        "begins_with(pk, :prefix) AND #sk = :received "
+        "AND disposition = :armed"
+    )
+    values: dict[str, dict[str, str]] = {
+        ":prefix": {"S": prefix},
+        ":received": {"S": "RECEIVED"},
+        ":armed": {"S": ARMED_DISPOSITION},
+    }
+    if claimable_only:
+        filter_expression += (
+            " AND (attribute_not_exists(replay_lease_until_epoch) "
+            "OR replay_lease_until_epoch < :now_epoch)"
+        )
+        values[":now_epoch"] = {"N": str(int(timestamp.timestamp()))}
+
     kwargs: dict[str, Any] = {
         "TableName": store.table_name,
-        "FilterExpression": (
-            "begins_with(pk, :prefix) AND #sk = :received "
-            "AND disposition = :armed AND "
-            "(attribute_not_exists(replay_lease_until_epoch) "
-            "OR replay_lease_until_epoch < :now_epoch)"
-        ),
+        "FilterExpression": filter_expression,
         "ExpressionAttributeNames": {"#sk": "sk"},
-        "ExpressionAttributeValues": {
-            ":prefix": {"S": prefix},
-            ":received": {"S": "RECEIVED"},
-            ":armed": {"S": ARMED_DISPOSITION},
-            ":now_epoch": {"N": str(int(timestamp.timestamp()))},
-        },
+        "ExpressionAttributeValues": values,
         "Limit": limit,
     }
     records: list[dict[str, Any]] = []
@@ -276,7 +288,12 @@ def replay_armed_events(
 ) -> dict[str, Any]:
     """Replay claimable armed events and persist each current outcome."""
     timestamp = _aware(now or datetime.now(UTC))
-    records = list_armed_ingress(store, limit=limit, now=timestamp)
+    records = list_armed_ingress(
+        store,
+        limit=limit,
+        now=timestamp,
+        claimable_only=True,
+    )
     outcomes: list[dict[str, Any]] = []
     counts: dict[str, int] = {}
     claimed = 0
