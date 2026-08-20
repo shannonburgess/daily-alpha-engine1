@@ -9,8 +9,10 @@ on:
       - ".github/workflows/monitor-paper-shadows.yml"
       - "scripts/shadow_monitor.py"
       - "scripts/shadow_contract_monitor.py"
+      - "scripts/shadow_universe_monitor.py"
       - "tests/test_shadow_monitor.py"
       - "tests/test_shadow_contract_monitor.py"
+      - "tests/test_shadow_universe_monitor.py"
 
 permissions:
   contents: read
@@ -31,6 +33,7 @@ jobs:
       REPO: ${{ github.repository }}
       EVIDENCE_DIR: shadow-monitor-artifacts
       EXPECTED_SHADOW_FORWARD_START: "2026-08-19"
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -85,7 +88,16 @@ jobs:
           print('Read-only shadow monitor API: PASS')
           PY
 
-      - name: Build exact shadow status and contract drift guard
+      - name: Capture latest canonical actionable universe
+        run: |
+          set -euo pipefail
+          PREFIX="s3://${STAGING_BUCKET}/ovtlyr/shortlist/latest"
+          aws s3 cp "${PREFIX}/summary.json" \
+            "${EVIDENCE_DIR}/shortlist-summary.json" --only-show-errors
+          aws s3 cp "${PREFIX}/shortlist.json" \
+            "${EVIDENCE_DIR}/shortlist.json" --only-show-errors
+
+      - name: Build exact shadow, contract and universe status
         id: summarize
         shell: bash
         run: |
@@ -103,13 +115,25 @@ jobs:
             --output-md "${EVIDENCE_DIR}/shadow-contract-status.md"
           CONTRACT_CODE=$?
 
+          python scripts/shadow_universe_monitor.py \
+            --summary "${EVIDENCE_DIR}/shortlist-summary.json" \
+            --shortlist "${EVIDENCE_DIR}/shortlist.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-universe-status.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-universe-status.md"
+          UNIVERSE_CODE=$?
+
           cat "${EVIDENCE_DIR}/shadow-contract-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-universe-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
           cat "${EVIDENCE_DIR}/shadow-status.json"
           cat "${EVIDENCE_DIR}/shadow-contract-status.json"
+          cat "${EVIDENCE_DIR}/shadow-universe-status.json"
 
-          if [ "${STATUS_CODE}" -ne 0 ] || [ "${CONTRACT_CODE}" -ne 0 ]; then
+          if [ "${STATUS_CODE}" -ne 0 ] || \
+             [ "${CONTRACT_CODE}" -ne 0 ] || \
+             [ "${UNIVERSE_CODE}" -ne 0 ]; then
             CODE=2
           else
             CODE=0
@@ -147,5 +171,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, or runtime-contract violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, runtime-contract, or canonical-universe violation."
           exit 1
