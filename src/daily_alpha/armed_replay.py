@@ -13,34 +13,46 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from .pine_processor import PineProcessorError
 
 ARMED_DISPOSITION = "ARMED_FOR_NEXT_TRADABLE_WINDOW"
 DEFAULT_REPLAY_LIMIT = 25
 MAX_REPLAY_LIMIT = 100
+DEFAULT_REPLAY_LEASE_SECONDS = 300
+MAX_REPLAY_LEASE_SECONDS = 1800
 DEFAULT_MONITOR_EVENT_LIMIT = 100
 MAX_MONITOR_EVENT_LIMIT = 250
 MAX_MONITOR_SCAN_PAGES = 20
 MONITOR_SCAN_PAGE_SIZE = 250
 
 
-def list_armed_ingress(store: Any, *, limit: int = DEFAULT_REPLAY_LIMIT) -> list[dict[str, Any]]:
-    """Return a bounded set of durably armed ingress events from DynamoDB."""
+def list_armed_ingress(
+    store: Any,
+    *,
+    limit: int = DEFAULT_REPLAY_LIMIT,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Return a bounded set of claimable durably armed ingress events."""
     if limit <= 0 or limit > MAX_REPLAY_LIMIT:
         raise PineProcessorError("ARMED_REPLAY_LIMIT_INVALID")
+    timestamp = _aware(now or datetime.now(UTC))
     prefix = f"ACCOUNT#{store.account_id}#PINE_EVENT#"
     kwargs: dict[str, Any] = {
         "TableName": store.table_name,
         "FilterExpression": (
             "begins_with(pk, :prefix) AND #sk = :received "
-            "AND disposition = :armed"
+            "AND disposition = :armed AND "
+            "(attribute_not_exists(replay_lease_until_epoch) "
+            "OR replay_lease_until_epoch < :now_epoch)"
         ),
         "ExpressionAttributeNames": {"#sk": "sk"},
         "ExpressionAttributeValues": {
             ":prefix": {"S": prefix},
             ":received": {"S": "RECEIVED"},
             ":armed": {"S": ARMED_DISPOSITION},
+            ":now_epoch": {"N": str(int(timestamp.timestamp()))},
         },
         "Limit": limit,
     }
@@ -73,6 +85,58 @@ def list_armed_ingress(store: Any, *, limit: int = DEFAULT_REPLAY_LIMIT) -> list
     return records
 
 
+def claim_armed_ingress(
+    store: Any,
+    signal_id: str,
+    *,
+    now: datetime,
+    lease_seconds: int = DEFAULT_REPLAY_LEASE_SECONDS,
+) -> str | None:
+    """Atomically lease one still-armed event so concurrent replay cannot double-run it.
+
+    A lease deliberately leaves the disposition ARMED. If a worker dies before it
+    writes an outcome, the record becomes claimable again after the bounded lease
+    expires rather than being stranded in an in-progress state.
+    """
+    signal_id = str(signal_id).strip()
+    if not signal_id:
+        raise PineProcessorError("ARMED_REPLAY_SIGNAL_ID_REQUIRED")
+    if lease_seconds <= 0 or lease_seconds > MAX_REPLAY_LEASE_SECONDS:
+        raise PineProcessorError("ARMED_REPLAY_LEASE_INVALID")
+
+    timestamp = _aware(now)
+    now_epoch = int(timestamp.timestamp())
+    lease_token = uuid4().hex
+    try:
+        store.client.update_item(
+            TableName=store.table_name,
+            Key={
+                "pk": {"S": f"ACCOUNT#{store.account_id}#PINE_EVENT#{signal_id}"},
+                "sk": {"S": "RECEIVED"},
+            },
+            UpdateExpression=(
+                "SET replay_lease_until_epoch = :lease_until, "
+                "replay_lease_token = :lease_token"
+            ),
+            ExpressionAttributeValues={
+                ":armed": {"S": ARMED_DISPOSITION},
+                ":now_epoch": {"N": str(now_epoch)},
+                ":lease_until": {"N": str(now_epoch + lease_seconds)},
+                ":lease_token": {"S": lease_token},
+            },
+            ConditionExpression=(
+                "disposition = :armed AND "
+                "(attribute_not_exists(replay_lease_until_epoch) "
+                "OR replay_lease_until_epoch < :now_epoch)"
+            ),
+        )
+    except Exception as exc:
+        if _aws_error_code(exc) == "ConditionalCheckFailedException":
+            return None
+        raise PineProcessorError("ARMED_REPLAY_DYNAMODB_CLAIM_FAILED") from exc
+    return lease_token
+
+
 def list_recent_pine_event_state(
     store: Any,
     *,
@@ -81,7 +145,9 @@ def list_recent_pine_event_state(
     """Return bounded recent Pine event/outcome evidence for read-only monitoring.
 
     The paper ledger table has no account/date GSI yet, so this uses a bounded scan
-    and reports when the scan cap was reached. It never mutates event or ledger state.
+    and reports when the scan-page cap was reached. Older history omitted only by
+    the response limit is reported separately and is not treated as an incomplete
+    Dynamo scan. It never mutates event or ledger state.
     """
     if limit <= 0 or limit > MAX_MONITOR_EVENT_LIMIT:
         raise PineProcessorError("SHADOW_MONITOR_EVENT_LIMIT_INVALID")
@@ -100,7 +166,7 @@ def list_recent_pine_event_state(
     records: list[dict[str, Any]] = []
     evaluated = 0
     pages = 0
-    truncated = False
+    scan_truncated = False
 
     while pages < MAX_MONITOR_SCAN_PAGES:
         try:
@@ -118,20 +184,21 @@ def list_recent_pine_event_state(
             break
         kwargs["ExclusiveStartKey"] = last_key
     else:
-        truncated = True
+        scan_truncated = True
 
     records.sort(key=_monitor_sort_key, reverse=True)
     visible = records[:limit]
-    if len(records) > limit:
-        truncated = True
+    history_omitted = max(0, len(records) - len(visible))
 
     return {
         "events": visible,
         "event_count_visible": len(visible),
+        "event_count_scanned": len(records),
+        "event_history_omitted": history_omitted,
         "event_limit": limit,
         "scan_pages": pages,
         "scan_items_evaluated": evaluated,
-        "scan_truncated": truncated,
+        "scan_truncated": scan_truncated,
     }
 
 
@@ -207,15 +274,22 @@ def replay_armed_events(
     now: datetime | None = None,
     limit: int = DEFAULT_REPLAY_LIMIT,
 ) -> dict[str, Any]:
-    """Replay armed events idempotently and persist each current outcome."""
+    """Replay claimable armed events and persist each current outcome."""
     timestamp = _aware(now or datetime.now(UTC))
-    records = list_armed_ingress(store, limit=limit)
+    records = list_armed_ingress(store, limit=limit, now=timestamp)
     outcomes: list[dict[str, Any]] = []
     counts: dict[str, int] = {}
+    claimed = 0
+    lease_conflicts = 0
 
     for stored in records:
         ingress = dict(stored)
         persisted_signal_id = str(ingress.pop("_persisted_signal_id"))
+        lease_token = claim_armed_ingress(store, persisted_signal_id, now=timestamp)
+        if lease_token is None:
+            lease_conflicts += 1
+            continue
+        claimed += 1
         try:
             execution = executor.replay_armed(ingress, now=timestamp)
         except Exception as exc:  # noqa: BLE001 - replay worker must fail closed per event
@@ -232,6 +306,7 @@ def replay_armed_events(
                 "context": {
                     "retry_allowed": True,
                     "error_code": str(exc) or type(exc).__name__,
+                    "replay_lease_token_present": bool(lease_token),
                 },
             }
         store.mark_execution(persisted_signal_id, execution)
@@ -258,6 +333,8 @@ def replay_armed_events(
         "operation": "REPLAY_ARMED_SIGNALS",
         "processed_at": timestamp.isoformat(),
         "armed_found": len(records),
+        "armed_claimed": claimed,
+        "lease_conflicts": lease_conflicts,
         "outcome_counts": counts,
         "outcomes": outcomes,
         "trading_authorized": False,
@@ -269,3 +346,12 @@ def _aware(value: datetime) -> datetime:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _aws_error_code(exc: Exception) -> str:
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        error = response.get("Error")
+        if isinstance(error, dict):
+            return str(error.get("Code", ""))
+    return ""
