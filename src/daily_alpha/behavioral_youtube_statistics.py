@@ -2,9 +2,9 @@
 
 This sidecar intentionally stays separate from the current video-count source scorer.
 Views, likes and comments are different units and must never be summed into the same
-source level. Callers supply a deduplicated entity-level video-ID set (for example,
-from the bounded trailing-24h search transport) and receive metric-specific canonical
-observations that can be validated independently before any factor promotion.
+source level. The bundle helper reuses the exact deduplicated IDs selected by the
+bounded trailing-24h search transport so enrichment never spends a second search or
+reconstructs an ambiguous alias union.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 from .behavioral_change import BehavioralEntity, BehavioralObservation, BehavioralSource
 from .behavioral_youtube import (
     HttpGet,
+    YouTubePublicSearchFetcher,
     YouTubeQuotaBudgetExceeded,
     YouTubeTransportError,
     _default_http_get,
@@ -34,6 +35,19 @@ class YouTubeStatisticsCoverage:
     missing_video_ids: int
     statistics_calls_used: int
     cache_hits: int
+
+
+@dataclass(frozen=True)
+class YouTubeResearchBundle:
+    """Keep count and engagement evidence separated under one immutable selection."""
+
+    video_count_observations: tuple[BehavioralObservation, ...]
+    statistics_observations: tuple[BehavioralObservation, ...]
+    selected_video_ids: tuple[str, ...]
+    statistics_coverage: YouTubeStatisticsCoverage
+    research_only: bool = True
+    trading_authorized: bool = False
+    live_trading_enabled: bool = False
 
 
 @dataclass
@@ -214,6 +228,29 @@ class YouTubeVideoStatisticsFetcher:
                 "comment_count": _optional_count(statistics.get("commentCount")),
             }
         return result
+
+
+def collect_youtube_research_bundle(
+    entity: BehavioralEntity,
+    query_keys: tuple[str, ...],
+    *,
+    as_of: datetime,
+    search_fetcher: YouTubePublicSearchFetcher,
+    statistics_fetcher: YouTubeVideoStatisticsFetcher,
+) -> YouTubeResearchBundle:
+    """Reuse one search selection for count plus separate engagement observations."""
+    selection = search_fetcher.collect_with_video_ids(entity, query_keys, as_of)
+    statistics, coverage = statistics_fetcher.collect(
+        entity,
+        selection.unique_video_ids,
+        as_of=as_of,
+    )
+    return YouTubeResearchBundle(
+        video_count_observations=selection.observations,
+        statistics_observations=statistics,
+        selected_video_ids=selection.unique_video_ids,
+        statistics_coverage=coverage,
+    )
 
 
 def _dedupe_video_ids(values: tuple[str, ...]) -> tuple[str, ...]:
