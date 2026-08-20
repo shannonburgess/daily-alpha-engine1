@@ -36,6 +36,14 @@ class HttpGet(Protocol):
     def __call__(self, url: str, *, timeout_seconds: float) -> bytes: ...
 
 
+@dataclass(frozen=True)
+class YouTubeSearchCollection:
+    """One bounded search collection plus the exact unique video IDs it selected."""
+
+    observations: tuple[BehavioralObservation, ...]
+    unique_video_ids: tuple[str, ...]
+
+
 @dataclass
 class YouTubePublicSearchFetcher:
     """Collect one deduplicated trailing-24h video-count observation per query."""
@@ -75,6 +83,20 @@ class YouTubePublicSearchFetcher:
         query_keys: tuple[str, ...],
         as_of: datetime,
     ) -> tuple[BehavioralObservation, ...]:
+        return self.collect_with_video_ids(entity, query_keys, as_of).observations
+
+    def collect_with_video_ids(
+        self,
+        entity: BehavioralEntity,
+        query_keys: tuple[str, ...],
+        as_of: datetime,
+    ) -> YouTubeSearchCollection:
+        """Return search observations and the same deduplicated IDs for statistics.
+
+        This method lets the optional ``videos.list`` statistics sidecar reuse the
+        exact entity-level video selection without repeating search calls or
+        reconstructing an ambiguous alias union later.
+        """
         _require_aware(as_of)
         timestamp = as_of.astimezone(UTC)
         day_key = timestamp.date().isoformat()
@@ -91,6 +113,7 @@ class YouTubePublicSearchFetcher:
             )
 
         seen_video_ids: set[str] = set()
+        unique_video_ids: list[str] = []
         observations: list[BehavioralObservation] = []
         for query in normalized_queries:
             cache_key = (query.casefold(), day_key)
@@ -105,6 +128,7 @@ class YouTubePublicSearchFetcher:
                 video_id for video_id in video_ids if video_id not in seen_video_ids
             )
             seen_video_ids.update(deduped_ids)
+            unique_video_ids.extend(deduped_ids)
             provenance = json.dumps(
                 {
                     "provider": "YOUTUBE_DATA_API_V3",
@@ -135,7 +159,10 @@ class YouTubePublicSearchFetcher:
                     provenance=provenance,
                 )
             )
-        return tuple(observations)
+        return YouTubeSearchCollection(
+            observations=tuple(observations),
+            unique_video_ids=tuple(unique_video_ids),
+        )
 
     def _search(self, query: str, as_of: datetime) -> tuple[str, ...]:
         published_after = (as_of - timedelta(hours=24)).isoformat().replace("+00:00", "Z")
