@@ -4,17 +4,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 * * * 1-5"
-  pull_request:
-    paths:
-      - ".github/workflows/monitor-paper-shadows.yml"
-      - "scripts/shadow_monitor.py"
-      - "scripts/shadow_contract_monitor.py"
-      - "scripts/shadow_universe_monitor.py"
-      - "scripts/shadow_transport_monitor.py"
-      - "tests/test_shadow_monitor.py"
-      - "tests/test_shadow_contract_monitor.py"
-      - "tests/test_shadow_universe_monitor.py"
-      - "tests/test_shadow_transport_monitor.py"
 
 permissions:
   contents: read
