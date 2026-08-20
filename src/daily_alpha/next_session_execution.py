@@ -22,6 +22,7 @@ from .orats import OratsClient, OratsError
 
 DEFAULT_BUCKET = "daily-alpha-staging-490809405132-us-east-2"
 LATEST_PREFIX = "daily-alpha/execution-universe/latest"
+EARNINGS_ENTRY_BLOCK_DAYS = 7
 
 
 class UnsafeExecutionError(RuntimeError):
@@ -87,6 +88,7 @@ def run_next_session_execution(
     executed = 0
     cancelled = 0
     deferred_data_error = 0
+    earnings_blocked = 0
     remaining: list[dict[str, Any]] = []
     attempts: list[dict[str, Any]] = []
 
@@ -134,6 +136,51 @@ def run_next_session_execution(
                 continue
 
             executable_signal = dict(prepared.signal or {})
+            if action == "ENTRY_LONG":
+                schedule = orats.fetch_earnings_schedule(
+                    symbol,
+                    as_of=timestamp,
+                    block_days=EARNINGS_ENTRY_BLOCK_DAYS,
+                )
+                next_earnings = (
+                    schedule.next_earnings_date.isoformat()
+                    if schedule.next_earnings_date is not None
+                    else None
+                )
+                record["earnings_risk"] = {
+                    "trade_date": schedule.trade_date.isoformat(),
+                    "next_earnings_date": next_earnings,
+                    "days_until_earnings": schedule.days_until_earnings,
+                    "event_risk": schedule.event_risk,
+                    "asset_type": schedule.asset_type,
+                    "block_days": schedule.block_days,
+                    "source": "ORATS_CORE_NEXT_ERN",
+                }
+                if schedule.event_risk:
+                    earnings_blocked += 1
+                    cancelled += 1
+                    reason = "CANCEL_EARNINGS_WITHIN_7_DAYS"
+                    record["final_status"] = CANCEL_STATUS
+                    record["reason"] = reason
+                    attempts.append(record)
+                    _update_watch(
+                        watch_by_symbol,
+                        symbol,
+                        scanner_status=reason,
+                        execution=CANCEL_STATUS,
+                    )
+                    continue
+                executable_signal.update(
+                    {
+                        "event_risk": False,
+                        "earnings_evidence_status": "CLEAR",
+                        "earnings_source": "ORATS_CORE_NEXT_ERN",
+                        "next_earnings_date": next_earnings,
+                        "days_until_earnings": schedule.days_until_earnings,
+                        "earnings_block_days": schedule.block_days,
+                    }
+                )
+
             outcome = _invoke_processor(lambda_client, executable_signal)
             record["processor"] = outcome
             if outcome.get("ok") is not True:
@@ -210,15 +257,17 @@ def run_next_session_execution(
     _write_watch_csv(watch_csv, watch)
 
     audit = {
-        "schema_version": "2026-08-20-next-session-v2",
+        "schema_version": "2026-08-20-next-session-v3",
         "generated_at": timestamp.isoformat(),
         "execution_mode": mode,
         "attempted": attempted,
         "executed_paper": executed,
         "cancelled_or_no_trade": cancelled,
+        "earnings_blocked_entries": earnings_blocked,
         "deferred_data_error": deferred_data_error,
         "remaining_pending": len(remaining),
         "paper_execution_mode": "AUTONOMOUS_LIFECYCLE_SIZED",
+        "earnings_entry_block_days": EARNINGS_ENTRY_BLOCK_DAYS,
         "trading_authorized": False,
         "live_trading_enabled": False,
         "attempts": attempts,
@@ -348,6 +397,7 @@ def main() -> int:
             handle.write(f"attempted={audit['attempted']}\n")
             handle.write(f"executed={audit['executed_paper']}\n")
             handle.write(f"cancelled={audit['cancelled_or_no_trade']}\n")
+            handle.write(f"earnings_blocked={audit['earnings_blocked_entries']}\n")
             handle.write(f"deferred={audit['deferred_data_error']}\n")
             handle.write(f"remaining={audit['remaining_pending']}\n")
     return 0
