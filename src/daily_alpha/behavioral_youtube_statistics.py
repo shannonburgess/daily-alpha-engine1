@@ -10,7 +10,6 @@ observations that can be validated independently before any factor promotion.
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -53,11 +52,9 @@ class YouTubeVideoStatisticsFetcher:
     timeout_seconds: float = 10.0
     http_get: HttpGet | None = None
     _statistics_calls_used: int = field(default=0, init=False, repr=False)
-    _cache: dict[tuple[str, tuple[str, ...]], dict[str, dict[str, int]]] = field(
-        default_factory=dict,
-        init=False,
-        repr=False,
-    )
+    _cache: dict[
+        tuple[str, tuple[str, ...]], dict[str, dict[str, int | None]]
+    ] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.api_key = self.api_key.strip()
@@ -106,7 +103,7 @@ class YouTubeVideoStatisticsFetcher:
                 f"needed={len(uncached_batches)}:remaining={remaining}"
             )
 
-        by_video: dict[str, dict[str, int]] = {}
+        by_video: dict[str, dict[str, int | None]] = {}
         cache_hits = 0
         calls_before = self._statistics_calls_used
         for batch in batches:
@@ -132,23 +129,26 @@ class YouTubeVideoStatisticsFetcher:
             cache_hits=cache_hits,
         )
 
-        totals = {
-            "VIDEO_VIEW_TOTAL_SELECTED_SET": sum(
-                by_video[video_id]["view_count"] for video_id in returned_ids
-            ),
-            "VIDEO_LIKE_TOTAL_SELECTED_SET": sum(
-                by_video[video_id]["like_count"] for video_id in returned_ids
-            ),
-            "VIDEO_COMMENT_TOTAL_SELECTED_SET": sum(
-                by_video[video_id]["comment_count"] for video_id in returned_ids
-            ),
+        metric_fields = {
+            "VIDEO_VIEW_TOTAL_SELECTED_SET": "view_count",
+            "VIDEO_LIKE_TOTAL_SELECTED_SET": "like_count",
+            "VIDEO_COMMENT_TOTAL_SELECTED_SET": "comment_count",
         }
+        totals: dict[str, int] = {}
+        missing_metric_counts: dict[str, int] = {}
+        for metric, field_name in metric_fields.items():
+            values = [by_video[video_id][field_name] for video_id in returned_ids]
+            missing_metric_counts[metric] = sum(value is None for value in values)
+            if values and all(value is not None for value in values):
+                totals[metric] = sum(int(value) for value in values if value is not None)
+
         provenance = json.dumps(
             {
                 "provider": "YOUTUBE_DATA_API_V3",
                 "method": "videos.list",
                 "selection_contract": "caller_supplied_deduplicated_entity_video_ids",
                 "metric_units_kept_separate": True,
+                "missing_metric_counts": missing_metric_counts,
                 "requested_unique_video_ids": coverage.requested_unique_video_ids,
                 "returned_video_ids": coverage.returned_video_ids,
                 "missing_video_ids": coverage.missing_video_ids,
@@ -177,11 +177,13 @@ class YouTubeVideoStatisticsFetcher:
         )
         return observations, coverage
 
-    def _fetch_batch(self, video_ids: tuple[str, ...]) -> dict[str, dict[str, int]]:
+    def _fetch_batch(
+        self,
+        video_ids: tuple[str, ...],
+    ) -> dict[str, dict[str, int | None]]:
         params = {
             "part": "statistics",
             "id": ",".join(video_ids),
-            "maxResults": str(len(video_ids)),
             "key": self.api_key,
         }
         assert self.http_get is not None
@@ -198,7 +200,7 @@ class YouTubeVideoStatisticsFetcher:
         if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
             raise YouTubeTransportError("YOUTUBE_STATISTICS_RESPONSE_INVALID")
 
-        result: dict[str, dict[str, int]] = {}
+        result: dict[str, dict[str, int | None]] = {}
         for item in payload["items"]:
             if not isinstance(item, dict):
                 continue
@@ -207,9 +209,9 @@ class YouTubeVideoStatisticsFetcher:
             if not video_id or video_id not in video_ids or not isinstance(statistics, dict):
                 continue
             result[video_id] = {
-                "view_count": _count(statistics.get("viewCount")),
-                "like_count": _count(statistics.get("likeCount")),
-                "comment_count": _count(statistics.get("commentCount")),
+                "view_count": _optional_count(statistics.get("viewCount")),
+                "like_count": _optional_count(statistics.get("likeCount")),
+                "comment_count": _optional_count(statistics.get("commentCount")),
             }
         return result
 
@@ -226,14 +228,14 @@ def _dedupe_video_ids(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(result)
 
 
-def _count(value: Any) -> int:
+def _optional_count(value: Any) -> int | None:
     if value in (None, ""):
-        return 0
+        return None
     try:
         number = int(str(value))
     except (TypeError, ValueError) as exc:
         raise YouTubeTransportError("YOUTUBE_STATISTICS_COUNT_INVALID") from exc
-    if number < 0 or not math.isfinite(float(number)):
+    if number < 0:
         raise YouTubeTransportError("YOUTUBE_STATISTICS_COUNT_INVALID")
     return number
 
