@@ -76,6 +76,41 @@ def test_youtube_fetcher_is_bounded_deduped_and_does_not_persist_key():
     assert first["publishedBefore"][0].endswith("Z")
 
 
+def test_search_collection_exposes_same_unique_ids_without_extra_search_calls():
+    http = RecordingHttp(
+        [
+            _response("v1", "v2"),
+            _response("v2", "v3"),
+        ]
+    )
+    fetcher = YouTubePublicSearchFetcher(
+        api_key="key",
+        max_search_calls_per_run=2,
+        timeout_seconds=5.0,
+        http_get=http,
+    )
+
+    collection = fetcher.collect_with_video_ids(
+        ENTITY,
+        ("NVIDIA", "Blackwell"),
+        NOW,
+    )
+
+    assert collection.unique_video_ids == ("v1", "v2", "v3")
+    assert [row.raw_level for row in collection.observations] == [2.0, 1.0]
+    assert fetcher.search_calls_used == 2
+    assert len(http.urls) == 2
+
+    repeated = fetcher.collect_with_video_ids(
+        ENTITY,
+        ("NVIDIA", "Blackwell"),
+        NOW.replace(hour=21),
+    )
+    assert repeated.unique_video_ids == ("v1", "v2", "v3")
+    assert fetcher.search_calls_used == 2
+    assert len(http.urls) == 2
+
+
 def test_same_day_fetcher_cache_uses_no_additional_search_calls():
     http = RecordingHttp([_response("v1")])
     fetcher = YouTubePublicSearchFetcher(
