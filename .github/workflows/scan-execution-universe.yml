@@ -72,7 +72,7 @@ jobs:
           role-session-name: daily-alpha-execution-universe
           aws-region: us-east-2
 
-      - name: Evaluate v2.4 across ranked universe and stage next-session actions
+      - name: Evaluate v2.4 plus controlled ACTIVE_BUY continuation and stage next-session actions
         id: scan
         shell: python
         run: |
@@ -88,6 +88,7 @@ jobs:
           from botocore.exceptions import ClientError
 
           from daily_alpha.backtest import fetch_orats_history
+          from daily_alpha.continuation_entry import evaluate_active_buy_continuation
           from daily_alpha.execution_queue import build_pending_action
           from daily_alpha.execution_universe import (
               ScannerState,
@@ -178,6 +179,7 @@ jobs:
           watch = []
           data_errors = 0
           emitted = 0
+          continuation_emitted = 0
           executed = 0
           pending = []
 
@@ -220,13 +222,40 @@ jobs:
                       now=now,
                       require_trade_date=trade_date,
                   )
+
+                  # Preserve the v2.4 fresh-breakout scanner as the first decision.
+                  # Only a FLAT persistent ACTIVE_BUY that did not receive a v2.4
+                  # signal may enter the controlled continuation overlay. This keeps
+                  # SH24/SH25 untouched while recovering recent leaders whose first
+                  # breakout bar has already passed or whose price is $10-$24.99.
+                  source_lifecycle = lifecycle_by_symbol.get(symbol, "")
+                  if (
+                      decision.signal is None
+                      and symbol_state is None
+                      and str(source_lifecycle).strip().upper() == "ACTIVE_BUY"
+                  ):
+                      decision = evaluate_active_buy_continuation(
+                          symbol,
+                          bars,
+                          ovtlyr_status=source_lifecycle,
+                          state=None,
+                          now=now,
+                          require_trade_date=trade_date,
+                      )
+
                   decision_payload = decision.to_dict()
                   decision_payload["history_source"] = (
                       history_meta[0].get("source") if history_meta else "ORATS"
                   )
                   if decision.signal is not None:
                       decision.signal["sector"] = sector_by_symbol.get(symbol, "")
-                      decision.signal["lifecycle"] = lifecycle_by_symbol.get(symbol, "")
+                      # Continuation entries deliberately set ENTRY_WATCH sizing
+                      # themselves (50% starter); standard signals retain the
+                      # shortlist lifecycle classification.
+                      decision.signal.setdefault("lifecycle", source_lifecycle)
+                      decision.signal.setdefault("source_lifecycle", source_lifecycle)
+                      if decision.signal.get("entry_variant") == "ACTIVE_BUY_CONTINUATION":
+                          continuation_emitted += 1
                       emitted += 1
                       pending_item = build_pending_action(
                           symbol=symbol,
@@ -285,13 +314,13 @@ jobs:
 
           write_state(state_path, state)
           audit = {
-              "schema_version": "2026-08-17-execution-universe-v2",
+              "schema_version": "2026-08-20-execution-universe-v3",
               "generated_at": now.isoformat(),
               "market_date": trade_date.isoformat(),
               "universe_limit": limit,
               "symbols_monitored": symbols,
-              "open_symbols": sorted(open_symbols),
               "signals_emitted": emitted,
+              "active_buy_continuation_signals": continuation_emitted,
               "paper_actions_executed": executed,
               "pending_next_session_actions": len(pending),
               "data_error_count": data_errors,
@@ -343,6 +372,7 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"monitored={len(symbols)}\n")
               handle.write(f"emitted={emitted}\n")
+              handle.write(f"continuation={continuation_emitted}\n")
               handle.write(f"executed={executed}\n")
               handle.write(f"pending={len(pending)}\n")
               handle.write(f"data_errors={data_errors}\n")
@@ -350,8 +380,8 @@ jobs:
 
           print(json.dumps({k: audit[k] for k in (
               "market_date", "symbols_monitored", "signals_emitted",
-              "paper_actions_executed", "pending_next_session_actions",
-              "data_error_count", "open_symbols"
+              "active_buy_continuation_signals", "paper_actions_executed",
+              "pending_next_session_actions", "data_error_count"
           )}, indent=2))
 
           # Hard safety invariant: the after-close scan must never execute a fill.
@@ -377,16 +407,19 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Daily Alpha v2.4 close signal staging"
+            echo "## Daily Alpha close signal staging"
             echo "- Monitored symbols: ${{ steps.scan.outputs.monitored }}"
             echo "- Canonical signals emitted: ${{ steps.scan.outputs.emitted }}"
+            echo "- ACTIVE_BUY continuation signals: ${{ steps.scan.outputs.continuation }}"
             echo "- After-close paper actions executed: ${{ steps.scan.outputs.executed }} (required: 0)"
             echo "- Pending next-session actions: ${{ steps.scan.outputs.pending }}"
             echo "- Open paper positions: ${{ steps.scan.outputs.open_count }}"
             echo "- Data errors: ${{ steps.scan.outputs.data_errors }}"
             echo "- Universe: ranked Top 20 + all open paper positions"
-            echo "- Signal engine: v2.4 confirmed daily close"
-            echo "- Execution: deferred to next regular session"
+            echo "- Primary signal engine: v2.4 confirmed daily close"
+            echo "- Continuation overlay: ACTIVE_BUY only, $10 floor, recent 20D breakout, +1 ATR no-chase, 50% ENTRY_WATCH sizing"
+            echo "- Execution: deferred to next regular session with fresh ORATS/liquidity/portfolio-risk revalidation"
             echo "- Active Watch: s3://${STAGING_BUCKET}/daily-alpha/execution-universe/latest/active_watch.csv"
+            echo "- SH24/SH25 TradingView controls: unchanged"
             echo "- Live trading: DISABLED"
           } >> "$GITHUB_STEP_SUMMARY"
