@@ -190,7 +190,24 @@ jobs:
           fi
           rm -f /tmp/liquidity-copy-error.log
 
-      - name: Build exact shadow, contract, replay, ingress, universe and liquidity status
+      - name: Capture latest SH24 source-diagnostic publication
+        id: source_diagnostic_evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_PUBLICATION="s3://${STAGING_BUCKET}/daily-alpha/shadow-diagnostics/sh24-source/latest/publication.json"
+          if aws s3 cp \
+            "${SOURCE_PUBLICATION}" \
+            "${EVIDENCE_DIR}/sh24-source-publication.json" \
+            --only-show-errors 2>/tmp/source-diagnostic-copy-error.log; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            rm -f "${EVIDENCE_DIR}/sh24-source-publication.json"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f /tmp/source-diagnostic-copy-error.log
+
+      - name: Build exact shadow, contract, replay, ingress, universe, liquidity and source-diagnostic status
         id: summarize
         shell: bash
         run: |
@@ -244,6 +261,18 @@ jobs:
           python scripts/shadow_liquidity_monitor.py "${LIQUIDITY_ARGS[@]}"
           LIQUIDITY_CODE=$?
 
+          SOURCE_DIAGNOSTIC_ARGS=(
+            --output-json "${EVIDENCE_DIR}/shadow-source-diagnostic-status.json"
+            --output-md "${EVIDENCE_DIR}/shadow-source-diagnostic-status.md"
+          )
+          if [[ "${{ steps.source_diagnostic_evidence.outputs.found }}" == "true" ]]; then
+            SOURCE_DIAGNOSTIC_ARGS+=(
+              --publication "${EVIDENCE_DIR}/sh24-source-publication.json"
+            )
+          fi
+          python scripts/shadow_source_diagnostic_monitor.py "${SOURCE_DIAGNOSTIC_ARGS[@]}"
+          SOURCE_DIAGNOSTIC_CODE=$?
+
           cat "${EVIDENCE_DIR}/shadow-contract-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-replay-scheduler-status.md" >> \
@@ -254,6 +283,8 @@ jobs:
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-liquidity-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-source-diagnostic-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
           cat "${EVIDENCE_DIR}/shadow-status.json"
           cat "${EVIDENCE_DIR}/shadow-contract-status.json"
@@ -261,13 +292,15 @@ jobs:
           cat "${EVIDENCE_DIR}/shadow-transport-status.json"
           cat "${EVIDENCE_DIR}/shadow-universe-status.json"
           cat "${EVIDENCE_DIR}/shadow-liquidity-status.json"
+          cat "${EVIDENCE_DIR}/shadow-source-diagnostic-status.json"
 
           if [ "${STATUS_CODE}" -ne 0 ] || \
              [ "${CONTRACT_CODE}" -ne 0 ] || \
              [ "${REPLAY_SCHEDULER_CODE}" -ne 0 ] || \
              [ "${TRANSPORT_CODE}" -ne 0 ] || \
              [ "${UNIVERSE_CODE}" -ne 0 ] || \
-             [ "${LIQUIDITY_CODE}" -ne 0 ]; then
+             [ "${LIQUIDITY_CODE}" -ne 0 ] || \
+             [ "${SOURCE_DIAGNOSTIC_CODE}" -ne 0 ]; then
             CODE=2
           else
             CODE=0
@@ -305,5 +338,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, ARMED-replay-scheduler, backend-ingress, canonical-universe, or company-liquidity violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, ARMED-replay-scheduler, backend-ingress, canonical-universe, company-liquidity, or SH24 source-diagnostic violation."
           exit 1
