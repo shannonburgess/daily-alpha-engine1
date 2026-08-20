@@ -16,6 +16,20 @@ def runtime(**overrides):
     return value
 
 
+def deployment(**overrides):
+    value = {
+        "found": True,
+        "run_id": 12345,
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "a" * 40,
+        "run_started_at": "2026-08-20T04:00:00Z",
+        "updated_at": "2026-08-20T04:10:00Z",
+    }
+    value.update(overrides)
+    return value
+
+
 def strategy_event(account: str, **overrides):
     value = {
         "signal_id": f"strategy-{account}",
@@ -65,12 +79,13 @@ def test_valid_runtime_strategy_and_armed_contract_passes():
         v25_armed=[armed_signal("PAPER_SHADOW_V25")],
     )
 
-    result = inspect_contract(state, runtime())
+    result = inspect_contract(state, runtime(), deployment())
 
     assert result["ok"] is True
     assert result["violations"] == []
     assert result["checked_strategy_events"] == 1
     assert result["checked_armed_signals"] == 1
+    assert result["latest_staging_deployment_conclusion"] == "success"
     assert "none detected" in render_markdown(result)
 
 
@@ -140,3 +155,38 @@ def test_armed_evidence_limit_fails_closed():
 
     assert result["ok"] is False
     assert "PAPER_SHADOW_V25:ARMED_EVIDENCE_LIMIT_REACHED" in result["violations"]
+
+
+def test_failed_latest_staging_deploy_fails_closed():
+    result = inspect_contract(
+        monitor_state(),
+        runtime(),
+        deployment(conclusion="failure"),
+    )
+
+    assert result["ok"] is False
+    assert "LATEST_STAGING_DEPLOY_NOT_SUCCESSFUL:failure" in result["violations"]
+    assert "FAIL-CLOSED" in render_markdown(result)
+
+
+def test_in_progress_staging_deploy_is_visible_without_false_failure():
+    result = inspect_contract(
+        monitor_state(),
+        runtime(),
+        deployment(status="in_progress", conclusion=None),
+    )
+
+    assert result["ok"] is True
+    assert result["latest_staging_deployment_pending"] is True
+    assert "Deployment convergence: **pending**" in render_markdown(result)
+
+
+def test_missing_staging_deploy_evidence_fails_closed():
+    result = inspect_contract(
+        monitor_state(),
+        runtime(),
+        deployment(found=False, status=None, conclusion=None, head_sha=None),
+    )
+
+    assert result["ok"] is False
+    assert "STAGING_DEPLOYMENT_EVIDENCE_MISSING" in result["violations"]
