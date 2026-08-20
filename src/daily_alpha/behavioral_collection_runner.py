@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .behavioral_artifacts import BehavioralArtifactBundle, write_behavioral_daily_artifacts
 from .behavioral_change import (
