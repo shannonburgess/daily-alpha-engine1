@@ -91,6 +91,22 @@ def test_next_session_entry_cancels_when_price_is_already_at_add1():
     assert decision.reason == "CANCEL_CHASE_ALREADY_AT_ADD1_LEVEL"
 
 
+def test_continuation_entry_honors_explicit_replay_max_price():
+    pending = _entry_pending()
+    pending["signal"]["entry_variant"] = "ACTIVE_BUY_CONTINUATION"
+    pending["signal"]["replay_max_price"] = 102.0
+
+    decision = prepare_next_session_signal(
+        pending,
+        stock_price=102.5,
+        now=datetime(2026, 8, 18, 13, 45, tzinfo=UTC),
+    )
+
+    assert decision.status == CANCEL_STATUS
+    assert decision.reason == "CANCEL_CONTINUATION_REPLAY_MAX_PRICE"
+    assert decision.signal is None
+
+
 def test_pending_exit_is_executable_next_session_without_price_trigger_recheck():
     state = _state()
     pending = build_pending_action(
