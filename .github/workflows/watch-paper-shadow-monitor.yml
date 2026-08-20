@@ -6,6 +6,9 @@ on:
       - Monitor Daily Alpha paper shadows
     types:
       - completed
+  schedule:
+    - cron: "57 * * * 1-5"
+  workflow_dispatch:
 
 permissions:
   actions: read
@@ -15,6 +18,7 @@ permissions:
 jobs:
   failure-receipt:
     if: >-
+      github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion != 'success' &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
@@ -108,4 +112,83 @@ jobs:
         with:
           name: paper-shadow-monitor-failure-${{ github.event.workflow_run.id }}
           path: shadow-monitor-failure-artifacts/
+          retention-days: 30
+
+  scheduler-heartbeat:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      REPO: ${{ github.repository }}
+      EVIDENCE_DIR: shadow-monitor-heartbeat-artifacts
+    steps:
+      - name: Check out trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Read recent canonical monitor runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          gh run list \
+            --repo "${REPO}" \
+            --workflow monitor-paper-shadows.yml \
+            --branch main \
+            --limit 5 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event \
+            > "${EVIDENCE_DIR}/monitor-runs.json"
+
+      - name: Evaluate monitor scheduler heartbeat
+        id: heartbeat
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/shadow_monitor_heartbeat_status.py \
+            --runs-json "${EVIDENCE_DIR}/monitor-runs.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-monitor-heartbeat.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-monitor-heartbeat.md"
+          NEEDS_UPDATE="$(jq -r '.needs_issue_update' "${EVIDENCE_DIR}/shadow-monitor-heartbeat.json")"
+          DIAGNOSIS="$(jq -r '.diagnosis' "${EVIDENCE_DIR}/shadow-monitor-heartbeat.json")"
+          echo "needs_issue_update=${NEEDS_UPDATE}" >> "${GITHUB_OUTPUT}"
+          echo "diagnosis=${DIAGNOSIS}" >> "${GITHUB_OUTPUT}"
+          echo "Heartbeat diagnosis: ${DIAGNOSIS}; issue update: ${NEEDS_UPDATE}"
+          if [[ "${NEEDS_UPDATE}" == "true" ]]; then
+            cat "${EVIDENCE_DIR}/shadow-monitor-heartbeat.md" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Replace stale rolling issue status when scheduler evidence is missing
+        if: steps.heartbeat.outputs.needs_issue_update == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMENT_ID="$(gh api "repos/${REPO}/issues/213/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- daily-alpha-shadow-monitor -->")) | .id' \
+            | head -n 1)"
+          jq -Rs '{body:.}' "${EVIDENCE_DIR}/shadow-monitor-heartbeat.md" \
+            > "${EVIDENCE_DIR}/comment.json"
+          if [[ -n "${COMMENT_ID}" ]]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              --input "${EVIDENCE_DIR}/comment.json" >/dev/null
+          else
+            gh api --method POST "repos/${REPO}/issues/213/comments" \
+              --input "${EVIDENCE_DIR}/comment.json" >/dev/null
+          fi
+
+      - name: Retain unhealthy heartbeat evidence
+        if: steps.heartbeat.outputs.needs_issue_update == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-shadow-monitor-heartbeat-${{ github.run_id }}
+          path: shadow-monitor-heartbeat-artifacts/
           retention-days: 30
