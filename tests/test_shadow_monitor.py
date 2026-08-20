@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from scripts.shadow_monitor import render_markdown, summarize
 
 NOW = datetime(2026, 8, 19, 20, 30, tzinfo=UTC)
+REGULAR_NOW = datetime(2026, 8, 19, 18, 0, tzinfo=UTC)
+PREMARKET_NOW = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
 
 
 def monitor_state(*, v24=None, v25=None, v24_armed=0, v25_armed=0):
@@ -65,11 +67,36 @@ def test_no_event_day_is_explicit_not_assumed_trade_rejection():
     summary = summarize(monitor_state(), now=NOW)
 
     assert summary["diagnosis"] == "NO_GENUINE_STRATEGY_EVENT_RECEIVED"
+    assert summary["session_phase"] == "POST_SESSION"
+    assert summary["session_complete"] is True
+    assert summary["zero_trade_status"] == "FINAL_AT_AWS_BOUNDARY"
     assert summary["total_strategy_events"] == 0
     assert summary["total_test_events"] == 0
     assert summary["total_session_fills"] == 0
     assert summary["safety"]["violations"] == []
-    assert "No genuine SH24/SH25 strategy-origin event" in render_markdown(summary)
+    rendered = render_markdown(summary)
+    assert "final zero-trade result at the AWS evidence boundary" in rendered
+    assert "TradingView configuration remains frozen" in rendered
+
+
+def test_in_session_no_event_state_is_provisional_not_final_zero_trade():
+    summary = summarize(monitor_state(), now=REGULAR_NOW)
+
+    assert summary["diagnosis"] == "NO_GENUINE_STRATEGY_EVENT_RECEIVED"
+    assert summary["session_phase"] == "REGULAR_SESSION"
+    assert summary["session_complete"] is False
+    assert summary["zero_trade_status"] == "PROVISIONAL_SESSION_IN_PROGRESS"
+    rendered = render_markdown(summary)
+    assert "state is provisional until the regular session is complete" in rendered
+    assert "final zero-trade result" not in rendered
+
+
+def test_premarket_no_event_state_is_provisional_before_open():
+    summary = summarize(monitor_state(), now=PREMARKET_NOW)
+
+    assert summary["session_phase"] == "PREMARKET"
+    assert summary["session_complete"] is False
+    assert summary["zero_trade_status"] == "PROVISIONAL_SESSION_NOT_OPEN"
 
 
 def test_e2e_proof_is_excluded_from_genuine_trade_diagnosis():
@@ -88,7 +115,7 @@ def test_e2e_proof_is_excluded_from_genuine_trade_diagnosis():
     assert summary["total_test_events"] == 1
     assert summary["blocker_counts"] == {}
     assert summary["accounts"]["PAPER_SHADOW_V25"]["session_test_event_count"] == 1
-    assert "excluded from trade diagnosis" in render_markdown(summary)
+    assert "excluded from the trade diagnosis" in render_markdown(summary)
 
 
 def test_strategy_event_without_fill_surfaces_exact_reason():
@@ -98,6 +125,7 @@ def test_strategy_event_without_fill_surfaces_exact_reason():
     )
 
     assert summary["diagnosis"] == "STRATEGY_EVENTS_RECEIVED_NO_PAPER_FILL"
+    assert summary["zero_trade_status"] == "FINAL_EXACT_BLOCKERS_RECORDED"
     assert summary["total_strategy_events"] == 1
     assert summary["accounts"]["PAPER_SHADOW_V24"]["reason_counts"] == {
         "PORTFOLIO_RISK_REJECTED": 1
@@ -109,6 +137,7 @@ def test_armed_state_is_visible_without_manufacturing_fill():
     summary = summarize(monitor_state(v25_armed=1), now=NOW)
 
     assert summary["diagnosis"] == "ARMED_WAITING_FOR_REVALIDATION"
+    assert summary["zero_trade_status"] is None
     assert summary["total_armed"] == 1
     assert summary["total_session_fills"] == 0
 
@@ -139,6 +168,7 @@ def test_executed_paper_receipt_is_counted_and_rendered():
     summary = summarize(state, now=NOW)
 
     assert summary["diagnosis"] == "TRADES_RECORDED"
+    assert summary["zero_trade_status"] is None
     assert summary["total_session_fills"] == 1
     assert summary["accounts"]["PAPER_SHADOW_V25"]["open_count"] == 1
     assert "`AAPL` ENTRY_LONG: qty=10, fill=100.25" in render_markdown(summary)
