@@ -5,6 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from daily_alpha.dynamo_ledger import DynamoPaperLedger
+from daily_alpha.equity_liquidity import (
+    LiquidityGatedPaperExecutor,
+    S3ActionableLiquidityStore,
+)
 from daily_alpha.execution_universe import build_scanner_ingress
 from daily_alpha.pine_paper_orchestrator import AwsPinePaperExecutor, _all_open_trades
 from daily_alpha.pine_processor import (
@@ -12,6 +16,14 @@ from daily_alpha.pine_processor import (
     PineProcessorResult,
     process_sqs_batch,
 )
+
+
+def _paper_executor():
+    """Build the PAPER executor behind the canonical issue #218 entry gate."""
+    return LiquidityGatedPaperExecutor(
+        AwsPinePaperExecutor(),
+        S3ActionableLiquidityStore(),
+    )
 
 
 def lambda_handler(event, context):
@@ -51,7 +63,7 @@ def lambda_handler(event, context):
             )
             store = DynamoPineEventStore()
             persisted = store.persist(ingress, processor_result)
-            executor = AwsPinePaperExecutor()
+            executor = _paper_executor()
             execution = executor.execute(ingress, now=now)
             store.mark_execution(processor_result.signal_id, execution)
             return {
@@ -81,5 +93,5 @@ def lambda_handler(event, context):
             }
 
     store = DynamoPineEventStore()
-    executor = AwsPinePaperExecutor()
+    executor = _paper_executor()
     return process_sqs_batch(event, store, executor=executor)
