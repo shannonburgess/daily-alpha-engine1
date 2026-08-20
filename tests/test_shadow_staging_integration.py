@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from lambda_handlers import pine_processor as handler
 
 
@@ -26,7 +28,19 @@ class FakeTrade:
         return {"symbol": self.symbol}
 
 
-def test_replay_all_paper_accounts_scans_default_and_both_shadows(monkeypatch):
+def _replay_outcome(account_id: str, index: int = 0, disposition: str = "EXECUTED_PAPER"):
+    return {
+        "persisted_signal_id": f"SIG-{account_id}-{index}",
+        "symbol": "AMD",
+        "action": "ENTRY_LONG",
+        "disposition": disposition,
+        "reason": "TEST",
+        "paper_execution_triggered": disposition == "EXECUTED_PAPER",
+        "paper_ledger_updated": disposition == "EXECUTED_PAPER",
+    }
+
+
+def test_replay_all_paper_accounts_prioritizes_shadows_and_reconciles_evidence(monkeypatch):
     monkeypatch.setattr(handler, "DynamoPineEventStore", FakeStore)
     monkeypatch.setattr(handler, "ShadowRoutedPinePaperExecutor", FakeExecutor)
     monkeypatch.setattr(handler, "default_paper_account_id", lambda: "paper-staging")
@@ -41,18 +55,10 @@ def test_replay_all_paper_accounts_scans_default_and_both_shadows(monkeypatch):
         return {
             "ok": True,
             "armed_found": 1,
+            "armed_claimed": 1,
+            "lease_conflicts": 0,
             "outcome_counts": {"EXECUTED_PAPER": 1},
-            "outcomes": [
-                {
-                    "persisted_signal_id": f"SIG-{store.account_id}",
-                    "symbol": "AMD",
-                    "action": "ENTRY_LONG",
-                    "disposition": "EXECUTED_PAPER",
-                    "reason": "TEST",
-                    "paper_execution_triggered": True,
-                    "paper_ledger_updated": True,
-                }
-            ],
+            "outcomes": [_replay_outcome(store.account_id)],
             "trading_authorized": False,
             "live_trading_enabled": False,
         }
@@ -63,27 +69,34 @@ def test_replay_all_paper_accounts_scans_default_and_both_shadows(monkeypatch):
     result = handler._replay_all_paper_accounts(now=now, limit=10)
 
     assert [account for account, _ in seen] == [
-        "paper-staging",
         handler.PAPER_SHADOW_V24,
         handler.PAPER_SHADOW_V25,
+        "paper-staging",
     ]
     assert result["accounts_scanned"] == [
-        "paper-staging",
         handler.PAPER_SHADOW_V24,
         handler.PAPER_SHADOW_V25,
+        "paper-staging",
     ]
     assert result["armed_found"] == 3
+    assert result["armed_claimed"] == 3
+    assert result["lease_conflicts"] == 0
     assert result["outcome_counts"] == {"EXECUTED_PAPER": 3}
     assert [item["paper_account_id"] for item in result["outcomes"]] == [
-        "paper-staging",
         handler.PAPER_SHADOW_V24,
         handler.PAPER_SHADOW_V25,
+        "paper-staging",
+    ]
+    assert [item["paper_account_id"] for item in result["account_results"]] == [
+        handler.PAPER_SHADOW_V24,
+        handler.PAPER_SHADOW_V25,
+        "paper-staging",
     ]
     assert result["trading_authorized"] is False
     assert result["live_trading_enabled"] is False
 
 
-def test_replay_all_paper_accounts_honors_global_limit(monkeypatch):
+def test_replay_all_paper_accounts_honors_global_limit_without_starving_shadows(monkeypatch):
     monkeypatch.setattr(handler, "DynamoPineEventStore", FakeStore)
     monkeypatch.setattr(handler, "ShadowRoutedPinePaperExecutor", FakeExecutor)
     monkeypatch.setattr(handler, "default_paper_account_id", lambda: "paper-staging")
@@ -98,8 +111,17 @@ def test_replay_all_paper_accounts_honors_global_limit(monkeypatch):
         return {
             "ok": True,
             "armed_found": found,
+            "armed_claimed": found,
+            "lease_conflicts": 0,
             "outcome_counts": {"ARMED_FOR_NEXT_TRADABLE_WINDOW": found},
-            "outcomes": [],
+            "outcomes": [
+                _replay_outcome(
+                    store.account_id,
+                    index,
+                    disposition="ARMED_FOR_NEXT_TRADABLE_WINDOW",
+                )
+                for index in range(found)
+            ],
             "trading_authorized": False,
             "live_trading_enabled": False,
         }
@@ -109,11 +131,90 @@ def test_replay_all_paper_accounts_honors_global_limit(monkeypatch):
 
     result = handler._replay_all_paper_accounts(now=now, limit=2)
 
-    assert seen == [("paper-staging", 2)]
+    assert seen == [(handler.PAPER_SHADOW_V24, 2)]
     assert result["armed_found"] == 2
-    assert result["accounts_scanned"] == ["paper-staging"]
+    assert result["armed_claimed"] == 2
+    assert result["accounts_scanned"] == [handler.PAPER_SHADOW_V24]
     assert result["trading_authorized"] is False
     assert result["live_trading_enabled"] is False
+
+
+def test_replay_all_paper_accounts_surfaces_lease_conflicts(monkeypatch):
+    monkeypatch.setattr(handler, "DynamoPineEventStore", FakeStore)
+    monkeypatch.setattr(handler, "ShadowRoutedPinePaperExecutor", FakeExecutor)
+    monkeypatch.setattr(handler, "default_paper_account_id", lambda: "paper-staging")
+    monkeypatch.setattr(handler, "_liquidity_store", lambda: object())
+
+    def fake_replay(store, executor, *, now, limit):
+        assert executor.liquidity_store is not None
+        if store.account_id == handler.PAPER_SHADOW_V24:
+            return {
+                "ok": True,
+                "armed_found": 1,
+                "armed_claimed": 0,
+                "lease_conflicts": 1,
+                "outcome_counts": {},
+                "outcomes": [],
+                "trading_authorized": False,
+                "live_trading_enabled": False,
+            }
+        return {
+            "ok": True,
+            "armed_found": 0,
+            "armed_claimed": 0,
+            "lease_conflicts": 0,
+            "outcome_counts": {},
+            "outcomes": [],
+            "trading_authorized": False,
+            "live_trading_enabled": False,
+        }
+
+    monkeypatch.setattr(handler, "replay_armed_events", fake_replay)
+    result = handler._replay_all_paper_accounts(
+        now=datetime(2026, 8, 19, 20, 0, tzinfo=UTC),
+        limit=10,
+    )
+
+    assert result["armed_found"] == 1
+    assert result["armed_claimed"] == 0
+    assert result["lease_conflicts"] == 1
+    assert result["outcome_counts"] == {}
+    assert result["account_results"][0] == {
+        "paper_account_id": handler.PAPER_SHADOW_V24,
+        "armed_found": 1,
+        "armed_claimed": 0,
+        "lease_conflicts": 1,
+        "outcome_counts": {},
+    }
+
+
+def test_replay_all_paper_accounts_fails_closed_on_unreconciled_child_evidence(monkeypatch):
+    monkeypatch.setattr(handler, "DynamoPineEventStore", FakeStore)
+    monkeypatch.setattr(handler, "ShadowRoutedPinePaperExecutor", FakeExecutor)
+    monkeypatch.setattr(handler, "_liquidity_store", lambda: object())
+
+    def fake_replay(store, executor, *, now, limit):
+        return {
+            "ok": True,
+            "armed_found": 1,
+            "armed_claimed": 1,
+            "lease_conflicts": 0,
+            "outcome_counts": {"EXECUTED_PAPER": 1},
+            "outcomes": [],
+            "trading_authorized": False,
+            "live_trading_enabled": False,
+        }
+
+    monkeypatch.setattr(handler, "replay_armed_events", fake_replay)
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARMED_REPLAY_CHILD_OUTCOME_RECONCILIATION_FAILED",
+    ):
+        handler._replay_all_paper_accounts(
+            now=datetime(2026, 8, 19, 20, 0, tzinfo=UTC),
+            limit=10,
+        )
 
 
 def test_shadow_monitor_state_is_read_only_and_keeps_books_isolated(monkeypatch):
