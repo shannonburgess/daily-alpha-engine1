@@ -51,6 +51,11 @@ def build_failure_status(
 
 
 def render_markdown(status: dict[str, object]) -> str:
+    failure_explanation = (
+        "The monitor workflow failed before it could produce a complete current "
+        "read-only staging snapshot. Do **not** interpret the prior issue status as "
+        "a current zero-trade, position, ARMED, receipt, or safety diagnosis."
+    )
     return "\n".join(
         [
             "<!-- daily-alpha-shadow-monitor -->",
@@ -62,9 +67,7 @@ def render_markdown(status: dict[str, object]) -> str:
             "**Current runtime safety state:** `UNVERIFIED_CURRENT_RUN`  ",
             "**TradingView configuration:** frozen; no mutation attempted",
             "",
-            "The monitor workflow failed before it could produce a complete current "
-            "read-only staging snapshot. Do **not** interpret the prior issue status as "
-            "a current zero-trade, position, ARMED, receipt, or safety diagnosis.",
+            failure_explanation,
             "",
             "### Monitor run evidence",
             f"Failed step: `{status['failed_step']}`  ",
