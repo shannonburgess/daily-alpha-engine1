@@ -100,7 +100,7 @@ def test_extreme_latest_level_is_flagged_against_prior_only_bounds() -> None:
 
 def test_future_rows_are_excluded_from_point_in_time_quality() -> None:
     as_of = datetime(2026, 8, 20, 12, tzinfo=UTC)
-    rows = [_row(as_of=as_of, days_ago=i, level=10.0) for i in range(0, 16)]
+    rows = [_row(as_of=as_of, days_ago=i, level=10.0) for i in range(16)]
     future = BehavioralObservation(
         source=BehavioralSource.YOUTUBE,
         entity_id="NVDA",
