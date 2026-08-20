@@ -113,3 +113,104 @@ def test_live_mode_uses_live_strikes_endpoint():
 
     assert "/live/strikes?" in seen_urls[0]
     assert "one-minute" not in seen_urls[0]
+
+
+def test_scheduled_earnings_within_seven_days_is_event_risk():
+    seen_urls = []
+
+    def transport(url, timeout):
+        seen_urls.append(url)
+        return {
+            "data": [
+                {
+                    "ticker": "SJM",
+                    "tradeDate": "2026-08-20",
+                    "assetType": 3,
+                    "nextErn": "2026-08-26",
+                }
+            ]
+        }
+
+    client = OratsClient(token="secret", transport=transport)
+    schedule = client.fetch_earnings_schedule(
+        "SJM",
+        as_of=datetime(2026, 8, 20, 20, 15, tzinfo=UTC),
+    )
+
+    assert schedule.next_earnings_date.isoformat() == "2026-08-26"
+    assert schedule.days_until_earnings == 6
+    assert schedule.event_risk is True
+    assert schedule.block_days == 7
+    assert "/datav2/cores?" in seen_urls[0]
+    assert "nextErn" in seen_urls[0]
+
+
+def test_scheduled_earnings_beyond_seven_days_is_clear():
+    client = OratsClient(
+        token="secret",
+        transport=lambda url, timeout: {
+            "data": [
+                {
+                    "ticker": "PR",
+                    "tradeDate": "2026-08-20",
+                    "assetType": 3,
+                    "nextErn": "2026-11-04",
+                }
+            ]
+        },
+    )
+
+    schedule = client.fetch_earnings_schedule(
+        "PR",
+        as_of=datetime(2026, 8, 20, 20, 15, tzinfo=UTC),
+    )
+
+    assert schedule.event_risk is False
+    assert schedule.days_until_earnings > 7
+
+
+def test_missing_company_next_earnings_fails_closed():
+    client = OratsClient(
+        token="secret",
+        transport=lambda url, timeout: {
+            "data": [
+                {
+                    "ticker": "SJM",
+                    "tradeDate": "2026-08-20",
+                    "assetType": 3,
+                    "nextErn": None,
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(OratsDataError, match="do not assume EVENT_RISK_CLEAR"):
+        client.fetch_earnings_schedule(
+            "SJM",
+            as_of=datetime(2026, 8, 20, 20, 15, tzinfo=UTC),
+        )
+
+
+def test_etf_does_not_require_company_earnings_date():
+    client = OratsClient(
+        token="secret",
+        transport=lambda url, timeout: {
+            "data": [
+                {
+                    "ticker": "XLK",
+                    "tradeDate": "2026-08-20",
+                    "assetType": 5,
+                    "nextErn": None,
+                }
+            ]
+        },
+    )
+
+    schedule = client.fetch_earnings_schedule(
+        "XLK",
+        as_of=datetime(2026, 8, 20, 20, 15, tzinfo=UTC),
+    )
+
+    assert schedule.is_non_company_security is True
+    assert schedule.next_earnings_date is None
+    assert schedule.event_risk is False
