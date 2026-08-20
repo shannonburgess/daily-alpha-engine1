@@ -4,7 +4,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from scripts.shadow_monitor_heartbeat_status import evaluate_heartbeat, render_markdown
+from scripts.shadow_monitor_heartbeat_status import (
+    MONITOR_HEAD_UNAVAILABLE,
+    evaluate_heartbeat,
+    render_markdown,
+)
 
 NOW = datetime(2026, 8, 20, 12, 57, tzinfo=UTC)
 
@@ -33,6 +37,51 @@ def test_fresh_success_does_not_replace_current_monitor_status() -> None:
     assert status.diagnosis == "MONITOR_HEARTBEAT_HEALTHY"
     assert status.needs_issue_update is False
     assert status.current_shadow_state_verified is False
+    assert status.source_drift_paths == ()
+
+
+def test_fresh_success_with_monitor_source_drift_fails_closed() -> None:
+    changed = (
+        "scripts/shadow_monitor.py",
+        ".github/workflows/monitor-paper-shadows.yml",
+    )
+    status = evaluate_heartbeat(
+        [_run(age_minutes=10)],
+        now=NOW,
+        source_drift_paths=changed,
+    )
+
+    assert status.ok is False
+    assert status.diagnosis == "MONITOR_SOURCE_DRIFT"
+    assert status.needs_issue_update is True
+    assert status.source_drift_paths == tuple(sorted(changed))
+    markdown = render_markdown(status)
+    assert "monitor-paper-shadows.yml" in markdown
+    assert "Prior green state reused:** False" in markdown
+
+
+def test_unresolvable_monitor_head_fails_closed() -> None:
+    status = evaluate_heartbeat(
+        [_run(age_minutes=10)],
+        now=NOW,
+        source_drift_paths=(MONITOR_HEAD_UNAVAILABLE,),
+    )
+
+    assert status.diagnosis == "MONITOR_SOURCE_DRIFT"
+    assert status.needs_issue_update is True
+    assert "could not resolve" in status.reason
+
+
+def test_source_drift_does_not_override_primary_failure_receipt() -> None:
+    status = evaluate_heartbeat(
+        [_run(age_minutes=10, status="completed", conclusion="failure")],
+        now=NOW,
+        source_drift_paths=("scripts/shadow_monitor.py",),
+    )
+
+    assert status.diagnosis == "MONITOR_COMPLETED_NON_SUCCESS"
+    assert status.needs_issue_update is False
+    assert "failure receipt" in status.reason
 
 
 def test_previous_hour_success_becomes_stale_when_current_run_never_started() -> None:
@@ -54,6 +103,17 @@ def test_recent_pending_run_is_not_declared_failed() -> None:
 
     assert status.diagnosis == "MONITOR_HEARTBEAT_PENDING"
     assert status.needs_issue_update is False
+
+
+def test_pending_run_on_stale_monitor_source_fails_closed() -> None:
+    status = evaluate_heartbeat(
+        [_run(age_minutes=5, status="in_progress", conclusion=None)],
+        now=NOW,
+        source_drift_paths=("scripts/shadow_monitor.py",),
+    )
+
+    assert status.diagnosis == "MONITOR_SOURCE_DRIFT"
+    assert status.needs_issue_update is True
 
 
 def test_stuck_pending_run_replaces_stale_green_status() -> None:

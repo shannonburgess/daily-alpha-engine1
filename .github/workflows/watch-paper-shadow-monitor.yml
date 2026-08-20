@@ -147,6 +147,46 @@ jobs:
             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event \
             > "${EVIDENCE_DIR}/monitor-runs.json"
 
+      - name: Compare latest monitor source with trusted main
+        shell: bash
+        run: |
+          set -euo pipefail
+          DRIFT_FILE="${EVIDENCE_DIR}/monitor-source-drift.json"
+          LATEST_HEAD="$(jq -r '
+            if length == 0 then ""
+            else (sort_by(.createdAt // .updatedAt // "") | last | .headSha // "")
+            end
+          ' "${EVIDENCE_DIR}/monitor-runs.json")"
+          if [[ -z "${LATEST_HEAD}" ]]; then
+            printf '[]\n' > "${DRIFT_FILE}"
+            exit 0
+          fi
+
+          if ! git cat-file -e "${LATEST_HEAD}^{commit}" 2>/dev/null; then
+            if ! git fetch --no-tags --depth=1 origin "${LATEST_HEAD}"; then
+              printf '["__MONITOR_HEAD_UNAVAILABLE__"]\n' > "${DRIFT_FILE}"
+              exit 0
+            fi
+          fi
+
+          CRITICAL_PATHS=(
+            .github/workflows/monitor-paper-shadows.yml
+            scripts/shadow_monitor.py
+            scripts/shadow_contract_monitor.py
+            scripts/shadow_transport_monitor.py
+            scripts/shadow_universe_monitor.py
+            scripts/shadow_liquidity_monitor.py
+            scripts/nyse_session_calendar.py
+          )
+          mapfile -t DRIFT_PATHS < <(
+            git diff --name-only "${LATEST_HEAD}" HEAD -- "${CRITICAL_PATHS[@]}"
+          )
+          if [[ "${#DRIFT_PATHS[@]}" -eq 0 ]]; then
+            printf '[]\n' > "${DRIFT_FILE}"
+          else
+            printf '%s\n' "${DRIFT_PATHS[@]}" | jq -R . | jq -s . > "${DRIFT_FILE}"
+          fi
+
       - name: Evaluate monitor scheduler heartbeat
         id: heartbeat
         shell: bash
@@ -154,6 +194,7 @@ jobs:
           set -euo pipefail
           python scripts/shadow_monitor_heartbeat_status.py \
             --runs-json "${EVIDENCE_DIR}/monitor-runs.json" \
+            --source-drift-json "${EVIDENCE_DIR}/monitor-source-drift.json" \
             --output-json "${EVIDENCE_DIR}/shadow-monitor-heartbeat.json" \
             --output-md "${EVIDENCE_DIR}/shadow-monitor-heartbeat.md"
           NEEDS_UPDATE="$(jq -r '.needs_issue_update' "${EVIDENCE_DIR}/shadow-monitor-heartbeat.json")"
