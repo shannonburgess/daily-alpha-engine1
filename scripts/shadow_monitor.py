@@ -402,9 +402,10 @@ def render_markdown(summary: dict[str, Any]) -> str:
         else:
             explanation = (
                 "No genuine SH24/SH25 strategy-origin event has reached the durable staging store "
-                "yet for this ET date. This state is provisional until the scheduled NYSE core "
-                "session is complete. Any E2E/connectivity proof traffic is shown separately and "
-                "excluded from the trade diagnosis. TradingView configuration remains frozen."
+                "yet for this ET date. This state is provisional until the regular session is "
+                "complete at the scheduled NYSE core close. Any E2E/connectivity proof traffic "
+                "is shown separately and excluded from the trade diagnosis. TradingView "
+                "configuration remains frozen."
             )
         lines.extend(["### Exact genuine-strategy no-fill evidence", explanation, ""])
 
