@@ -155,7 +155,24 @@ jobs:
           aws s3 cp "${PREFIX}/shortlist.json" \
             "${EVIDENCE_DIR}/shortlist.json" --only-show-errors
 
-      - name: Build exact shadow, contract, ingress and universe status
+      - name: Capture canonical company-liquidity evidence
+        id: liquidity_evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="s3://${STAGING_BUCKET}/ovtlyr/shortlist/latest"
+          if aws s3 cp \
+            "${PREFIX}/company_liquidity_eligibility.json" \
+            "${EVIDENCE_DIR}/company_liquidity_eligibility.json" \
+            --only-show-errors 2>/tmp/liquidity-copy-error.log; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            rm -f "${EVIDENCE_DIR}/company_liquidity_eligibility.json"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f /tmp/liquidity-copy-error.log
+
+      - name: Build exact shadow, contract, ingress, universe and liquidity status
         id: summarize
         shell: bash
         run: |
@@ -187,22 +204,41 @@ jobs:
             --output-md "${EVIDENCE_DIR}/shadow-universe-status.md"
           UNIVERSE_CODE=$?
 
+          LIQUIDITY_ARGS=(
+            --summary "${EVIDENCE_DIR}/shortlist-summary.json"
+            --shortlist "${EVIDENCE_DIR}/shortlist.json"
+            --evidence-found "${{ steps.liquidity_evidence.outputs.found }}"
+            --output-json "${EVIDENCE_DIR}/shadow-liquidity-status.json"
+            --output-md "${EVIDENCE_DIR}/shadow-liquidity-status.md"
+          )
+          if [[ "${{ steps.liquidity_evidence.outputs.found }}" == "true" ]]; then
+            LIQUIDITY_ARGS+=(
+              --evidence "${EVIDENCE_DIR}/company_liquidity_eligibility.json"
+            )
+          fi
+          python scripts/shadow_liquidity_monitor.py "${LIQUIDITY_ARGS[@]}"
+          LIQUIDITY_CODE=$?
+
           cat "${EVIDENCE_DIR}/shadow-contract-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-transport-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-universe-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-liquidity-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
           cat "${EVIDENCE_DIR}/shadow-status.json"
           cat "${EVIDENCE_DIR}/shadow-contract-status.json"
           cat "${EVIDENCE_DIR}/shadow-transport-status.json"
           cat "${EVIDENCE_DIR}/shadow-universe-status.json"
+          cat "${EVIDENCE_DIR}/shadow-liquidity-status.json"
 
           if [ "${STATUS_CODE}" -ne 0 ] || \
              [ "${CONTRACT_CODE}" -ne 0 ] || \
              [ "${TRANSPORT_CODE}" -ne 0 ] || \
-             [ "${UNIVERSE_CODE}" -ne 0 ]; then
+             [ "${UNIVERSE_CODE}" -ne 0 ] || \
+             [ "${LIQUIDITY_CODE}" -ne 0 ]; then
             CODE=2
           else
             CODE=0
@@ -240,5 +276,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, backend-ingress, or canonical-universe violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, backend-ingress, canonical-universe, or company-liquidity violation."
           exit 1
