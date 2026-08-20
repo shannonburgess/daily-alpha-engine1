@@ -87,7 +87,7 @@ def test_malformed_created_timestamp_cannot_mask_missing_schedule() -> None:
 
 
 def test_regular_session_stale_success_fails_closed() -> None:
-    now = datetime(2026, 8, 20, 15, 17, tzinfo=UTC)  # 11:17 ET
+    now = datetime(2026, 8, 20, 15, 21, tzinfo=UTC)  # 11:21 ET
     result = evaluate_replay_scheduler(
         [_run(datetime(2026, 8, 20, 13, 40, tzinfo=UTC))],
         now=now,
