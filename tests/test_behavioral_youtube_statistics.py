@@ -5,8 +5,11 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from daily_alpha.behavioral_change import BehavioralEntity
-from daily_alpha.behavioral_youtube import YouTubeQuotaBudgetExceeded
-from daily_alpha.behavioral_youtube_statistics import YouTubeVideoStatisticsFetcher
+from daily_alpha.behavioral_youtube import YouTubePublicSearchFetcher, YouTubeQuotaBudgetExceeded
+from daily_alpha.behavioral_youtube_statistics import (
+    YouTubeVideoStatisticsFetcher,
+    collect_youtube_research_bundle,
+)
 
 NOW = datetime(2026, 8, 19, 20, 0, tzinfo=UTC)
 ENTITY = BehavioralEntity(
@@ -85,6 +88,69 @@ def test_statistics_fetcher_keeps_metric_units_separate_and_dedupes_ids():
     assert params["id"] == ["v1,v2"]
     assert "maxResults" not in params
     assert params["key"] == ["secret-key"]
+
+
+def test_research_bundle_reuses_exact_search_selection_without_second_search():
+    search_http = RecordingHttp(
+        [
+            {
+                "items": [
+                    {"id": {"kind": "youtube#video", "videoId": "v1"}},
+                    {"id": {"kind": "youtube#video", "videoId": "v2"}},
+                ]
+            },
+            {
+                "items": [
+                    {"id": {"kind": "youtube#video", "videoId": "v2"}},
+                    {"id": {"kind": "youtube#video", "videoId": "v3"}},
+                ]
+            },
+        ]
+    )
+    statistics_http = RecordingHttp(
+        [
+            _stats_response(
+                ("v1", 1000, 100, 10),
+                ("v2", 2000, 150, 20),
+                ("v3", 3000, 200, 30),
+            )
+        ]
+    )
+    search_fetcher = YouTubePublicSearchFetcher(
+        api_key="key",
+        max_search_calls_per_run=2,
+        timeout_seconds=5.0,
+        http_get=search_http,
+    )
+    statistics_fetcher = YouTubeVideoStatisticsFetcher(
+        api_key="key",
+        max_statistics_calls_per_run=1,
+        timeout_seconds=5.0,
+        http_get=statistics_http,
+    )
+
+    bundle = collect_youtube_research_bundle(
+        ENTITY,
+        ("NVIDIA", "Blackwell"),
+        as_of=NOW,
+        search_fetcher=search_fetcher,
+        statistics_fetcher=statistics_fetcher,
+    )
+
+    assert bundle.selected_video_ids == ("v1", "v2", "v3")
+    assert [row.raw_level for row in bundle.video_count_observations] == [2.0, 1.0]
+    assert {row.metric: row.raw_level for row in bundle.statistics_observations} == {
+        "VIDEO_VIEW_TOTAL_SELECTED_SET": 6000.0,
+        "VIDEO_LIKE_TOTAL_SELECTED_SET": 450.0,
+        "VIDEO_COMMENT_TOTAL_SELECTED_SET": 60.0,
+    }
+    assert len(search_http.urls) == 2
+    assert len(statistics_http.urls) == 1
+    assert search_fetcher.search_calls_used == 2
+    assert statistics_fetcher.statistics_calls_used == 1
+    assert bundle.research_only is True
+    assert bundle.trading_authorized is False
+    assert bundle.live_trading_enabled is False
 
 
 def test_same_day_statistics_cache_uses_no_additional_call():
