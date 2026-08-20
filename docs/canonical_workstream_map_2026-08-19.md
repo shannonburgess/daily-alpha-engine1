@@ -1,6 +1,6 @@
 # Daily Alpha Canonical Workstream Map
 
-Updated: 2026-08-19
+Updated: 2026-08-20
 
 ## Purpose
 
@@ -13,7 +13,9 @@ This map is a coordination artifact only. It does not authorize deployment, Trad
 - **Canonical roadmap:** draft PR #141 (`agent/project-roadmap-refresh-2026-08-17`).
 - **Superseded roadmap:** PR #90 — closed unmerged.
 - Current `main` remains the execution/configuration source of truth for already-landed behavior. Draft PRs remain proposed changes until separately reviewed/merged.
-- **Merged #215** is now the landed read-only SH24/SH25 paper-shadow monitoring layer for issue #213; it does not own or redefine strategy logic.
+- **Merged #215** is the landed read-only SH24/SH25 paper-shadow event/book/receipt monitor for issue #213.
+- **Merged #223** adds fail-closed staging processor/runtime/source-contract drift monitoring.
+- **Merged #224** adds fail-closed canonical actionable-universe freshness, identity, rank/count and safety monitoring using the same rolling issue #213 status.
 
 ## Paper execution / zero-trade / receipt chain
 
@@ -37,7 +39,9 @@ Canonical stacked path:
 - **#186** — isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` routing and synchronized forward-test start.
 - **#207** — preserves and validates explicit `replay_max_price`, archives the exact v2.4/v2.5 shadow Pine sources, and documents the source-side contract.
 - **#212** — single main-based staging composite of #185/#186/#196/#205/#207 for receipt-aware isolated shadow routing and external proof. This is an integration/evidence branch, not a second implementation owner.
-- **Merged #215** — read-only operational monitor for #213. It consumes the staging processor's shadow state and updates one rolling status; it does not create strategy events or mutate TradingView.
+- **Merged #215** — read-only operational event/book/receipt monitor for #213.
+- **Merged #223** — read-only deployed runtime/source-contract drift monitor for #213.
+- **Merged #224** — read-only canonical actionable-universe freshness/identity monitor for #213.
 
 Duplicate staging PR **#211** was closed unmerged after #212 was designated canonical for the same head branch.
 
@@ -49,37 +53,41 @@ Verified staging evidence on 2026-08-19:
 - `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19` was verified before and after deployment;
 - isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` books were verified with both live-safety flags false;
 - the staging webhook secret was rotated outside GitHub/chat, with the new version becoming `AWSCURRENT` and the prior version `AWSPREVIOUS`;
-- the GitHub staging deployment role intentionally remains unable to read secret values; do not weaken that least-privilege boundary merely for monitoring;
+- the GitHub staging deployment role intentionally remains unable to read webhook secret values; do not weaken that least-privilege boundary merely for monitoring;
 - a manual authenticated backend proof passed through ingress -> SQS -> processor -> isolated `PAPER_SHADOW_V25` audit state using a harmless orphan `ADD`, producing the expected `STATE_MISMATCH / TRADINGVIEW_POSITION_NOT_IN_PAPER_LEDGER`, no paper fill, both shadow books FLAT, `trading_authorized=false`, and `live_trading_enabled=false`;
 - a temporary TradingView connectivity proof reached the public staging path and produced the expected fail-closed V25 state mismatch;
-- the staging processor now exposes read-only `GET_SHADOW_MONITOR_STATE`, returning each isolated book's positions, ARMED state, recent durable events and exact execution receipts without changing execution state;
-- the one-shot deployment workflow used to add that monitor endpoint was removed after the staging deployment, and #212 CI remained green (#578);
-- merged #215 now performs hourly weekday read-only monitoring, writes 30-day evidence artifacts, and updates one rolling issue #213 status instead of requiring Shannon to run CloudShell or reconcile books manually.
+- the staging processor exposes read-only `GET_SHADOW_MONITOR_STATE`, returning each isolated book's positions, ARMED state, recent durable events and exact execution receipts without changing execution state;
+- merged #215 performs hourly weekday read-only event/book/receipt monitoring, writes 30-day evidence artifacts, and updates one rolling issue #213 status instead of requiring Shannon to run CloudShell or reconcile books manually;
+- merged #223 verifies the processor remains `Active` / `Successful`, the deployed forward-test boundary remains `2026-08-19`, and genuine/ARMED model/start/replay contracts remain intact;
+- merged #224 reads the latest canonical S3 shortlist, fails closed on stale/invalid rank/count/identity/safety evidence, and records a deterministic universe SHA-256 in the same issue #213 status.
 
-The first exact automated snapshot at `2026-08-19T20:53:25Z` found:
+Latest exact automated evidence after #224 validation found:
 
 - V24: 0 open positions, 0 ARMED signals, 0 genuine strategy events;
 - V25: 0 open positions, 0 ARMED signals, 0 genuine strategy events;
-- three stored V25 events were prior E2E/connectivity proof events (`TV-SHADOW-E2E-*`, `API-GATEWAY-SHADOW-E2E-*`, `STAGING-SHADOW-E2E-*`) and are explicitly excluded from genuine trade diagnosis;
+- three stored V25 events are prior E2E/connectivity proof events (`TV-SHADOW-E2E-*`, `API-GATEWAY-SHADOW-E2E-*`, `STAGING-SHADOW-E2E-*`) and are explicitly excluded from genuine trade diagnosis;
 - 0 paper fills;
+- processor `Active` / `Successful`, no runtime/source-contract drift;
+- canonical source `OVTLYR_2026-08-19.csv`, generated `2026-08-19T22:21:15.115081+00:00`, age 2.291h at validation, 575 actionable symbols, universe SHA-256 `5b89a107c85ff2d40e19d8ed9a5135e783861af0afadbef9744ba114a516b3d2`;
 - `trading_authorized=false` and `live_trading_enabled=false` with no isolation violation.
 
-Operational activation is therefore complete; an actual SH24/SH25 event is no longer a precondition for turning on paper shadow monitoring. The first genuine strategy-origin event is prospective forward-test evidence. When one arrives, preserve its tagged model/start contract, fresh market/ORATS/portfolio-risk revalidation, PAPER fill/CANCEL/DATA_ERROR or other explicit fail-closed result, and exact receipt/evaluation evidence where applicable.
+Operational monitoring is therefore active; an actual SH24/SH25 event is not a precondition for diagnosing the day. The first genuine strategy-origin event is prospective forward-test evidence. When one arrives, preserve its tagged model/start contract, fresh market/ORATS/portfolio-risk revalidation, PAPER fill/CANCEL/DATA_ERROR or other explicit fail-closed result, and exact receipt/evaluation evidence where applicable.
 
-Monitoring limitation: there is no supported connected TradingView API in this control loop that can inspect the private alert engine or watchlist membership before an event fires. Do **not** compensate by repeatedly editing/recreating validated alerts. Detect model/start/account drift from durable events, keep the active TradingView configuration frozen, and treat absence of a genuine event as exactly that—not proof of an alert defect and not a fabricated rejection.
+Monitoring limitation: there is no supported connected TradingView API in this control loop that can inspect or rewrite private per-alert/watchlist membership. Do **not** compensate by repeatedly editing/recreating validated alerts. Detect canonical universe freshness/identity plus model/start/account drift from AWS/GitHub evidence, keep the active TradingView configuration frozen, and treat absence of a genuine event as exactly that—not proof of an alert defect and not a fabricated rejection.
 
-## Persistent candidate/watch visibility
+## Actionable company liquidity / persistent candidate visibility
 
-- **#189** — persistent `ACTIVE_BUY` visibility plus archive-derived BUY continuity state: first-seen/first-BUY/streak/last-change and explicit ineligibility reasons.
+- **#220** — canonical issue #218 company-equity liquidity contract. Individual companies require current 30-day average daily share volume **strictly >1,500,000 shares** before ranking, actionable newsletter/watchlist surfacing, or new PAPER entry/replay eligibility. Missing, stale, equal-to-threshold, or below-threshold company evidence fails closed as `LIQUIDITY_FILTERED`; ETFs remain on their separate liquidity/capacity path. The same persisted S3 eligibility evidence is consumed by scanner-origin and Pine-origin PAPER entries. #220 remains draft pending explicit merge/staging approval.
+- **#189** — persistent `ACTIVE_BUY` visibility plus archive-derived BUY continuity state: first-seen/first-BUY/streak/last-change and explicit ineligibility reasons. Before completion, this path must consume #220's canonical liquidity eligibility rather than define a parallel volume rule.
 - **#199** — persistent manual research watchlist model, seeded with NFLX.
 - **#206** — staging-newsletter/manual-watch publication integration stacked on #199.
 
-These are complementary, not duplicate: ACTIVE_BUY is model state; MANUAL_WATCH is explicit research visibility.
+These are complementary, not duplicate: #220 owns actionable company liquidity eligibility, ACTIVE_BUY is model state, and MANUAL_WATCH is explicit research visibility. No path may bypass the canonical >1.5M company gate once #220 is approved/landed.
 
 ## Candidate alert lifecycle
 
 - **Canonical desired-state planner:** #144 — current-main dry-run desired-state planner.
-- **Operational read-only state monitor:** merged #215 — observes AWS-side SH24/SH25 results and safety; it never creates/deletes TradingView alerts.
+- **Operational read-only state monitors:** merged #215/#223/#224 — observe AWS-side SH24/SH25 state, source/runtime contract and canonical universe; they never create/delete TradingView alerts.
 - **Superseded:** #102 — closed unmerged.
 
 No automatic TradingView mutation is authorized by these paths. Any future watchlist/alert mutation layer requires a supported API and a separate reviewed boundary; until then validated SH24/SH25 configuration stays frozen.
@@ -131,11 +139,13 @@ Neither may redefine execution logic, performance methodology, or entitlement en
 
 ## Research platform
 
-- **#193** — Strategy Forensics / missed-R diagnostics plus deterministic research artifacts and point-in-time evidence cutoffs. It now maps canonical Pine ENTRY/ARMED/replay outcomes into immutable forensics observations using fresh replay underlying prices, receipt/evaluation timestamps, and explicit underlying stops; missing historical inputs fail closed rather than being reconstructed.
-- **#209** — consolidated Factor Attribution foundation + candidate evidence adapter + horizon/regime/sector evidence reporting. It replaces closed drafts #194 and #208. Point-in-time factor snapshots carry deterministic SHA-256 snapshot identity, exact weight-set identity, validated timezone-aware timestamps, deterministic order-independent snapshot-set identity, immutable forward-return joins, largest-absolute-return exclusion diagnostics at each horizon, and dated cross-sectional rank-IC history with backward-only rolling stability summaries so pooled multi-date evidence cannot silently hide sign drift or insufficient breadth.
+- **#193** — Strategy Forensics / missed-R diagnostics plus deterministic research artifacts and point-in-time evidence cutoffs. It maps canonical Pine ENTRY/ARMED/replay outcomes into immutable forensics observations using fresh replay underlying prices, receipt/evaluation timestamps, and explicit underlying stops; missing historical inputs fail closed rather than being reconstructed.
+- **#209** — consolidated Factor Attribution foundation + candidate evidence adapter + horizon/regime/sector evidence reporting. It replaces closed drafts #194 and #208. Point-in-time factor snapshots carry deterministic SHA-256 snapshot identity, exact weight-set identity, validated timezone-aware timestamps, deterministic order-independent snapshot-set identity, immutable forward-return joins, largest-absolute-return exclusion diagnostics at each horizon, and dated cross-sectional rank-IC history with backward-only rolling stability summaries.
+- **#221 / issue #219** — canonical Behavioral Change Engine research path. Provider-neutral Google Trends / YouTube / Similarweb contracts, versioned entity dictionary, immutable point-in-time evidence, named Behavioral factors, minimum two independent sources, YouTube public-data transport, source-ablation and lead/lag validation scaffolding. Google Trends remains `SOURCE_UNAVAILABLE` until approved alpha access; Similarweb remains optional. Behavioral evidence can change research priority only and never execution authorization.
+- **#225 / issue #216** — canonical AI Industrial Mobilization / bottleneck-migration research path. Provider-neutral industrial evidence contract across compute -> memory -> packaging -> networking/optics -> data-center infrastructure -> electrical equipment -> generation -> transmission -> materials, with point-in-time capex, bottleneck, power-scarcity, monetization/capex and constraint-migration factors. It explicitly excludes speculative AGI-timing signals and remains disconnected from execution.
 - Quant challengers remain disconnected research unless a separate model-governance path promotes them.
 
-Research integration rule: #193 may consume canonical execution audit evidence from #185/#196/#205, but it remains a downstream diagnostic and must never feed an execution authorization directly. #209 may join forward outcomes by immutable snapshot identity, but realized outcomes must not silently retune production ranking weights.
+Research integration rule: #193 may consume canonical execution audit evidence from #185/#196/#205, but it remains a downstream diagnostic and must never feed an execution authorization directly. #209 may join forward outcomes by immutable snapshot identity, but realized outcomes must not silently retune production ranking weights. #221 and #225 may adjust research/theme priority only; neither may bypass sector/industry rotation, OVTLYR, earnings/revisions, company liquidity, Pine, ORATS, concentration or portfolio-risk gates.
 
 ## ORATS reliability
 
@@ -152,7 +162,7 @@ Historical duplicates/replaced foundations such as #110, #137 and #190 are close
 
 Every automated engineering or reporting job must reconcile against:
 
-1. current `main` for landed behavior and configuration, including merged #215 operational monitoring;
+1. current `main` for landed behavior and configuration, including merged #215/#223/#224 operational monitoring;
 2. this canonical workstream map / PR #141 for proposed ownership and roadmap state;
 3. explicitly labeled draft research for non-production hypotheses.
 
