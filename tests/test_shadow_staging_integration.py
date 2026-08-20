@@ -14,7 +14,8 @@ class FakeLedger:
 
 
 class FakeExecutor:
-    pass
+    def __init__(self, *, liquidity_store=None):
+        self.liquidity_store = liquidity_store
 
 
 class FakeTrade:
@@ -29,11 +30,13 @@ def test_replay_all_paper_accounts_scans_default_and_both_shadows(monkeypatch):
     monkeypatch.setattr(handler, "DynamoPineEventStore", FakeStore)
     monkeypatch.setattr(handler, "ShadowRoutedPinePaperExecutor", FakeExecutor)
     monkeypatch.setattr(handler, "default_paper_account_id", lambda: "paper-staging")
+    monkeypatch.setattr(handler, "_liquidity_store", lambda: object())
 
     seen = []
 
     def fake_replay(store, executor, *, now, limit):
         assert isinstance(executor, FakeExecutor)
+        assert executor.liquidity_store is not None
         seen.append((store.account_id, limit))
         return {
             "ok": True,
@@ -84,10 +87,12 @@ def test_replay_all_paper_accounts_honors_global_limit(monkeypatch):
     monkeypatch.setattr(handler, "DynamoPineEventStore", FakeStore)
     monkeypatch.setattr(handler, "ShadowRoutedPinePaperExecutor", FakeExecutor)
     monkeypatch.setattr(handler, "default_paper_account_id", lambda: "paper-staging")
+    monkeypatch.setattr(handler, "_liquidity_store", lambda: object())
 
     seen = []
 
     def fake_replay(store, executor, *, now, limit):
+        assert executor.liquidity_store is not None
         seen.append((store.account_id, limit))
         found = limit
         return {
