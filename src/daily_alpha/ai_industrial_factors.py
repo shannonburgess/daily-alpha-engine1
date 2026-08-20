@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -227,7 +226,6 @@ def _layer_constraint(
     bottleneck = None
     if demand is not None:
         capacity_relief = 0.0 if capacity is None else max(-1.0, min(1.0, capacity))
-        # Positive demand/shortage evidence raises scarcity; positive capacity growth relieves it.
         raw = demand - capacity_relief
         bottleneck = round(max(0.0, min(100.0, 50.0 + 50.0 * raw)), 4)
     return LayerConstraint(
@@ -270,7 +268,6 @@ def _monetization_capex_validation(
     )
     if capex is None or monetization is None:
         return None
-    # Positive means monetization evidence is keeping pace with or exceeding spending.
     return round(max(-100.0, min(100.0, 100.0 * (monetization - capex))), 4)
 
 
