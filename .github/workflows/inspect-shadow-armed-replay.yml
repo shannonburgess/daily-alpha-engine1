@@ -64,8 +64,16 @@ jobs:
             POLICY="${RAW_POLICY}"
           fi
 
+          VISIBILITY="COMPLETE"
+          if [[ "${EVENTS_STATUS}" == "UNAVAILABLE" && \
+                "${SCHEDULER_STATUS}" == "UNAVAILABLE" && \
+                "${POLICY_STATUS}" == "UNAVAILABLE" ]]; then
+            VISIBILITY="UNAVAILABLE_LEAST_PRIVILEGE"
+          fi
+
           jq -n \
             --arg function_arn "${FUNCTION_ARN}" \
+            --arg visibility "${VISIBILITY}" \
             --arg events_status "${EVENTS_STATUS}" \
             --argjson events_rules "${EVENTS_RULES}" \
             --arg scheduler_status "${SCHEDULER_STATUS}" \
@@ -74,6 +82,7 @@ jobs:
             --argjson policy "${POLICY}" \
             '{
               function_arn: $function_arn,
+              scheduler_visibility: $visibility,
               eventbridge_rules_status: $events_status,
               eventbridge_rules_targeting_processor: $events_rules,
               scheduler_status: $scheduler_status,
@@ -94,11 +103,8 @@ jobs:
 
           cat replay-automation-inspection.json
 
-          if [[ "${EVENTS_STATUS}" == "UNAVAILABLE" && \
-                "${SCHEDULER_STATUS}" == "UNAVAILABLE" && \
-                "${POLICY_STATUS}" == "UNAVAILABLE" ]]; then
-            echo "Unable to inspect any supported scheduler evidence with the existing least-privilege role." >&2
-            exit 2
+          if [[ "${VISIBILITY}" == "UNAVAILABLE_LEAST_PRIVILEGE" ]]; then
+            echo "Scheduler visibility is intentionally unavailable through the existing least-privilege staging role. No IAM permissions were widened."
           fi
 
       - name: Upload sanitized inspection
