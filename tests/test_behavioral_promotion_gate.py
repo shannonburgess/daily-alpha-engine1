@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-
 from daily_alpha.behavioral_change import BehavioralSource
 from daily_alpha.behavioral_orthogonality import (
     CoreFactorFamily,
