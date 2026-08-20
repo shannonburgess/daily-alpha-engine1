@@ -69,6 +69,23 @@ def test_manual_dispatch_cannot_mask_missing_schedule() -> None:
     assert result.diagnosis == "REPLAY_SCHEDULER_MISSING"
 
 
+def test_malformed_created_timestamp_cannot_mask_missing_schedule() -> None:
+    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)
+    malformed = {
+        "databaseId": 999,
+        "status": "completed",
+        "conclusion": "success",
+        "createdAt": "not-a-timestamp",
+        "updatedAt": datetime(2026, 8, 20, 14, 10, tzinfo=UTC).isoformat(),
+        "event": "schedule",
+    }
+
+    result = evaluate_replay_scheduler([malformed], now=now)
+
+    assert result.ok is False
+    assert result.diagnosis == "REPLAY_SCHEDULER_MISSING"
+
+
 def test_regular_session_stale_success_fails_closed() -> None:
     now = datetime(2026, 8, 20, 15, 17, tzinfo=UTC)  # 11:17 ET
     result = evaluate_replay_scheduler(
