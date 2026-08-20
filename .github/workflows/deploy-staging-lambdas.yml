@@ -15,6 +15,10 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: daily-alpha-staging-lambda-deploy
+  cancel-in-progress: false
+
 jobs:
   test-and-deploy:
     name: Test and deploy staging Lambdas
