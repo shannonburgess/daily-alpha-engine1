@@ -129,11 +129,11 @@ def apply_liquidity_snapshot(
 
     rows = snapshot.get("rows")
     if not isinstance(rows, list):
-        raise ValueError("BUY_CONTINUITY_LIQUIDITY_ROWS_MISSING")
+        raise TypeError("BUY_CONTINUITY_LIQUIDITY_ROWS_MISSING")
     by_symbol: dict[str, Mapping[str, Any]] = {}
     for raw in rows:
         if not isinstance(raw, Mapping):
-            raise ValueError("BUY_CONTINUITY_LIQUIDITY_ROW_INVALID")
+            raise TypeError("BUY_CONTINUITY_LIQUIDITY_ROW_INVALID")
         symbol = str(raw.get("symbol") or "").strip().upper()
         if not symbol:
             raise ValueError("BUY_CONTINUITY_LIQUIDITY_SYMBOL_MISSING")
