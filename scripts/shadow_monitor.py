@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from scripts.nyse_session_calendar import core_session_for
+
 SHADOW_ACCOUNTS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
 NEW_YORK = ZoneInfo("America/New_York")
 MAX_RENDERED_EVENTS_PER_ACCOUNT = 10
@@ -29,15 +31,7 @@ def _parse_time(value: Any) -> datetime | None:
 
 
 def _session_phase(timestamp: datetime) -> str:
-    local = timestamp.astimezone(NEW_YORK)
-    if local.weekday() >= 5:
-        return "NON_TRADING_DAY"
-    clock = (local.hour, local.minute)
-    if clock < (9, 30):
-        return "PREMARKET"
-    if clock < (16, 0):
-        return "REGULAR_SESSION"
-    return "POST_SESSION"
+    return core_session_for(timestamp).session_phase
 
 
 def _session_events(events: list[dict[str, Any]], session_date: str) -> list[dict[str, Any]]:
@@ -181,10 +175,14 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
     if timestamp.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     timestamp = timestamp.astimezone(UTC)
-    session_date = timestamp.astimezone(NEW_YORK).date().isoformat()
-    session_phase = _session_phase(timestamp)
+    market_session = core_session_for(timestamp)
+    session_date = market_session.session_date_et
+    session_phase = market_session.session_phase
     session_complete = session_phase == "POST_SESSION"
     violations = _safety_violations(state)
+    if market_session.calendar_status != "VERIFIED":
+        violations.append("MARKET_SESSION_CALENDAR_COVERAGE_UNAVAILABLE")
+    violations = sorted(set(violations))
 
     books = state.get("books") if isinstance(state.get("books"), dict) else {}
     accounts: dict[str, Any] = {}
@@ -288,6 +286,7 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
         "session_date_et": session_date,
         "session_phase": session_phase,
         "session_complete": session_complete,
+        "market_session_calendar": market_session.as_dict(),
         "diagnosis": diagnosis,
         "zero_trade_status": zero_trade_status,
         "total_strategy_events": total_strategy_events,
@@ -323,6 +322,9 @@ def _render_events(lines: list[str], title: str, events: list[dict[str, Any]]) -
 
 def render_markdown(summary: dict[str, Any]) -> str:
     """Render a concise rolling issue comment and workflow summary."""
+    market = summary["market_session_calendar"]
+    close_label = market.get("scheduled_close_et") or "closed"
+    closure = market.get("closure_reason") or "none"
     lines = [
         "<!-- daily-alpha-shadow-monitor -->",
         "## Daily Alpha PAPER Shadow Monitor",
@@ -330,6 +332,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"**Session:** {summary['session_date_et']} ET  ",
         f"**Session phase:** `{summary['session_phase']}`  ",
         f"**Session complete:** {summary['session_complete']}  ",
+        f"**NYSE calendar:** `{market['calendar_status']}` / `{market['calendar_version']}`  ",
+        f"**Scheduled core close ET:** `{close_label}`; early close={market['early_close']}; reason=`{closure}`  ",
         f"**Diagnosis:** `{summary['diagnosis']}`  ",
         f"**Zero-trade status:** `{summary['zero_trade_status'] or 'not_applicable'}`  ",
         f"**Genuine SH24/SH25 strategy events today:** {summary['total_strategy_events']}  ",
@@ -382,18 +386,25 @@ def render_markdown(summary: dict[str, Any]) -> str:
     elif summary["diagnosis"] == "NO_GENUINE_STRATEGY_EVENT_RECEIVED":
         if summary["zero_trade_status"] == "FINAL_AT_AWS_BOUNDARY":
             explanation = (
-                "The regular ET session is complete and no genuine SH24/SH25 strategy-origin "
-                "event reached the durable staging store. This is a final zero-trade result at "
-                "the AWS evidence boundary, not proof that a TradingView condition should or "
-                "should not have fired. Any E2E/connectivity proof traffic is shown separately "
-                "and excluded from the trade diagnosis. TradingView configuration remains frozen."
+                "The scheduled NYSE core session is complete and no genuine SH24/SH25 "
+                "strategy-origin event reached the durable staging store. This is a final "
+                "zero-trade result at the AWS evidence boundary, not proof that a TradingView "
+                "condition should or should not have fired. Any E2E/connectivity proof traffic "
+                "is shown separately and excluded from the trade diagnosis. TradingView "
+                "configuration remains frozen."
+            )
+        elif summary["zero_trade_status"] == "NON_TRADING_DAY":
+            explanation = (
+                "The verified NYSE calendar marks this ET date as a non-trading day. No regular "
+                "session zero-trade conclusion is expected. Durable events remain visible if any "
+                "arrive, and TradingView configuration remains frozen."
             )
         else:
             explanation = (
                 "No genuine SH24/SH25 strategy-origin event has reached the durable staging store "
-                "yet for this ET date. This state is provisional until the regular session is "
-                "complete. Any E2E/connectivity proof traffic is shown separately and excluded "
-                "from the trade diagnosis. TradingView configuration remains frozen."
+                "yet for this ET date. This state is provisional until the scheduled NYSE core "
+                "session is complete. Any E2E/connectivity proof traffic is shown separately and "
+                "excluded from the trade diagnosis. TradingView configuration remains frozen."
             )
         lines.extend(["### Exact genuine-strategy no-fill evidence", explanation, ""])
 
