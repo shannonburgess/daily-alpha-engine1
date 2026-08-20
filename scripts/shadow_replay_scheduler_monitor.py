@@ -27,6 +27,7 @@ REPLAY_TICK_MINUTE = 40
 FRESH_SCHEDULE_SECONDS = 95 * 60
 MAX_PENDING_SECONDS = 60 * 60
 FINAL_TICK_WINDOW = timedelta(minutes=35)
+FINAL_TICK_BEFORE_CLOSE = timedelta(minutes=20)
 PENDING_STATUSES = frozenset({"queued", "in_progress", "waiting", "requested", "pending"})
 
 
@@ -45,6 +46,8 @@ class ReplaySchedulerStatus:
     latest_run_updated_at: str | None
     age_seconds: float | None
     checked_at: str
+    workflow_state: str | None = None
+    workflow_created_at: str | None = None
     trading_authorized: bool = False
     live_trading_enabled: bool = False
     tradingview_configuration_frozen: bool = True
@@ -55,11 +58,29 @@ def evaluate_replay_scheduler(
     runs: list[dict[str, Any]],
     *,
     now: datetime,
+    workflow_created_at: datetime | None = None,
+    workflow_state: str | None = None,
 ) -> ReplaySchedulerStatus:
     """Verify scheduled replay cadence for the current official NYSE session."""
     _require_aware(now, "now")
+    if workflow_created_at is not None:
+        _require_aware(workflow_created_at, "workflow_created_at")
+        workflow_created_at = workflow_created_at.astimezone(UTC)
+    normalized_state = _text(workflow_state).lower() or None
     checked = now.astimezone(UTC)
     session = core_session_for(checked)
+
+    if normalized_state is not None and normalized_state != "active":
+        return _status(
+            checked,
+            session,
+            ok=False,
+            status="FAIL",
+            diagnosis="REPLAY_WORKFLOW_NOT_ACTIVE",
+            reason=f"Canonical PAPER ARMED replay workflow state is {normalized_state!r}, not active.",
+            workflow_created_at=workflow_created_at,
+            workflow_state=normalized_state,
+        )
 
     if session.calendar_status != "VERIFIED":
         return _status(
@@ -69,6 +90,8 @@ def evaluate_replay_scheduler(
             status="FAIL",
             diagnosis="REPLAY_CALENDAR_UNVERIFIED",
             reason="NYSE session coverage is unavailable; scheduled replay health cannot be inferred.",
+            workflow_created_at=workflow_created_at,
+            workflow_state=normalized_state,
         )
 
     if session.is_trading_day is not True:
@@ -79,6 +102,8 @@ def evaluate_replay_scheduler(
             status="NOT_DUE",
             diagnosis="REPLAY_NOT_DUE_NON_TRADING_DAY",
             reason="No PAPER ARMED replay is due on a verified NYSE non-trading day.",
+            workflow_created_at=workflow_created_at,
+            workflow_state=normalized_state,
         )
 
     local_now = checked.astimezone(NEW_YORK)
@@ -90,6 +115,8 @@ def evaluate_replay_scheduler(
             status="NOT_DUE",
             diagnosis="REPLAY_NOT_DUE_PREMARKET",
             reason="The first replay-health checkpoint is not due before the NYSE core session.",
+            workflow_created_at=workflow_created_at,
+            workflow_state=normalized_state,
         )
 
     scheduled = _scheduled_runs_for_session(
@@ -105,11 +132,25 @@ def evaluate_replay_scheduler(
                 status="NOT_DUE",
                 diagnosis="REPLAY_FIRST_TICK_NOT_DUE",
                 reason="The first scheduled replay tick has not reached its health-check grace boundary.",
+                workflow_created_at=workflow_created_at,
+                workflow_state=normalized_state,
             )
-        return _evaluate_in_session(scheduled, checked=checked, session=session)
+        return _evaluate_in_session(
+            scheduled,
+            checked=checked,
+            session=session,
+            workflow_created_at=workflow_created_at,
+            workflow_state=normalized_state,
+        )
 
     if session.session_phase == "POST_SESSION":
-        return _evaluate_post_session(scheduled, checked=checked, session=session)
+        return _evaluate_post_session(
+            scheduled,
+            checked=checked,
+            session=session,
+            workflow_created_at=workflow_created_at,
+            workflow_state=normalized_state,
+        )
 
     return _status(
         checked,
@@ -118,6 +159,8 @@ def evaluate_replay_scheduler(
         status="FAIL",
         diagnosis="REPLAY_SESSION_PHASE_UNRECOGNIZED",
         reason=f"Unhandled verified NYSE session phase: {session.session_phase}",
+        workflow_created_at=workflow_created_at,
+        workflow_state=normalized_state,
     )
 
 
@@ -129,6 +172,8 @@ def render_markdown(status: ReplaySchedulerStatus) -> str:
         f"Status: **{status.status}**  ",
         f"Diagnosis: `{status.diagnosis}`  ",
         f"Session: `{status.session_date_et}` / `{status.session_phase}`  ",
+        f"Workflow state: `{status.workflow_state or 'unknown'}`  ",
+        f"Workflow created: `{status.workflow_created_at or 'unknown'}`  ",
         f"Latest scheduled replay run: `{status.latest_run_id or 'none'}`  ",
         (
             "Latest run status/conclusion: "
@@ -150,6 +195,8 @@ def _evaluate_in_session(
     *,
     checked: datetime,
     session: Any,
+    workflow_created_at: datetime | None,
+    workflow_state: str | None,
 ) -> ReplaySchedulerStatus:
     due_tick = _latest_due_tick_utc(checked)
     due_runs = [
@@ -160,6 +207,20 @@ def _evaluate_in_session(
     ]
     latest = _latest_run(due_runs)
     if latest is None:
+        if workflow_created_at is not None and workflow_created_at > due_tick:
+            return _status(
+                checked,
+                session,
+                ok=True,
+                status="PENDING",
+                diagnosis="REPLAY_SCHEDULER_ACTIVATION_PENDING",
+                reason=(
+                    "The replay workflow was created after the latest due scheduler tick; "
+                    "the first eligible default-branch tick has not occurred yet."
+                ),
+                workflow_created_at=workflow_created_at,
+                workflow_state=workflow_state,
+            )
         return _status(
             checked,
             session,
@@ -170,6 +231,8 @@ def _evaluate_in_session(
                 "No scheduled PAPER ARMED replay workflow run is visible for the latest due "
                 f"hourly tick ({due_tick.isoformat()})."
             ),
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     reference = _run_reference(latest)
@@ -182,6 +245,8 @@ def _evaluate_in_session(
             diagnosis="REPLAY_SCHEDULER_INVALID_TIMESTAMP",
             reason="Latest scheduled replay run has no valid timezone-aware timestamp.",
             latest=latest,
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     age = (checked - reference).total_seconds()
@@ -195,6 +260,8 @@ def _evaluate_in_session(
             reason="Latest scheduled replay timestamp is implausibly in the future.",
             latest=latest,
             age_seconds=age,
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
     age = max(0.0, age)
 
@@ -211,6 +278,8 @@ def _evaluate_in_session(
                 reason="The latest due scheduled replay run is queued or in progress.",
                 latest=latest,
                 age_seconds=age,
+                workflow_created_at=workflow_created_at,
+                workflow_state=workflow_state,
             )
         return _status(
             checked,
@@ -221,6 +290,8 @@ def _evaluate_in_session(
             reason="Scheduled replay has remained queued/in progress beyond 60 minutes.",
             latest=latest,
             age_seconds=age,
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     if run_status == "completed" and conclusion == "success":
@@ -234,6 +305,8 @@ def _evaluate_in_session(
                 reason="Latest due scheduled replay completed successfully.",
                 latest=latest,
                 age_seconds=age,
+                workflow_created_at=workflow_created_at,
+                workflow_state=workflow_state,
             )
         return _status(
             checked,
@@ -244,6 +317,8 @@ def _evaluate_in_session(
             reason="Latest due successful scheduled replay is older than 95 minutes.",
             latest=latest,
             age_seconds=age,
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     if run_status == "completed" and conclusion and conclusion != "success":
@@ -256,6 +331,8 @@ def _evaluate_in_session(
             reason="Latest due scheduled replay completed non-successfully.",
             latest=latest,
             age_seconds=age,
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     return _status(
@@ -267,6 +344,8 @@ def _evaluate_in_session(
         reason="Latest due scheduled replay has an unrecognized status/conclusion pair.",
         latest=latest,
         age_seconds=age,
+        workflow_created_at=workflow_created_at,
+        workflow_state=workflow_state,
     )
 
 
@@ -275,6 +354,8 @@ def _evaluate_post_session(
     *,
     checked: datetime,
     session: Any,
+    workflow_created_at: datetime | None,
+    workflow_state: str | None,
 ) -> ReplaySchedulerStatus:
     close_utc = _scheduled_close_utc(session)
     if close_utc is None:
@@ -285,9 +366,12 @@ def _evaluate_post_session(
             status="FAIL",
             diagnosis="REPLAY_SCHEDULED_CLOSE_UNAVAILABLE",
             reason="Verified trading day has no scheduled close; final replay coverage cannot be proven.",
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     window_start = close_utc - FINAL_TICK_WINDOW
+    final_tick = close_utc - FINAL_TICK_BEFORE_CLOSE
     final_candidates = [
         run
         for run in runs
@@ -296,6 +380,20 @@ def _evaluate_post_session(
     ]
     latest = _latest_run(final_candidates)
     if latest is None:
+        if workflow_created_at is not None and workflow_created_at > final_tick:
+            return _status(
+                checked,
+                session,
+                ok=True,
+                status="PENDING",
+                diagnosis="REPLAY_SCHEDULER_ACTIVATION_PENDING",
+                reason=(
+                    "The replay workflow was created after the session's final nominal scheduler "
+                    "tick; first-session final coverage was not technically available."
+                ),
+                workflow_created_at=workflow_created_at,
+                workflow_state=workflow_state,
+            )
         return _status(
             checked,
             session,
@@ -306,6 +404,8 @@ def _evaluate_post_session(
                 "No scheduled replay run started within the final 35 minutes before the official "
                 "NYSE core close."
             ),
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     reference = _run_reference(latest)
@@ -323,6 +423,8 @@ def _evaluate_post_session(
                 reason="The final scheduled replay run is still pending within the allowed window.",
                 latest=latest,
                 age_seconds=age,
+                workflow_created_at=workflow_created_at,
+                workflow_state=workflow_state,
             )
         return _status(
             checked,
@@ -333,6 +435,8 @@ def _evaluate_post_session(
             reason="The final scheduled replay run is stuck beyond the allowed pending window.",
             latest=latest,
             age_seconds=age,
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     if run_status == "completed" and conclusion == "success":
@@ -345,6 +449,8 @@ def _evaluate_post_session(
             reason="A scheduled replay run completed successfully within 35 minutes of the official close.",
             latest=latest,
             age_seconds=age,
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     if run_status == "completed" and conclusion and conclusion != "success":
@@ -357,6 +463,8 @@ def _evaluate_post_session(
             reason="The final scheduled replay run completed non-successfully.",
             latest=latest,
             age_seconds=age,
+            workflow_created_at=workflow_created_at,
+            workflow_state=workflow_state,
         )
 
     return _status(
@@ -368,6 +476,8 @@ def _evaluate_post_session(
         reason="The final scheduled replay run has an unrecognized state.",
         latest=latest,
         age_seconds=age,
+        workflow_created_at=workflow_created_at,
+        workflow_state=workflow_state,
     )
 
 
@@ -381,9 +491,6 @@ def _scheduled_runs_for_session(
         if not isinstance(run, dict) or _text(run.get("event")).lower() != "schedule":
             continue
         created = _parse_aware(run.get("createdAt"))
-        # A malformed createdAt can never prove that a scheduled run belongs to the
-        # current ET session. Drop it rather than allowing a fresh updatedAt to mask
-        # a missing scheduler invocation.
         if created is None:
             continue
         if created.astimezone(NEW_YORK).date() == session_date:
@@ -445,6 +552,17 @@ def _parse_aware(value: Any) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def _load_workflow_metadata(path: Path | None) -> tuple[datetime | None, str | None]:
+    if path is None:
+        return None, None
+    raw = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        raise TypeError("workflow metadata JSON must contain an object")
+    created_at = _parse_aware(raw.get("created_at"))
+    state = _optional_text(raw.get("state"))
+    return created_at, state
+
+
 def _status(
     checked: datetime,
     session: Any,
@@ -455,6 +573,8 @@ def _status(
     reason: str,
     latest: dict[str, Any] | None = None,
     age_seconds: float | None = None,
+    workflow_created_at: datetime | None = None,
+    workflow_state: str | None = None,
 ) -> ReplaySchedulerStatus:
     latest = latest or {}
     return ReplaySchedulerStatus(
@@ -471,6 +591,10 @@ def _status(
         latest_run_updated_at=_optional_text(latest.get("updatedAt")),
         age_seconds=age_seconds,
         checked_at=checked.isoformat(),
+        workflow_state=workflow_state,
+        workflow_created_at=(
+            None if workflow_created_at is None else workflow_created_at.astimezone(UTC).isoformat()
+        ),
     )
 
 
@@ -491,6 +615,7 @@ def _require_aware(value: datetime, name: str) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs-json", type=Path, required=True)
+    parser.add_argument("--workflow-metadata", type=Path)
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--output-md", type=Path, required=True)
     return parser.parse_args()
@@ -501,7 +626,13 @@ def main() -> int:
     raw = json.loads(args.runs_json.read_text())
     if not isinstance(raw, list):
         raise TypeError("runs JSON must contain a list")
-    status = evaluate_replay_scheduler(raw, now=datetime.now(UTC))
+    workflow_created_at, workflow_state = _load_workflow_metadata(args.workflow_metadata)
+    status = evaluate_replay_scheduler(
+        raw,
+        now=datetime.now(UTC),
+        workflow_created_at=workflow_created_at,
+        workflow_state=workflow_state,
+    )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(asdict(status), indent=2, sort_keys=True) + "\n")
     args.output_md.write_text(render_markdown(status))
