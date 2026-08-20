@@ -99,6 +99,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          gh api \
+            "repos/${REPO}/actions/workflows/replay-paper-armed-signals.yml" \
+            --jq '{name:.name,path:.path,state:.state,created_at:.created_at,updated_at:.updated_at}' \
+            > "${EVIDENCE_DIR}/armed-replay-workflow-metadata.json"
           gh run list \
             --repo "${REPO}" \
             --workflow replay-paper-armed-signals.yml \
@@ -207,6 +211,7 @@ jobs:
 
           python scripts/shadow_replay_scheduler_monitor.py \
             --runs-json "${EVIDENCE_DIR}/armed-replay-runs.json" \
+            --workflow-metadata "${EVIDENCE_DIR}/armed-replay-workflow-metadata.json" \
             --output-json "${EVIDENCE_DIR}/shadow-replay-scheduler-status.json" \
             --output-md "${EVIDENCE_DIR}/shadow-replay-scheduler-status.md"
           REPLAY_SCHEDULER_CODE=$?
