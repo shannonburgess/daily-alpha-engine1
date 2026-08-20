@@ -18,7 +18,7 @@ class DataErrorSource:
 def _write_csv(path, rows):
     path.write_text(
         "Ticker,Signal,Overlay Start Date,Sector,Industry,Trend,Momentum,Optionable,"
-        "Last Close Price ($),30-Day Avg. Vol.\n"
+        "Last Close Price ($),30-Day Avg. Volume\n"
         + "\n".join(rows)
         + "\n",
         encoding="utf-8",
