@@ -6,6 +6,7 @@ on:
     - cron: "17 * * * 1-5"
 
 permissions:
+  actions: read
   contents: read
   id-token: write
   issues: write
@@ -55,6 +56,42 @@ jobs:
             > "${EVIDENCE_DIR}/shadow-runtime-contract.tmp.json"
           mv "${EVIDENCE_DIR}/shadow-runtime-contract.tmp.json" \
             "${EVIDENCE_DIR}/shadow-runtime-contract.json"
+
+      - name: Capture latest staging deployment health
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api \
+            "repos/${REPO}/actions/workflows/deploy-staging-lambdas.yml/runs?branch=main&per_page=1" \
+            > "${EVIDENCE_DIR}/staging-deployment-status.raw.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw_path = Path("shadow-monitor-artifacts/staging-deployment-status.raw.json")
+          payload = json.loads(raw_path.read_text())
+          runs = payload.get("workflow_runs")
+          if not isinstance(runs, list) or not runs:
+              sanitized = {"found": False}
+          else:
+              run = runs[0]
+              sanitized = {
+                  "found": True,
+                  "run_id": run.get("id"),
+                  "run_number": run.get("run_number"),
+                  "status": run.get("status"),
+                  "conclusion": run.get("conclusion"),
+                  "head_sha": run.get("head_sha"),
+                  "event": run.get("event"),
+                  "run_started_at": run.get("run_started_at"),
+                  "updated_at": run.get("updated_at"),
+              }
+          Path("shadow-monitor-artifacts/staging-deployment-status.json").write_text(
+              json.dumps(sanitized, indent=2, sort_keys=True) + "\n"
+          )
+          raw_path.unlink()
+          PY
 
       - name: Capture sanitized backend ingress health
         run: |
@@ -132,6 +169,7 @@ jobs:
           python scripts/shadow_contract_monitor.py \
             --monitor-state "${EVIDENCE_DIR}/shadow-monitor-state.json" \
             --runtime-contract "${EVIDENCE_DIR}/shadow-runtime-contract.json" \
+            --deployment-status "${EVIDENCE_DIR}/staging-deployment-status.json" \
             --output-json "${EVIDENCE_DIR}/shadow-contract-status.json" \
             --output-md "${EVIDENCE_DIR}/shadow-contract-status.md"
           CONTRACT_CODE=$?
@@ -202,5 +240,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, runtime-contract, backend-ingress, or canonical-universe violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, backend-ingress, or canonical-universe violation."
           exit 1
