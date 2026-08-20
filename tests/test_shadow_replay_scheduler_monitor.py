@@ -49,6 +49,7 @@ def test_regular_session_recent_scheduled_success_passes() -> None:
     result = evaluate_replay_scheduler(
         [_run(datetime(2026, 8, 20, 13, 40, tzinfo=UTC))],
         now=now,
+        workflow_state="active",
     )
 
     assert result.ok is True
@@ -96,6 +97,29 @@ def test_previous_tick_cannot_mask_missing_current_tick() -> None:
     assert result.ok is False
     assert result.status == "FAIL"
     assert result.diagnosis == "REPLAY_SCHEDULER_TICK_MISSING"
+
+
+def test_in_session_activation_after_due_tick_is_pending() -> None:
+    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)
+    result = evaluate_replay_scheduler(
+        [],
+        now=now,
+        workflow_created_at=datetime(2026, 8, 20, 14, 0, tzinfo=UTC),
+        workflow_state="active",
+    )
+
+    assert result.ok is True
+    assert result.status == "PENDING"
+    assert result.diagnosis == "REPLAY_SCHEDULER_ACTIVATION_PENDING"
+
+
+def test_inactive_workflow_fails_closed() -> None:
+    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)
+    result = evaluate_replay_scheduler([], now=now, workflow_state="disabled_manually")
+
+    assert result.ok is False
+    assert result.status == "FAIL"
+    assert result.diagnosis == "REPLAY_WORKFLOW_NOT_ACTIVE"
 
 
 def test_recent_pending_schedule_is_allowed() -> None:
@@ -147,6 +171,20 @@ def test_post_session_requires_final_tick_near_close() -> None:
     assert healthy.diagnosis == "REPLAY_FINAL_TICK_HEALTHY"
     assert missed.ok is False
     assert missed.diagnosis == "REPLAY_FINAL_TICK_MISSING"
+
+
+def test_post_session_activation_after_final_tick_is_pending() -> None:
+    now = datetime(2026, 8, 20, 20, 17, tzinfo=UTC)
+    result = evaluate_replay_scheduler(
+        [],
+        now=now,
+        workflow_created_at=datetime(2026, 8, 20, 20, 5, tzinfo=UTC),
+        workflow_state="active",
+    )
+
+    assert result.ok is True
+    assert result.status == "PENDING"
+    assert result.diagnosis == "REPLAY_SCHEDULER_ACTIVATION_PENDING"
 
 
 def test_early_close_uses_official_close_window() -> None:
