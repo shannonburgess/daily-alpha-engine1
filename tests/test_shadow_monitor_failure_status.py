@@ -13,6 +13,7 @@ def test_failure_status_never_reuses_prior_green_state() -> None:
         run_id="123",
         run_attempt="2",
         head_sha="abc123",
+        failed_step="Read isolated positions, ARMED state, events and receipts",
     )
 
     assert status["ok"] is False
@@ -22,11 +23,13 @@ def test_failure_status_never_reuses_prior_green_state() -> None:
     assert status["runtime_safety_state"] == "UNVERIFIED_CURRENT_RUN"
     assert status["tradingview_configuration_frozen"] is True
     assert status["tradingview_mutation_attempted"] is False
+    assert status["failed_step"] == "Read isolated positions, ARMED state, events and receipts"
 
     markdown = render_markdown(status)
     assert markdown.startswith("<!-- daily-alpha-shadow-monitor -->")
     assert "MONITOR_PIPELINE_FAILURE" in markdown
     assert "Do **not** interpret the prior issue status" in markdown
+    assert "Read isolated positions, ARMED state, events and receipts" in markdown
     assert "`123` / `2`" in markdown
     assert "`abc123`" in markdown
 
