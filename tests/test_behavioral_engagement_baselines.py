@@ -1,14 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-from daily_alpha.behavioral_change import (
-    BehavioralObservation,
-    BehavioralSource,
-    SourceStatus,
-)
-from daily_alpha.behavioral_engagement_baselines import (
-    derive_youtube_engagement_baseline,
-)
-
+from daily_alpha.behavioral_change import BehavioralObservation, BehavioralSource, SourceStatus
+from daily_alpha.behavioral_engagement_baselines import derive_youtube_engagement_baseline
 
 METRIC = "VIDEO_VIEW_TOTAL_SELECTED_SET"
 
@@ -100,7 +93,11 @@ def test_metric_families_are_never_mixed():
     as_of = datetime(2026, 8, 19, 23, 0, tzinfo=UTC)
     rows = _history(as_of)
     rows.extend(
-        _row(as_of - timedelta(days=offset), 1_000_000, metric="VIDEO_LIKE_TOTAL_SELECTED_SET")
+        _row(
+            as_of - timedelta(days=offset),
+            1_000_000,
+            metric="VIDEO_LIKE_TOTAL_SELECTED_SET",
+        )
         for offset in range(28)
     )
 
@@ -136,10 +133,7 @@ def test_conflicting_same_day_metric_observation_fails_closed():
 
 def test_zero_variance_history_fails_closed_for_z_score():
     as_of = datetime(2026, 8, 19, 23, 0, tzinfo=UTC)
-    rows = [
-        _row(as_of - timedelta(days=offset), 100)
-        for offset in range(28)
-    ]
+    rows = [_row(as_of - timedelta(days=offset), 100) for offset in range(28)]
 
     signal = derive_youtube_engagement_baseline(
         rows,
