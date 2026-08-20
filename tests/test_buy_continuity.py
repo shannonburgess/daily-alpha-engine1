@@ -10,7 +10,7 @@ from daily_alpha.buy_continuity import (
 
 HEADER = (
     "Ticker,Signal,Sector,Industry,Trend,Momentum,Optionable,Partial Data Stocks,"
-    "30-Day Avg. Volume\n"
+    "30-Day Avg Volume\n"
 )
 
 
