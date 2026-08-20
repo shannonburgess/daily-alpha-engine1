@@ -58,7 +58,11 @@ def test_primary_shadow_monitor_surfaces_replay_scheduler_health_without_paralle
 
     assert "Capture scheduled ARMED replay workflow health" in text
     assert "replay-paper-armed-signals.yml" in text
+    assert "armed-replay-workflow-metadata.json" in text
+    assert "created_at:.created_at" in text
+    assert "state:.state" in text
     assert "shadow_replay_scheduler_monitor.py" in text
+    assert "--workflow-metadata" in text
     assert "shadow-replay-scheduler-status.md" in text
     assert "REPLAY_SCHEDULER_CODE" in text
     assert "ARMED-replay-scheduler" in text
