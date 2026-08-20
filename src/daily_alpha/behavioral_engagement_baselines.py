@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import math
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Iterable
 
 from .behavioral_change import BehavioralObservation, BehavioralSource, SourceStatus
 
