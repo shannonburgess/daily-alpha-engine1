@@ -169,7 +169,11 @@ def test_same_day_statistics_cache_uses_no_additional_call():
         as_of=NOW.replace(hour=21),
     )
 
-    assert first == second
+    assert [(row.metric, row.raw_level) for row in first] == [
+        (row.metric, row.raw_level) for row in second
+    ]
+    assert first[0].observed_at == NOW
+    assert second[0].observed_at == NOW.replace(hour=21)
     assert first_coverage.statistics_calls_used == 1
     assert second_coverage.statistics_calls_used == 0
     assert second_coverage.cache_hits == 1
