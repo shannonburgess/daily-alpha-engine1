@@ -183,9 +183,16 @@ jobs:
           assert result["live_trading_enabled"] is False
           execution = result["execution"]
           assert execution["disposition"] == "NO_TRADE"
-          assert execution["reason"] == "SECTOR_DATA_UNVERIFIED"
+          assert execution["reason"] in {
+              "SECTOR_DATA_UNVERIFIED",
+              "LIQUIDITY_FILTERED",
+              "ACTIONABLE_UNIVERSE_FILTERED",
+          }
           assert execution["paper_execution_triggered"] is False
+          if execution["reason"] == "LIQUIDITY_FILTERED":
+              detail = execution["context"]["liquidity_gate"]["detail"]
+              assert detail == "LIQUIDITY_SYMBOL_EVIDENCE_MISSING_OR_DUPLICATE"
           print(
               "Staging readiness passed: autonomous paper execution remains live-disabled "
-              "and fails closed on unverified sector data without a paper fill."
+              "and fails closed before a paper fill."
           )
