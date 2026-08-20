@@ -45,7 +45,7 @@ def test_premarket_without_runs_is_not_due() -> None:
 
 
 def test_regular_session_recent_scheduled_success_passes() -> None:
-    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)  # 10:17 ET
+    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)  # 10:17 ET; 09:40 tick due
     result = evaluate_replay_scheduler(
         [_run(datetime(2026, 8, 20, 13, 40, tzinfo=UTC))],
         now=now,
@@ -66,7 +66,7 @@ def test_manual_dispatch_cannot_mask_missing_schedule() -> None:
     )
 
     assert result.ok is False
-    assert result.diagnosis == "REPLAY_SCHEDULER_MISSING"
+    assert result.diagnosis == "REPLAY_SCHEDULER_TICK_MISSING"
 
 
 def test_malformed_created_timestamp_cannot_mask_missing_schedule() -> None:
@@ -83,19 +83,19 @@ def test_malformed_created_timestamp_cannot_mask_missing_schedule() -> None:
     result = evaluate_replay_scheduler([malformed], now=now)
 
     assert result.ok is False
-    assert result.diagnosis == "REPLAY_SCHEDULER_MISSING"
+    assert result.diagnosis == "REPLAY_SCHEDULER_TICK_MISSING"
 
 
-def test_regular_session_stale_success_fails_closed() -> None:
-    now = datetime(2026, 8, 20, 15, 21, tzinfo=UTC)  # 11:21 ET
+def test_previous_tick_cannot_mask_missing_current_tick() -> None:
+    now = datetime(2026, 8, 20, 15, 17, tzinfo=UTC)  # 11:17 ET; 10:40 tick due
     result = evaluate_replay_scheduler(
-        [_run(datetime(2026, 8, 20, 13, 40, tzinfo=UTC))],
+        [_run(datetime(2026, 8, 20, 13, 40, tzinfo=UTC))],  # prior 09:40 ET tick
         now=now,
     )
 
     assert result.ok is False
     assert result.status == "FAIL"
-    assert result.diagnosis == "REPLAY_SCHEDULER_STALE"
+    assert result.diagnosis == "REPLAY_SCHEDULER_TICK_MISSING"
 
 
 def test_recent_pending_schedule_is_allowed() -> None:
