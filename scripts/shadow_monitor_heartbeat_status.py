@@ -16,6 +16,7 @@ from typing import Any
 
 FRESH_SUCCESS_SECONDS = 95 * 60
 MAX_PENDING_SECONDS = 60 * 60
+PENDING_STATUSES = frozenset({"queued", "in_progress", "waiting", "requested", "pending"})
 
 
 @dataclass(frozen=True)
@@ -56,9 +57,14 @@ def evaluate_heartbeat(
             reason="No canonical monitor workflow run is visible on main.",
         )
 
-    created = _parse_aware(latest.get("createdAt"), "createdAt")
-    updated = _parse_aware(latest.get("updatedAt"), "updatedAt")
-    reference = updated or created
+    created = _parse_aware(latest.get("createdAt"))
+    updated = _parse_aware(latest.get("updatedAt"))
+    run_status = str(latest.get("status") or "").strip().lower()
+    conclusion = str(latest.get("conclusion") or "").strip().lower()
+
+    # A runner may update its heartbeat while remaining stuck. Pending age therefore
+    # measures from creation; completed freshness measures from the last update.
+    reference = created if run_status in PENDING_STATUSES else (updated or created)
     if reference is None:
         return _status(
             checked,
@@ -80,9 +86,7 @@ def evaluate_heartbeat(
         )
     age = max(0.0, age)
 
-    run_status = str(latest.get("status") or "").strip().lower()
-    conclusion = str(latest.get("conclusion") or "").strip().lower()
-    if run_status in {"queued", "in_progress", "waiting", "requested", "pending"}:
+    if run_status in PENDING_STATUSES:
         if age <= MAX_PENDING_SECONDS:
             return _status(
                 checked,
@@ -184,15 +188,15 @@ def _latest_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
 
     def sort_key(run: dict[str, Any]) -> datetime:
         return (
-            _parse_aware(run.get("createdAt"), "createdAt")
-            or _parse_aware(run.get("updatedAt"), "updatedAt")
+            _parse_aware(run.get("createdAt"))
+            or _parse_aware(run.get("updatedAt"))
             or datetime.min.replace(tzinfo=UTC)
         )
 
     return max(candidates, key=sort_key)
 
 
-def _parse_aware(value: Any, name: str) -> datetime | None:
+def _parse_aware(value: Any) -> datetime | None:
     if value in (None, ""):
         return None
     try:
