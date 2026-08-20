@@ -21,10 +21,12 @@ def build_failure_status(
     run_id: str,
     run_attempt: str,
     head_sha: str,
+    failed_step: str = "UNKNOWN_STEP",
 ) -> dict[str, object]:
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
 
+    normalized_step = failed_step.strip() or "UNKNOWN_STEP"
     return {
         "ok": False,
         "snapshot_at": now.astimezone(UTC).isoformat(),
@@ -39,6 +41,7 @@ def build_failure_status(
         "run_id": str(run_id),
         "run_attempt": str(run_attempt),
         "head_sha": head_sha,
+        "failed_step": normalized_step,
         "reason": (
             "The monitor workflow failed before a complete current read-only staging "
             "snapshot could be summarized. Prior green evidence is not reused as a "
@@ -64,6 +67,7 @@ def render_markdown(status: dict[str, object]) -> str:
             "a current zero-trade, position, ARMED, receipt, or safety diagnosis.",
             "",
             "### Monitor run evidence",
+            f"Failed step: `{status['failed_step']}`  ",
             f"Repository: `{status['repository']}`  ",
             f"Workflow: `{status['workflow']}`  ",
             f"Run ID / attempt: `{status['run_id']}` / `{status['run_attempt']}`  ",
@@ -81,6 +85,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--run-attempt", required=True)
     parser.add_argument("--head-sha", required=True)
+    parser.add_argument("--failed-step", default="UNKNOWN_STEP")
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--output-md", type=Path, required=True)
     return parser.parse_args()
@@ -95,6 +100,7 @@ def main() -> int:
         run_id=args.run_id,
         run_attempt=args.run_attempt,
         head_sha=args.head_sha,
+        failed_step=args.failed_step,
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(status, indent=2, sort_keys=True) + "\n")
