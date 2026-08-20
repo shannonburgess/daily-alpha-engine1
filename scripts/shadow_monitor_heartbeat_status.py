@@ -62,8 +62,6 @@ def evaluate_heartbeat(
     run_status = str(latest.get("status") or "").strip().lower()
     conclusion = str(latest.get("conclusion") or "").strip().lower()
 
-    # A runner may update its heartbeat while remaining stuck. Pending age therefore
-    # measures from creation; completed freshness measures from the last update.
     reference = created if run_status in PENDING_STATUSES else (updated or created)
     if reference is None:
         return _status(
@@ -151,6 +149,15 @@ def evaluate_heartbeat(
 def render_markdown(status: HeartbeatStatus) -> str:
     """Render the fail-closed rolling issue status for heartbeat-only failures."""
     age = "unknown" if status.age_seconds is None else f"{status.age_seconds:.1f}s"
+    limitation = (
+        "The scheduler heartbeat cannot prove current positions, ARMED state, receipts, "
+        "zero-trade state, or AWS safety. Do **not** interpret an older green monitor result "
+        "as current until the canonical monitor resumes and publishes fresh evidence."
+    )
+    run_state = (
+        f"Latest run status/conclusion: `{status.latest_run_status or 'none'}` / "
+        f"`{status.latest_run_conclusion or 'none'}`  "
+    )
     lines = [
         "<!-- daily-alpha-shadow-monitor -->",
         "## Daily Alpha PAPER Shadow Monitor",
@@ -163,14 +170,11 @@ def render_markdown(status: HeartbeatStatus) -> str:
         "",
         status.reason,
         "",
-        "The scheduler heartbeat cannot prove current positions, ARMED state, receipts, "
-        "zero-trade state, or AWS safety. Do **not** interpret an older green monitor result "
-        "as current until the canonical monitor resumes and publishes fresh evidence.",
+        limitation,
         "",
         "### Scheduler heartbeat evidence",
         f"Latest run ID: `{status.latest_run_id or 'none'}`  ",
-        f"Latest run status/conclusion: `{status.latest_run_status or 'none'}` / "
-        f"`{status.latest_run_conclusion or 'none'}`  ",
+        run_state,
         f"Latest run created: `{status.latest_run_created_at or 'none'}`  ",
         f"Latest run updated: `{status.latest_run_updated_at or 'none'}`  ",
         f"Latest run head SHA: `{status.latest_run_head_sha or 'none'}`  ",
@@ -200,7 +204,7 @@ def _parse_aware(value: Any) -> datetime | None:
     if value in (None, ""):
         return None
     try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value))
     except ValueError:
         return None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
