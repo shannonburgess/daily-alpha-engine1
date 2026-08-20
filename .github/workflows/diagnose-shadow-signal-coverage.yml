@@ -1,0 +1,145 @@
+name: Diagnose SH24 source-side signal coverage
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/diagnose-shadow-signal-coverage.yml"
+      - "scripts/shadow_signal_diagnostics.py"
+      - "tests/test_shadow_signal_diagnostics.py"
+      - "tradingview/da_turtle_20_10_v2_4.pine"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    name: Independent SH24 daily-bar expectation
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      AWS_REGION: us-east-2
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require ORATS secret
+        run: test -n "$ORATS_TOKEN"
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-sh24-source-diagnostic
+          aws-region: us-east-2
+
+      - name: Capture canonical actionable universe and shadow evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p shadow-signal-diagnostic
+          aws s3 cp \
+            "s3://${STAGING_BUCKET}/ovtlyr/shortlist/latest/shortlist.json" \
+            shadow-signal-diagnostic/shortlist.json \
+            --only-show-errors
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}' \
+            shadow-signal-diagnostic/shadow-monitor-state.json >/dev/null
+
+      - name: Resolve latest completed NYSE session and target shadow status
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src:. python - <<'PY'
+          import json
+          from datetime import UTC, datetime, time, timedelta
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          from scripts.nyse_session_calendar import core_session_for
+          from scripts.shadow_monitor import summarize
+
+          now = datetime.now(UTC)
+          current = core_session_for(now)
+          target = None
+          if current.calendar_status == "VERIFIED" and current.is_trading_day and current.session_phase == "POST_SESSION":
+              target = datetime.fromisoformat(current.session_date_et).date()
+          else:
+              local_date = now.astimezone(ZoneInfo("America/New_York")).date()
+              for offset in range(1, 8):
+                  candidate = local_date - timedelta(days=offset)
+                  after_close = datetime.combine(
+                      candidate,
+                      time(17, 0),
+                      tzinfo=ZoneInfo("America/New_York"),
+                  )
+                  session = core_session_for(after_close)
+                  if session.calendar_status == "VERIFIED" and session.is_trading_day:
+                      target = candidate
+                      break
+          if target is None:
+              raise SystemExit("No verified completed NYSE session found")
+
+          state_path = Path("shadow-signal-diagnostic/shadow-monitor-state.json")
+          state = json.loads(state_path.read_text())
+          evaluation_time = datetime.combine(
+              target,
+              time(17, 0),
+              tzinfo=ZoneInfo("America/New_York"),
+          )
+          status = summarize(state, now=evaluation_time)
+          Path("shadow-signal-diagnostic/target-date.txt").write_text(target.isoformat() + "\n")
+          Path("shadow-signal-diagnostic/target-shadow-status.json").write_text(
+              json.dumps(status, indent=2, sort_keys=True) + "\n"
+          )
+          print("target_date=" + target.isoformat())
+          print("target_strategy_events=" + str(status["total_strategy_events"]))
+          PY
+
+      - name: Run independent SH24 source diagnostic
+        id: diagnostic
+        shell: bash
+        run: |
+          set +e
+          TARGET_DATE="$(cat shadow-signal-diagnostic/target-date.txt)"
+          PYTHONPATH=src:. python scripts/shadow_signal_diagnostics.py \
+            --symbols shadow-signal-diagnostic/shortlist.json \
+            --target-date "$TARGET_DATE" \
+            --shadow-status shadow-signal-diagnostic/target-shadow-status.json \
+            --output-json shadow-signal-diagnostic/sh24-source-diagnostic.json \
+            --output-md shadow-signal-diagnostic/sh24-source-diagnostic.md
+          CODE=$?
+          cat shadow-signal-diagnostic/sh24-source-diagnostic.md >> "$GITHUB_STEP_SUMMARY"
+          cat shadow-signal-diagnostic/sh24-source-diagnostic.json
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload sanitized source diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sh24-source-signal-diagnostic-${{ github.run_id }}
+          path: |
+            shadow-signal-diagnostic/target-date.txt
+            shadow-signal-diagnostic/target-shadow-status.json
+            shadow-signal-diagnostic/sh24-source-diagnostic.json
+            shadow-signal-diagnostic/sh24-source-diagnostic.md
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Enforce fail-closed diagnostic completeness
+        if: steps.diagnostic.outputs.exit_code != '0'
+        run: |
+          echo "SH24 source-side diagnostic is incomplete or detected source-contract drift."
+          exit 1
