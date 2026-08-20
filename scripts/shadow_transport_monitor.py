@@ -68,9 +68,11 @@ def render_markdown(status: dict[str, Any]) -> str:
         "",
         "### Shadow backend ingress health",
         f"Status: **{state}**  ",
-        f"Ingress: `{status['ingress_function'] or 'missing'}` — "
-        f"`{status['ingress_state'] or 'unknown'}` / "
-        f"`{status['ingress_last_update_status'] or 'unknown'}`  ",
+        (
+            f"Ingress: `{status['ingress_function'] or 'missing'}` — "
+            f"`{status['ingress_state'] or 'unknown'}` / "
+            f"`{status['ingress_last_update_status'] or 'unknown'}`  "
+        ),
         f"Ingress queue: `{status['ingress_queue_name'] or 'missing'}`  ",
         f"Secret reference configured: **{status['secret_reference_configured']}**  ",
         f"Queue configured: **{status['queue_configured']}**  ",
