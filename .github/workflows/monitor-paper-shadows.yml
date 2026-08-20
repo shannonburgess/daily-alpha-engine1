@@ -93,6 +93,24 @@ jobs:
           raw_path.unlink()
           PY
 
+      - name: Capture scheduled ARMED replay workflow health
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            "repos/${REPO}/actions/workflows/replay-paper-armed-signals.yml" \
+            --jq '{name:.name,path:.path,state:.state,created_at:.created_at,updated_at:.updated_at}' \
+            > "${EVIDENCE_DIR}/armed-replay-workflow-metadata.json"
+          gh run list \
+            --repo "${REPO}" \
+            --workflow replay-paper-armed-signals.yml \
+            --branch main \
+            --limit 8 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event \
+            > "${EVIDENCE_DIR}/armed-replay-runs.json"
+
       - name: Capture sanitized backend ingress health
         run: |
           set -euo pipefail
@@ -172,7 +190,7 @@ jobs:
           fi
           rm -f /tmp/liquidity-copy-error.log
 
-      - name: Build exact shadow, contract, ingress, universe and liquidity status
+      - name: Build exact shadow, contract, replay, ingress, universe and liquidity status
         id: summarize
         shell: bash
         run: |
@@ -190,6 +208,13 @@ jobs:
             --output-json "${EVIDENCE_DIR}/shadow-contract-status.json" \
             --output-md "${EVIDENCE_DIR}/shadow-contract-status.md"
           CONTRACT_CODE=$?
+
+          python scripts/shadow_replay_scheduler_monitor.py \
+            --runs-json "${EVIDENCE_DIR}/armed-replay-runs.json" \
+            --workflow-metadata "${EVIDENCE_DIR}/armed-replay-workflow-metadata.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-replay-scheduler-status.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-replay-scheduler-status.md"
+          REPLAY_SCHEDULER_CODE=$?
 
           python scripts/shadow_transport_monitor.py \
             --ingress-runtime "${EVIDENCE_DIR}/shadow-ingress-runtime.json" \
@@ -221,6 +246,8 @@ jobs:
 
           cat "${EVIDENCE_DIR}/shadow-contract-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-replay-scheduler-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-transport-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-universe-status.md" >> \
@@ -230,12 +257,14 @@ jobs:
           cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
           cat "${EVIDENCE_DIR}/shadow-status.json"
           cat "${EVIDENCE_DIR}/shadow-contract-status.json"
+          cat "${EVIDENCE_DIR}/shadow-replay-scheduler-status.json"
           cat "${EVIDENCE_DIR}/shadow-transport-status.json"
           cat "${EVIDENCE_DIR}/shadow-universe-status.json"
           cat "${EVIDENCE_DIR}/shadow-liquidity-status.json"
 
           if [ "${STATUS_CODE}" -ne 0 ] || \
              [ "${CONTRACT_CODE}" -ne 0 ] || \
+             [ "${REPLAY_SCHEDULER_CODE}" -ne 0 ] || \
              [ "${TRANSPORT_CODE}" -ne 0 ] || \
              [ "${UNIVERSE_CODE}" -ne 0 ] || \
              [ "${LIQUIDITY_CODE}" -ne 0 ]; then
@@ -276,5 +305,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, backend-ingress, canonical-universe, or company-liquidity violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, ARMED-replay-scheduler, backend-ingress, canonical-universe, or company-liquidity violation."
           exit 1
