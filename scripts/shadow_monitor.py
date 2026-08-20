@@ -28,6 +28,18 @@ def _parse_time(value: Any) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def _session_phase(timestamp: datetime) -> str:
+    local = timestamp.astimezone(NEW_YORK)
+    if local.weekday() >= 5:
+        return "NON_TRADING_DAY"
+    clock = (local.hour, local.minute)
+    if clock < (9, 30):
+        return "PREMARKET"
+    if clock < (16, 0):
+        return "REGULAR_SESSION"
+    return "POST_SESSION"
+
+
 def _session_events(events: list[dict[str, Any]], session_date: str) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     for event in events:
@@ -111,6 +123,8 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
         raise ValueError("now must be timezone-aware")
     timestamp = timestamp.astimezone(UTC)
     session_date = timestamp.astimezone(NEW_YORK).date().isoformat()
+    session_phase = _session_phase(timestamp)
+    session_complete = session_phase == "POST_SESSION"
     violations = _safety_violations(state)
 
     books = state.get("books") if isinstance(state.get("books"), dict) else {}
@@ -192,11 +206,31 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
     else:
         diagnosis = "NO_GENUINE_STRATEGY_EVENT_RECEIVED"
 
+    zero_trade_status: str | None = None
+    if diagnosis == "NO_GENUINE_STRATEGY_EVENT_RECEIVED":
+        if session_complete:
+            zero_trade_status = "FINAL_AT_AWS_BOUNDARY"
+        elif session_phase == "REGULAR_SESSION":
+            zero_trade_status = "PROVISIONAL_SESSION_IN_PROGRESS"
+        elif session_phase == "PREMARKET":
+            zero_trade_status = "PROVISIONAL_SESSION_NOT_OPEN"
+        else:
+            zero_trade_status = "NON_TRADING_DAY"
+    elif diagnosis == "STRATEGY_EVENTS_RECEIVED_NO_PAPER_FILL":
+        zero_trade_status = (
+            "FINAL_EXACT_BLOCKERS_RECORDED"
+            if session_complete
+            else "PROVISIONAL_EXACT_BLOCKERS_RECORDED"
+        )
+
     return {
         "ok": not violations,
         "snapshot_at": timestamp.isoformat(),
         "session_date_et": session_date,
+        "session_phase": session_phase,
+        "session_complete": session_complete,
         "diagnosis": diagnosis,
+        "zero_trade_status": zero_trade_status,
         "total_strategy_events": total_strategy_events,
         "total_test_events": total_test_events,
         "total_session_fills": total_strategy_fills,
@@ -235,7 +269,10 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "## Daily Alpha PAPER Shadow Monitor",
         "",
         f"**Session:** {summary['session_date_et']} ET  ",
+        f"**Session phase:** `{summary['session_phase']}`  ",
+        f"**Session complete:** {summary['session_complete']}  ",
         f"**Diagnosis:** `{summary['diagnosis']}`  ",
+        f"**Zero-trade status:** `{summary['zero_trade_status'] or 'not_applicable'}`  ",
         f"**Genuine SH24/SH25 strategy events today:** {summary['total_strategy_events']}  ",
         f"**Test/proof events today:** {summary['total_test_events']}  ",
         f"**Paper fills today:** {summary['total_session_fills']}  ",
@@ -280,13 +317,22 @@ def render_markdown(summary: dict[str, Any]) -> str:
         )
         lines.extend(["### Exact genuine-strategy no-fill evidence", blockers, ""])
     elif summary["diagnosis"] == "NO_GENUINE_STRATEGY_EVENT_RECEIVED":
-        lines.extend(
-            [
-                "### Exact genuine-strategy no-fill evidence",
-                "No genuine SH24/SH25 strategy-origin event reached the durable staging store for this ET session. Any E2E/connectivity proof traffic is shown separately and excluded from the trade diagnosis. This does not prove a TradingView defect; it proves only that no genuine strategy order event reached AWS. TradingView configuration remains frozen.",
-                "",
-            ]
-        )
+        if summary["zero_trade_status"] == "FINAL_AT_AWS_BOUNDARY":
+            explanation = (
+                "The regular ET session is complete and no genuine SH24/SH25 strategy-origin "
+                "event reached the durable staging store. This is a final zero-trade result at "
+                "the AWS evidence boundary, not proof that a TradingView condition should or "
+                "should not have fired. Any E2E/connectivity proof traffic is shown separately "
+                "and excluded from the trade diagnosis. TradingView configuration remains frozen."
+            )
+        else:
+            explanation = (
+                "No genuine SH24/SH25 strategy-origin event has reached the durable staging store "
+                "yet for this ET date. This state is provisional until the regular session is "
+                "complete. Any E2E/connectivity proof traffic is shown separately and excluded "
+                "from the trade diagnosis. TradingView configuration remains frozen."
+            )
+        lines.extend(["### Exact genuine-strategy no-fill evidence", explanation, ""])
 
     violations = summary["safety"]["violations"]
     if violations:
