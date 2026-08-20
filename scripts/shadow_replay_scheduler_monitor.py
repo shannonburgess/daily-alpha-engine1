@@ -23,6 +23,7 @@ else:
 
 NEW_YORK = ZoneInfo("America/New_York")
 FIRST_REPLAY_HEALTH_CHECK = time(10, 0)
+REPLAY_TICK_MINUTE = 40
 FRESH_SCHEDULE_SECONDS = 95 * 60
 MAX_PENDING_SECONDS = 60 * 60
 FINAL_TICK_WINDOW = timedelta(minutes=35)
@@ -150,15 +151,25 @@ def _evaluate_in_session(
     checked: datetime,
     session: Any,
 ) -> ReplaySchedulerStatus:
-    latest = _latest_run(runs)
+    due_tick = _latest_due_tick_utc(checked)
+    due_runs = [
+        run
+        for run in runs
+        if (created := _parse_aware(run.get("createdAt"))) is not None
+        and created >= due_tick
+    ]
+    latest = _latest_run(due_runs)
     if latest is None:
         return _status(
             checked,
             session,
             ok=False,
             status="FAIL",
-            diagnosis="REPLAY_SCHEDULER_MISSING",
-            reason="No scheduled PAPER ARMED replay workflow run is visible for the current session.",
+            diagnosis="REPLAY_SCHEDULER_TICK_MISSING",
+            reason=(
+                "No scheduled PAPER ARMED replay workflow run is visible for the latest due "
+                f"hourly tick ({due_tick.isoformat()})."
+            ),
         )
 
     reference = _run_reference(latest)
@@ -197,7 +208,7 @@ def _evaluate_in_session(
                 ok=True,
                 status="PENDING",
                 diagnosis="REPLAY_SCHEDULER_PENDING",
-                reason="A scheduled replay run is currently queued or in progress within the allowed window.",
+                reason="The latest due scheduled replay run is queued or in progress.",
                 latest=latest,
                 age_seconds=age,
             )
@@ -220,7 +231,7 @@ def _evaluate_in_session(
                 ok=True,
                 status="PASS",
                 diagnosis="REPLAY_SCHEDULER_HEALTHY",
-                reason="Latest scheduled replay completed successfully within the hourly freshness window.",
+                reason="Latest due scheduled replay completed successfully.",
                 latest=latest,
                 age_seconds=age,
             )
@@ -230,7 +241,7 @@ def _evaluate_in_session(
             ok=False,
             status="FAIL",
             diagnosis="REPLAY_SCHEDULER_STALE",
-            reason="Latest successful scheduled replay is older than 95 minutes during the core session.",
+            reason="Latest due successful scheduled replay is older than 95 minutes.",
             latest=latest,
             age_seconds=age,
         )
@@ -242,7 +253,7 @@ def _evaluate_in_session(
             ok=False,
             status="FAIL",
             diagnosis="REPLAY_SCHEDULER_COMPLETED_NON_SUCCESS",
-            reason="Latest scheduled replay completed non-successfully.",
+            reason="Latest due scheduled replay completed non-successfully.",
             latest=latest,
             age_seconds=age,
         )
@@ -253,7 +264,7 @@ def _evaluate_in_session(
         ok=False,
         status="FAIL",
         diagnosis="REPLAY_SCHEDULER_UNKNOWN_RUN_STATE",
-        reason="Latest scheduled replay has an unrecognized status/conclusion pair.",
+        reason="Latest due scheduled replay has an unrecognized status/conclusion pair.",
         latest=latest,
         age_seconds=age,
     )
@@ -378,6 +389,14 @@ def _scheduled_runs_for_session(
         if created.astimezone(NEW_YORK).date() == session_date:
             result.append(run)
     return result
+
+
+def _latest_due_tick_utc(checked: datetime) -> datetime:
+    local = checked.astimezone(NEW_YORK)
+    due = local.replace(minute=REPLAY_TICK_MINUTE, second=0, microsecond=0)
+    if due > local:
+        due -= timedelta(hours=1)
+    return due.astimezone(UTC)
 
 
 def _latest_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
