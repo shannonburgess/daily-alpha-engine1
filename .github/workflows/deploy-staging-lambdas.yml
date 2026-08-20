@@ -137,6 +137,45 @@ jobs:
           aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
 
+      - name: Verify deployed shadow monitor contract
+        shell: bash
+        run: |
+          cat >/tmp/shadow-monitor-request.json <<'JSON'
+          {"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}
+          JSON
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/shadow-monitor-request.json \
+            /tmp/shadow-monitor-result.json
+          cat /tmp/shadow-monitor-result.json
+
+      - name: Validate shadow routing and monitor readiness
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("/tmp/shadow-monitor-result.json").read_text())
+          assert result["ok"] is True
+          assert result["service"] == "daily-alpha-pine-processor"
+          assert result["operation"] == "GET_SHADOW_MONITOR_STATE"
+          assert result["trading_authorized"] is False
+          assert result["live_trading_enabled"] is False
+          books = result["books"]
+          assert set(books) == {"PAPER_SHADOW_V24", "PAPER_SHADOW_V25"}
+          for account_id in ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25"):
+              book = books[account_id]
+              assert isinstance(book["open_count"], int)
+              assert isinstance(book["open_positions"], list)
+              assert isinstance(book["armed_count_visible"], int)
+              assert isinstance(book["armed_signals"], list)
+              assert isinstance(book["events"], list)
+          print(
+              "Shadow monitor readiness passed: V24/V25 isolation and read-only "
+              "monitor contract are present after deployment."
+          )
+
       - name: Rehearse paper processor fail-closed safety gate
         shell: bash
         run: |
