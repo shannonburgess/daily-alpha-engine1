@@ -79,7 +79,7 @@ jobs:
           aws lambda invoke \
             --function-name daily-alpha-pine-processor \
             --cli-binary-format raw-in-base64-out \
-            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}' \
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":100,"event_limit":100}' \
             /tmp/before.json >/tmp/before-meta.json
 
           jq -e '
@@ -100,55 +100,71 @@ jobs:
           set -euo pipefail
           BEFORE="$(jq '[.books.PAPER_SHADOW_V24.armed_count_visible, .books.PAPER_SHADOW_V25.armed_count_visible] | add' /tmp/before.json)"
           echo '[]' >/tmp/replay-attempts.json
-          cp /tmp/before.json /tmp/after.json
 
-          if [[ "${BEFORE}" -gt 0 ]]; then
-            aws lambda invoke \
-              --function-name daily-alpha-pine-processor \
-              --cli-binary-format raw-in-base64-out \
-              --payload '{"operation":"REPLAY_ARMED_SIGNALS","limit":100}' \
-              /tmp/replay-1.json >/tmp/replay-1-meta.json
+          # Invoke exactly once each eligible tick. A no-ARMED pass is read/scan-only,
+          # while this also prevents legacy/default PAPER ARMED records from requiring
+          # manual replay just because both shadow books happen to be empty.
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"REPLAY_ARMED_SIGNALS","limit":100}' \
+            /tmp/replay-1.json >/tmp/replay-1-meta.json
 
-            jq -e '
-              .ok == true and
-              .service == "daily-alpha-pine-processor" and
-              .operation == "REPLAY_ARMED_SIGNALS" and
-              .trading_authorized == false and
-              .live_trading_enabled == false
-            ' /tmp/replay-1.json >/dev/null
+          jq -e '
+            .ok == true and
+            .service == "daily-alpha-pine-processor" and
+            .operation == "REPLAY_ARMED_SIGNALS" and
+            .trading_authorized == false and
+            .live_trading_enabled == false and
+            (.armed_found | type == "number" and . >= 0) and
+            (.armed_claimed | type == "number" and . >= 0) and
+            (.lease_conflicts | type == "number" and . >= 0) and
+            (.armed_found == (.armed_claimed + .lease_conflicts)) and
+            ((.outcomes | length) == .armed_claimed) and
+            (([.outcome_counts[]] | add // 0) == .armed_claimed) and
+            (.account_results | type == "array")
+          ' /tmp/replay-1.json >/dev/null
 
-            jq --slurpfile attempt /tmp/replay-1.json \
-              '. + $attempt' /tmp/replay-attempts.json >/tmp/replay-attempts-next.json
-            mv /tmp/replay-attempts-next.json /tmp/replay-attempts.json
+          jq --slurpfile attempt /tmp/replay-1.json \
+            '. + $attempt' /tmp/replay-attempts.json >/tmp/replay-attempts-next.json
+          mv /tmp/replay-attempts-next.json /tmp/replay-attempts.json
 
-            aws lambda invoke \
-              --function-name daily-alpha-pine-processor \
-              --cli-binary-format raw-in-base64-out \
-              --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}' \
-              /tmp/after.json >/tmp/after-meta.json
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":100,"event_limit":100}' \
+            /tmp/after.json >/tmp/after-meta.json
 
-            jq -e '
-              .ok == true and
-              .trading_authorized == false and
-              .live_trading_enabled == false and
-              (.books.PAPER_SHADOW_V24.armed_limit_reached == false) and
-              (.books.PAPER_SHADOW_V25.armed_limit_reached == false) and
-              (.books.PAPER_SHADOW_V24.scan_truncated == false) and
-              (.books.PAPER_SHADOW_V25.scan_truncated == false)
-            ' /tmp/after.json >/dev/null
-          fi
+          jq -e '
+            .ok == true and
+            .service == "daily-alpha-pine-processor" and
+            .operation == "GET_SHADOW_MONITOR_STATE" and
+            .trading_authorized == false and
+            .live_trading_enabled == false and
+            (.books.PAPER_SHADOW_V24.armed_limit_reached == false) and
+            (.books.PAPER_SHADOW_V25.armed_limit_reached == false) and
+            (.books.PAPER_SHADOW_V24.scan_truncated == false) and
+            (.books.PAPER_SHADOW_V25.scan_truncated == false)
+          ' /tmp/after.json >/dev/null
 
           BEFORE_V24="$(jq '.books.PAPER_SHADOW_V24.armed_count_visible' /tmp/before.json)"
           BEFORE_V25="$(jq '.books.PAPER_SHADOW_V25.armed_count_visible' /tmp/before.json)"
           AFTER_V24="$(jq '.books.PAPER_SHADOW_V24.armed_count_visible' /tmp/after.json)"
           AFTER_V25="$(jq '.books.PAPER_SHADOW_V25.armed_count_visible' /tmp/after.json)"
+          ARMED_FOUND="$(jq '[.[] | .armed_found // 0] | add // 0' /tmp/replay-attempts.json)"
+          ARMED_CLAIMED="$(jq '[.[] | .armed_claimed // 0] | add // 0' /tmp/replay-attempts.json)"
           EXECUTED="$(jq '[.[] | .outcome_counts.EXECUTED_PAPER // 0] | add // 0' /tmp/replay-attempts.json)"
           CANCELLED="$(jq '[.[] | .outcome_counts.CANCELLED_REPLAY // 0] | add // 0' /tmp/replay-attempts.json)"
+          RETRYABLE_ARMED="$(jq '[.[] | .outcome_counts.ARMED_FOR_NEXT_TRADABLE_WINDOW // 0] | add // 0' /tmp/replay-attempts.json)"
           LEASE_CONFLICTS="$(jq '[.[] | .lease_conflicts // 0] | add // 0' /tmp/replay-attempts.json)"
+          OUTCOME_COUNTS="$(jq 'reduce .[] as $attempt ({}; reduce (($attempt.outcome_counts // {}) | to_entries[]) as $entry (. ; .[$entry.key] = ((.[$entry.key] // 0) + $entry.value)))' /tmp/replay-attempts.json)"
+          ACCOUNT_RESULTS="$(jq '[.[] | .account_results[]?]' /tmp/replay-attempts.json)"
           REMAINING="$((AFTER_V24 + AFTER_V25))"
 
           STATUS="COMPLETE"
-          if [[ "${REMAINING}" -gt 0 ]]; then
+          if [[ "${BEFORE}" -eq 0 && "${ARMED_FOUND}" -eq 0 ]]; then
+            STATUS="NO_ARMED_SIGNALS"
+          elif [[ "${REMAINING}" -gt 0 || "${LEASE_CONFLICTS}" -gt 0 || "${RETRYABLE_ARMED}" -gt 0 ]]; then
             STATUS="RETRY_PENDING_NEXT_SCHEDULE"
           fi
 
@@ -159,17 +175,27 @@ jobs:
             --argjson before_v25 "${BEFORE_V25}" \
             --argjson after_v24 "${AFTER_V24}" \
             --argjson after_v25 "${AFTER_V25}" \
+            --argjson armed_found "${ARMED_FOUND}" \
+            --argjson armed_claimed "${ARMED_CLAIMED}" \
             --argjson executed "${EXECUTED}" \
             --argjson cancelled "${CANCELLED}" \
+            --argjson retryable_armed "${RETRYABLE_ARMED}" \
             --argjson lease_conflicts "${LEASE_CONFLICTS}" \
+            --argjson outcome_counts "${OUTCOME_COUNTS}" \
+            --argjson account_results "${ACCOUNT_RESULTS}" \
             '{
               status: $status,
               session_date_et: $session_date,
               before: {PAPER_SHADOW_V24: $before_v24, PAPER_SHADOW_V25: $before_v25},
               after: {PAPER_SHADOW_V24: $after_v24, PAPER_SHADOW_V25: $after_v25},
+              armed_found: $armed_found,
+              armed_claimed: $armed_claimed,
               executed_paper: $executed,
               cancelled_replay: $cancelled,
+              retryable_armed: $retryable_armed,
               lease_conflicts: $lease_conflicts,
+              outcome_counts: $outcome_counts,
+              account_results: $account_results,
               trading_authorized: false,
               live_trading_enabled: false
             }' >/tmp/replay-summary.json
@@ -199,17 +225,24 @@ jobs:
             BEFORE_V25="$(jq '.before.PAPER_SHADOW_V25' /tmp/replay-summary.json)"
             AFTER_V24="$(jq '.after.PAPER_SHADOW_V24' /tmp/replay-summary.json)"
             AFTER_V25="$(jq '.after.PAPER_SHADOW_V25' /tmp/replay-summary.json)"
+            ARMED_FOUND="$(jq '.armed_found' /tmp/replay-summary.json)"
+            ARMED_CLAIMED="$(jq '.armed_claimed' /tmp/replay-summary.json)"
             EXECUTED="$(jq '.executed_paper' /tmp/replay-summary.json)"
             CANCELLED="$(jq '.cancelled_replay' /tmp/replay-summary.json)"
+            RETRYABLE_ARMED="$(jq '.retryable_armed' /tmp/replay-summary.json)"
             LEASE_CONFLICTS="$(jq '.lease_conflicts' /tmp/replay-summary.json)"
+            OUTCOME_COUNTS="$(jq -c '.outcome_counts' /tmp/replay-summary.json)"
             {
               echo "## Daily Alpha ARMED replay"
               echo "- Status: ${STATUS}"
               echo "- SH24 ARMED: ${BEFORE_V24} -> ${AFTER_V24}"
               echo "- SH25 ARMED: ${BEFORE_V25} -> ${AFTER_V25}"
+              echo "- ARMED found / claimed: ${ARMED_FOUND} / ${ARMED_CLAIMED}"
               echo "- PAPER executions: ${EXECUTED}"
               echo "- Replay cancellations: ${CANCELLED}"
+              echo "- Retryable ARMED outcomes: ${RETRYABLE_ARMED}"
               echo "- Lease conflicts: ${LEASE_CONFLICTS}"
+              echo "- Outcome counts: ${OUTCOME_COUNTS}"
               echo "- Trading authorized: false"
               echo "- Live trading enabled: false"
             } >> "$GITHUB_STEP_SUMMARY"
