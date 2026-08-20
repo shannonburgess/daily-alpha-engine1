@@ -5,14 +5,20 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 
 from daily_alpha.behavioral_change import BehavioralSource
-from daily_alpha.behavioral_orthogonality import CoreFactorFamily, OrthogonalityDiagnostic
+from daily_alpha.behavioral_orthogonality import (
+    CoreFactorFamily,
+    OrthogonalityDiagnostic,
+)
 from daily_alpha.behavioral_promotion_gate import (
     BehavioralHoldoutOutcomeEvidence,
     BehavioralPromotionCriteria,
     BehavioralValidationWindow,
     evaluate_behavioral_promotion_readiness,
 )
-from daily_alpha.behavioral_validation import LeadLagObservation, SourceAblationResult
+from daily_alpha.behavioral_validation import (
+    LeadLagObservation,
+    SourceAblationResult,
+)
 
 
 HOLDOUT_START = datetime(2026, 7, 1, tzinfo=UTC)
