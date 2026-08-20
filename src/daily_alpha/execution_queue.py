@@ -143,6 +143,25 @@ def prepare_next_session_signal(
                 "CANCEL_BREAKOUT_NO_LONGER_VALID",
                 None,
             )
+
+        # Continuation/replay entries may carry a stricter explicit ceiling tied to
+        # the original breakout. Honor it before the generic starter/add1 limit so
+        # an overnight gap cannot turn a controlled entry into a chase.
+        replay_max_raw = signal.get("replay_max_price")
+        if replay_max_raw not in (None, ""):
+            try:
+                replay_max_price = float(replay_max_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Pending ENTRY_LONG replay_max_price is invalid") from exc
+            if replay_max_price <= after.entry_breakout_level:
+                raise ValueError("Pending ENTRY_LONG replay_max_price is not above breakout")
+            if stock_price > replay_max_price:
+                return NextSessionDecision(
+                    CANCEL_STATUS,
+                    "CANCEL_CONTINUATION_REPLAY_MAX_PRICE",
+                    None,
+                )
+
         add1_level = after.runner_base_entry + after.runner_base_atr
         if stock_price >= add1_level:
             return NextSessionDecision(
