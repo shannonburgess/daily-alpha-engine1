@@ -17,5 +17,8 @@ class OptionQualityRules:
 
 @dataclass(frozen=True)
 class StockFallbackRules:
-    min_price: float = 5.0
+    # Daily Alpha's broader actionable universe uses a $10 underlying floor.
+    # The SH24/SH25 TradingView control/challenger remain frozen at their audited
+    # $25 Pine floor so the prospective shadow comparison is not contaminated.
+    min_price: float = 10.0
     min_average_daily_dollar_volume: float = 50_000_000.0
