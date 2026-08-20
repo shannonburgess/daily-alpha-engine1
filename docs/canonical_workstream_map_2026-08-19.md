@@ -4,177 +4,281 @@ Updated: 2026-08-20
 
 ## Purpose
 
-Keep one canonical implementation path per objective and prevent parallel branches, automation prompts, or customer-facing outputs from drifting into competing definitions of Daily Alpha.
+Keep one canonical implementation path per objective and prevent branches, scheduled control loops, staging integrations, and research outputs from drifting into competing definitions of Daily Alpha.
 
-This map is a coordination artifact only. It does not authorize deployment, TradingView mutation, customer launch, capital deployment, or live trading.
+This map is a coordination artifact only. It does not authorize production deployment, TradingView mutation, customer launch, capital deployment, or live trading.
 
 ## Repository source of truth
 
-- **Canonical roadmap:** draft PR #141 (`agent/project-roadmap-refresh-2026-08-17`).
-- **Superseded roadmap:** PR #90 — closed unmerged.
-- Current `main` remains the execution/configuration source of truth for already-landed behavior. Draft PRs remain proposed changes until separately reviewed/merged.
-- **Merged #215** is the landed read-only SH24/SH25 paper-shadow event/book/receipt monitor for issue #213.
-- **Merged #223** adds fail-closed staging processor/runtime/source-contract drift monitoring.
-- **Merged #224** adds fail-closed canonical actionable-universe freshness, identity, rank/count and safety monitoring using the same rolling issue #213 status.
-- **Merged #226** adds sanitized fail-closed backend-ingress runtime/configuration health without exposing secrets or widening monitoring IAM.
-- **Merged #227** distinguishes provisional premarket/in-session no-event evidence from final post-session zero-trade evidence at the AWS boundary.
+1. **Current `main`** is authoritative for landed behavior and deployed/staging-compatible contracts.
+2. **This map / draft PR #141** is authoritative for workstream ownership and proposed sequencing.
+3. Draft research PRs are proposals only until separately reviewed and merged.
+4. If an older issue/PR description conflicts with current `main`, current `main` wins.
+
+Current `main` operational head at this reconciliation is the issue #213 read-only monitor hardening merged through **#235**. The recent canonical operational sequence is:
+
+- **#215** — automated SH24/SH25 event/book/ARMED/receipt monitoring.
+- **#223** — fail-closed processor/runtime/source-contract drift monitoring.
+- **#224** — canonical actionable-universe freshness, identity, rank/count, and safety monitoring.
+- **#226** — sanitized backend ingress/queue/secret-reference health without exposing secret values.
+- **#227** — provisional versus final post-session zero-trade semantics.
+- **#230** — serialized staging Lambda deployments so deployments cannot race one another.
+- **#231** — latest staging deployment health in the same read-only control loop.
+- **#232** — canonical >1.5M company-liquidity evidence monitoring.
+- **#233** — restored the validated SH24/SH25 processor composition after the #220 liquidity merge temporarily replaced it with an older handler.
+- **#234** — post-deployment guard that invokes the actually deployed processor and requires the canonical SH24/SH25 read-only monitor contract before staging deployment can finish green.
+- **#235** — fail-closed monitor evidence-integrity checks for bounded ARMED evidence, count/list consistency, and receipt/disposition/account consistency.
+
+Do not create a second operational monitor stack beside these landed controls.
+
+## Issue #213 — PAPER shadow operational control
+
+**Highest operational priority.** Normal PAPER-shadow operation must not require Shannon to repeatedly edit TradingView, run CloudShell, reconcile books, or diagnose zero-trade days manually.
+
+### Validated active state
+
+- SH24 CONTROL and SH25 CHALLENGER remain **PAPER SHADOW only** on TradingView 1D.
+- Common forward-test boundary: `2026-08-19`.
+- Isolated books: `PAPER_SHADOW_V24` and `PAPER_SHADOW_V25`.
+- Active staging transport: TradingView -> staging API Gateway `/pine` -> ingress -> SQS -> processor.
+- Validated TradingView configuration is frozen unless a verified defect or TradingView platform limitation requires intervention.
+- `trading_authorized=false` and `live_trading_enabled=false` are invariant.
+
+### Latest verified read-only staging evidence
+
+The latest rolling issue #213 snapshot available at this reconciliation is timestamped `2026-08-20T07:56:46.798266+00:00` and is **premarket/provisional**, not a completed zero-trade day:
+
+- session: `2026-08-20` ET;
+- phase: `PREMARKET`;
+- zero-trade status: `PROVISIONAL_SESSION_NOT_OPEN`;
+- genuine SH24/SH25 strategy events: **0**;
+- PAPER fills: **0**;
+- currently ARMED: **0**;
+- V24 open positions: **0**;
+- V25 open positions: **0**;
+- processor: `Active` / `Successful`;
+- ingress: `Active` / `Successful`;
+- deployed forward-test boundary: `2026-08-19`;
+- latest staging deploy observed by the monitor: completed / success, head `0b01e9ccf3995c4d0c1e0302b5b0e02cd76b9bf9`;
+- no runtime/source-contract drift was detected;
+- canonical source: `OVTLYR_2026-08-19.csv`;
+- canonical actionable universe: **208 symbols**;
+- company-liquidity evidence: **736 eligible companies**, **1,428 filtered companies**, **0 missing valid-volume companies**;
+- company rule: current 30-day average daily share volume **strictly >1,500,000 shares**;
+- ETFs: separate liquidity rules;
+- both live-safety flags false.
+
+PR #235 merged after that snapshot. It changes only the read-only monitor logic; the next scheduled monitor run will additionally fail closed if ARMED evidence hits its bounded limit, if visible counts disagree with returned lists, or if an `EXECUTED_PAPER` disposition/receipt/account contract is inconsistent. No AWS runtime deployment is required for #235 because the monitor script runs from `main` in GitHub Actions.
+
+### Exact zero-trade interpretation
+
+- Before 09:30 ET: no-event state is provisional.
+- During the regular session: no-event state is provisional.
+- After 16:00 ET: if no genuine SH24/SH25 strategy-origin event reached durable AWS evidence, the monitor may report `FINAL_AT_AWS_BOUNDARY`.
+- `FINAL_AT_AWS_BOUNDARY` proves only that no genuine strategy event reached AWS. It does **not** prove a TradingView condition should or should not have fired.
+- If strategy events arrive but do not fill, exact persisted dispositions/reasons are the no-trade diagnosis.
+- E2E/connectivity proof traffic is excluded from genuine trade diagnosis.
+
+### Platform limitation
+
+The connected control loop has no supported TradingView API that can read or mutate private per-alert/watchlist membership. Do not compensate by repeatedly recreating validated alerts. Detect what is technically observable from AWS/GitHub, keep SH24/SH25 frozen, and require manual TradingView work only when a verified defect cannot be resolved through supported automation.
+
+## Issue #218 — canonical actionable company liquidity
+
+**Landed on `main` via #220.** This is the only company-equity liquidity eligibility contract.
+
+- Individual company stocks require current 30-day average daily share volume **strictly greater than 1,500,000 shares**.
+- Exactly 1,500,000, below threshold, missing, invalid, or stale company evidence => `LIQUIDITY_FILTERED`.
+- The gate applies before candidate ranking, actionable newsletter/watchlist setup surfacing, and new PAPER entry/replay eligibility.
+- Scanner-origin and Pine-origin PAPER entries consume the same persisted S3 eligibility evidence.
+- ETFs remain on separate liquidity/capacity rules and must not be forced through the company share-volume threshold.
+- PARTIAL/EXIT management remains available if a held company later becomes sub-threshold; the gate controls new risk, not safe position management.
+- Merged #232 monitors the published eligibility artifact, source-file binding, threshold integrity, filtered/eligible counts, shortlist leakage, and ETF separation.
+- Merged #233 restored the validated SH24/SH25 processor composition after the liquidity merge regression.
+- Merged #234 prevents a future staging deployment from finishing green if the deployed processor loses the canonical SH24/SH25 monitor/isolation contract.
+
+### ACTIVE_BUY continuation
+
+**#189** is the single canonical ACTIVE_BUY continuity PR and is complementary to #218, not a second liquidity implementation.
+
+#189 now:
+
+- keeps persistent OVTLYR BUY names visible below fresh/emerging/re-entry opportunities;
+- derives first-seen, first-BUY, current-streak, observation-count, and last-meaningful-change evidence from dated immutable history;
+- binds ACTIVE_BUY eligibility to the same #218 liquidity snapshot/source-file contract;
+- labels filtered company names `ACTIVE_BUY_LIQUIDITY_FILTERED`;
+- preserves `ETF_SEPARATE_RULES`;
+- prevents liquidity-filtered ACTIVE_BUYs from consuming shortlist/ORATS capacity;
+- publishes deterministic `buy_continuity.json` beside canonical shortlist/liquidity evidence.
+
+Repository workflow **#671 passed Ruff and all tests** on the reconciled #189 head. #189 remains draft because it changes candidate-shortlist behavior; do not merge it as a major ranking/visibility change without explicit approval.
 
 ## Paper execution / zero-trade / receipt chain
 
-Canonical stacked path:
+Canonical stacked ownership remains:
 
 1. **#185** — durable `ARMED_FOR_NEXT_TRADABLE_WINDOW`, replay/revalidation, orphan lifecycle reconciliation.
 2. **#196** — exact ENTRY / ADD / PARTIAL / EXIT receipts integrated into realtime and durable replay execution.
-3. **#205** — durable initial-risk basis and realized-R continuity through lifecycle transitions, including the local processor/audit-store/ARMED/replay/receipt contract E2E and an explicit `evaluated_at` timestamp on every reconciled realtime/replay outcome, including non-fills.
+3. **#205** — durable initial-risk basis, realized-R continuity, and explicit `evaluated_at` on reconciled fills and non-fills.
 
-Superseded:
+**#192** is superseded/closed; do not create a second receipt implementation.
 
-- **#192** — independent receipt implementation; closed unmerged after #196/#205 became the integrated canonical chain.
+The behavior from this chain is already composed into the validated staging shadow processor restored by #233. Historical stacked PRs remain audit/development lineage until they are deliberately reconciled or retired; they are not authorization to deploy another processor beside current `main`.
 
-Rule: do not create or merge a second execution-receipt implementation outside this chain. The local #205 E2E does not replace genuine prospective paper evidence with fresh market/ORATS/risk revalidation. The persisted `evaluated_at` boundary is canonical audit evidence for non-fill replay outcomes that do not have an execution receipt.
+## v2.4 / v2.5 shadow source and staging lineage
 
-## v2.4 / v2.5 prospective shadow validation
-
-Canonical stacked path:
+Canonical source/evidence lineage:
 
 - **#185** — replay/reconciliation foundation.
-- **#186** — isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` routing and synchronized forward-test start.
-- **#207** — preserves and validates explicit `replay_max_price`, archives the exact v2.4/v2.5 shadow Pine sources, and documents the source-side contract.
-- **#212** — single main-based staging composite of #185/#186/#196/#205/#207 for receipt-aware isolated shadow routing and external proof. This is an integration/evidence branch, not a second implementation owner.
-- **Merged #215** — read-only operational event/book/receipt monitor for #213.
-- **Merged #223** — read-only deployed runtime/source-contract drift monitor for #213.
-- **Merged #224** — read-only canonical actionable-universe freshness/identity monitor for #213.
-- **Merged #226** — read-only backend ingress Lambda/queue/secret-reference health monitor for #213.
-- **Merged #227** — read-only session-phase/finality classifier so an in-progress no-event state is never mislabeled a final zero-trade day.
+- **#186** — isolated V24/V25 routing and synchronized forward-test start.
+- **#207** — explicit `replay_max_price`, reviewed shadow source archival, and source-side contract.
+- **#212** — historical single staging integration/evidence composite for the above chain.
 
-Duplicate staging PR **#211** was closed unmerged after #212 was designated canonical for the same head branch.
+Duplicate staging PR **#211** remains closed unmerged.
 
-The source-side blocker is cleared: both versioned shadow copies are archived and compile-verified. SH24 CONTROL and SH25 CHALLENGER are active in TradingView on **1D**, use the common `2026-08-19` forward boundary, and their validated configuration is frozen unless a verified defect or TradingView platform limitation requires a change.
+Current `main` now contains the validated processor composition restored through #233 plus the deployment/monitor safeguards through #235. Do not treat old #212 as a parallel production owner. Before any future merge/cleanup of #185/#186/#196/#205/#207/#212, reconcile against current `main` and preserve the already-landed shadow behavior.
 
-Verified staging evidence on 2026-08-19:
+## Candidate visibility / manual watch
 
-- staging `daily-alpha-pine-ingress` + `daily-alpha-pine-processor` deployment passed in `us-east-2`;
-- `DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19` was verified before and after deployment;
-- isolated `PAPER_SHADOW_V24` / `PAPER_SHADOW_V25` books were verified with both live-safety flags false;
-- the staging webhook secret was rotated outside GitHub/chat, with the new version becoming `AWSCURRENT` and the prior version `AWSPREVIOUS`;
-- the GitHub staging deployment role intentionally remains unable to read webhook secret values; do not weaken that least-privilege boundary merely for monitoring;
-- a manual authenticated backend proof passed through ingress -> SQS -> processor -> isolated `PAPER_SHADOW_V25` audit state using a harmless orphan `ADD`, producing the expected `STATE_MISMATCH / TRADINGVIEW_POSITION_NOT_IN_PAPER_LEDGER`, no paper fill, both shadow books FLAT, `trading_authorized=false`, and `live_trading_enabled=false`;
-- a temporary TradingView connectivity proof reached the public staging path and produced the expected fail-closed V25 state mismatch;
-- the staging processor exposes read-only `GET_SHADOW_MONITOR_STATE`, returning each isolated book's positions, ARMED state, recent durable events and exact execution receipts without changing execution state;
-- merged #215 performs hourly weekday read-only event/book/receipt monitoring, writes 30-day evidence artifacts, and updates one rolling issue #213 status instead of requiring Shannon to run CloudShell or reconcile books manually;
-- merged #223 verifies the processor remains `Active` / `Successful`, the deployed forward-test boundary remains `2026-08-19`, and genuine/ARMED model/start/replay contracts remain intact;
-- merged #224 reads the latest canonical S3 shortlist, fails closed on stale/invalid rank/count/identity/safety evidence, and records a deterministic universe SHA-256 in the same issue #213 status;
-- merged #226 verifies the staging Pine ingress remains `Active` / `Successful`, has a configured secret reference and ingress queue, while preserving the monitor role's intentional inability to read secret values or invoke the public ingress;
-- merged #227 classifies the ET session phase and reserves `FINAL_AT_AWS_BOUNDARY` for post-16:00 ET no-event evidence only.
-
-Latest exact automated evidence after #227 validation found:
-
-- session phase `POST_SESSION`, session complete `true`, zero-trade status `FINAL_AT_AWS_BOUNDARY`;
-- V24: 0 open positions, 0 ARMED signals, 0 genuine strategy events;
-- V25: 0 open positions, 0 ARMED signals, 0 genuine strategy events;
-- three stored V25 events are prior E2E/connectivity proof events (`TV-SHADOW-E2E-*`, `API-GATEWAY-SHADOW-E2E-*`, `STAGING-SHADOW-E2E-*`) and are explicitly excluded from genuine trade diagnosis;
-- 0 paper fills;
-- processor `Active` / `Successful`, no runtime/source-contract drift;
-- ingress `Active` / `Successful`, ingress queue configured, secret reference configured, no secret value exposed;
-- canonical source `OVTLYR_2026-08-19.csv`, generated `2026-08-19T22:21:15.115081+00:00`, age 5.226h at validation, 575 actionable symbols, universe SHA-256 `5b89a107c85ff2d40e19d8ed9a5135e783861af0afadbef9744ba114a516b3d2`;
-- `trading_authorized=false` and `live_trading_enabled=false` with no isolation violation.
-
-Operational monitoring is therefore active; an actual SH24/SH25 event is not a precondition for diagnosing the day. The first genuine strategy-origin event is prospective forward-test evidence. When one arrives, preserve its tagged model/start contract, fresh market/ORATS/portfolio-risk revalidation, PAPER fill/CANCEL/DATA_ERROR or other explicit fail-closed result, and exact receipt/evaluation evidence where applicable.
-
-Monitoring limitation: there is no supported connected TradingView API in this control loop that can inspect or rewrite private per-alert/watchlist membership. Do **not** compensate by repeatedly editing/recreating validated alerts. Detect canonical universe freshness/identity plus model/start/account drift from AWS/GitHub evidence, keep the active TradingView configuration frozen, and treat absence of a genuine event as exactly that—not proof of an alert defect and not a fabricated rejection.
-
-## Actionable company liquidity / persistent candidate visibility
-
-- **#220** — canonical issue #218 company-equity liquidity contract. Individual companies require current 30-day average daily share volume **strictly >1,500,000 shares** before ranking, actionable newsletter/watchlist surfacing, or new PAPER entry/replay eligibility. Missing, stale, equal-to-threshold, or below-threshold company evidence fails closed as `LIQUIDITY_FILTERED`; ETFs remain on their separate liquidity/capacity path. The same persisted S3 eligibility evidence is consumed by scanner-origin and Pine-origin PAPER entries. #220 was rebased in place onto current main after #227; current-main CI #644 passed Ruff + full pytest. It remains draft/mergeable pending explicit merge/staging approval.
-- **#189** — persistent `ACTIVE_BUY` visibility plus archive-derived BUY continuity state: first-seen/first-BUY/streak/last-change and explicit ineligibility reasons. Before completion, this path must consume #220's canonical liquidity eligibility rather than define a parallel volume rule.
-- **#199** — persistent manual research watchlist model, seeded with NFLX.
+- **#189** — canonical persistent ACTIVE_BUY continuity, bound to #218 liquidity.
+- **#199** — persistent manual research-watch model, seeded with NFLX.
 - **#206** — staging-newsletter/manual-watch publication integration stacked on #199.
+- **#144** — dry-run candidate alert desired-state planner only; mutation remains disabled.
 
-These are complementary, not duplicate: #220 owns actionable company liquidity eligibility, ACTIVE_BUY is model state, and MANUAL_WATCH is explicit research visibility. No path may bypass the canonical >1.5M company gate once #220 is approved/landed.
-
-## Candidate alert lifecycle
-
-- **Canonical desired-state planner:** #144 — current-main dry-run desired-state planner.
-- **Operational read-only state monitors:** merged #215/#223/#224/#226/#227 — observe AWS-side SH24/SH25 state, source/runtime/transport contract and canonical universe; they never create/delete TradingView alerts.
-- **Superseded:** #102 — closed unmerged.
-
-No automatic TradingView mutation is authorized by these paths. Any future watchlist/alert mutation layer requires a supported API and a separate reviewed boundary; until then validated SH24/SH25 configuration stays frozen.
-
-## Commercial identity / subscriptions / entitlements
-
-- **Canonical control plane:** #145 — provider-neutral account, auth/session, tenant isolation, entitlement and billing-state controls.
-- **Superseded implementation:** #91 — closed unmerged.
-- **Distinct product-definition layer:** #101 — beta tiers/onboarding; retain as product scope, not a second entitlement engine.
-
-## Performance, provenance, claims, and methodology versioning
-
-These are separate layers and should compose rather than replace one another:
-
-- **#140** — canonical performance calculation/methodology contract.
-- **#96** — customer-facing performance-claim evidence/publication gate.
-- **#150** — immutable report provenance and source-evidence identity.
-- **#201** — post-publication correction/supersession/retraction state machine.
-- **#204** — planned methodology release/version-governance lifecycle.
-
-Rule: do not build a second omnibus performance/governance engine. New work must extend one of these explicit layers or document why a new boundary is required.
-
-## Delivery, reliability, release, and launch evidence
-
-These are distinct operational layers:
-
-- **#100** — scheduled delivery SLO/readiness evidence.
-- **#164** — recipient-level commercial email preferences, suppression, bounce/complaint and replay controls.
-- **#111** — disaster recovery and incident-readiness contract.
-- **#169** — commercial production release/environment/rollback architecture.
-- **#172** — composite commercial-beta GO/NO-GO evidence manifest.
-
-Rule: #172 consumes evidence from the specialized layers; it must not reimplement them.
-
-## Security, privacy, customer data, and vendor rights
-
-- **#104** — security/privacy assurance baseline.
-- **#158** — customer-data lifecycle, acknowledgement, retention/deletion/export/reconciliation controls.
-- **#160** — vendor data-rights / redistribution launch gate.
-
-These are separate control domains. Customer-data retention or vendor-rights logic should not be duplicated inside auth, delivery, or launch-gate modules.
-
-## Commercial positioning / product packaging
-
-- **#108** — GTM, positioning, website information architecture and analytics planning.
-- **#101** — beta product tiers and onboarding.
-
-Neither may redefine execution logic, performance methodology, or entitlement enforcement.
+ACTIVE_BUY, manual watch, and alert desired-state planning are distinct. Manual-watch membership cannot make a symbol actionable, and no future TradingView mutation layer is authorized without a supported API plus a separately reviewed control boundary.
 
 ## Research platform
 
-- **#193** — Strategy Forensics / missed-R diagnostics plus deterministic research artifacts and point-in-time evidence cutoffs. It maps canonical Pine ENTRY/ARMED/replay outcomes into immutable forensics observations using fresh replay underlying prices, receipt/evaluation timestamps, and explicit underlying stops; missing historical inputs fail closed rather than being reconstructed.
-- **#209** — consolidated Factor Attribution foundation + candidate evidence adapter + horizon/regime/sector evidence reporting. It replaces closed drafts #194 and #208. Point-in-time factor snapshots carry deterministic SHA-256 snapshot identity, exact weight-set identity, validated timezone-aware timestamps, deterministic order-independent snapshot-set identity, immutable forward-return joins, largest-absolute-return exclusion diagnostics at each horizon, and dated cross-sectional rank-IC history with backward-only rolling stability summaries.
-- **#221 / issue #219** — canonical Behavioral Change Engine research path. Provider-neutral Google Trends / YouTube / Similarweb contracts, versioned entity dictionary, immutable point-in-time evidence, named Behavioral factors, minimum two independent sources, YouTube public-data transport, source-ablation and lead/lag validation scaffolding. Google Trends remains `SOURCE_UNAVAILABLE` until approved alpha access; Similarweb remains optional. #221 was rebased in place onto current main; current-main CI #645 and YouTube secret/API verification #27 passed. Behavioral evidence can change research priority only and never execution authorization.
-- **#225 / issue #216** — canonical AI Industrial Mobilization / bottleneck-migration research path. Provider-neutral industrial evidence contract across compute -> memory -> packaging -> networking/optics -> data-center infrastructure -> electrical equipment -> generation -> transmission -> materials, with point-in-time capex, bottleneck, power-scarcity, monetization/capex and constraint-migration factors. It explicitly excludes speculative AGI-timing signals and remains disconnected from execution.
-- Quant challengers remain disconnected research unless a separate model-governance path promotes them.
+All research paths are disconnected from execution unless separately promoted through model governance. None may override Pine, ORATS, earnings, liquidity, concentration, or portfolio-risk gates.
 
-Research integration rule: #193 may consume canonical execution audit evidence from #185/#196/#205, but it remains a downstream diagnostic and must never feed an execution authorization directly. #209 may join forward outcomes by immutable snapshot identity, but realized outcomes must not silently retune production ranking weights. #221 and #225 may adjust research/theme priority only; neither may bypass sector/industry rotation, OVTLYR, earnings/revisions, company liquidity, Pine, ORATS, concentration or portfolio-risk gates.
+### Strategy Forensics — #193
+
+Canonical missed-R/post-decision diagnostic path:
+
+- MFE/MAE, terminal return, realized R, MFE capture, missed R;
+- reason-code attribution and champion/challenger disagreement;
+- immutable decision/cutoff evidence;
+- canonical Pine ENTRY/ARMED/replay mapping;
+- strict historical ORATS daily path evidence with provenance/hashing;
+- no reconstruction of unavailable historical inputs.
+
+Next step: accumulate genuine point-in-time decisions/outcomes; do not build a second forensics engine.
+
+### Factor Attribution — #209
+
+Single consolidated factor-attribution path:
+
+- explicit factor contributions and availability coverage;
+- immutable snapshot/weight identities;
+- exact forward-return bindings with provenance;
+- horizon/regime/sector evidence;
+- largest-absolute-return outlier sensitivity;
+- dated cross-sectional rank-IC and backward-only rolling stability.
+
+Next step: accumulate genuine point-in-time factor/outcome history. Realized outcomes must not silently retune production ranking weights.
+
+### Behavioral Change Engine — issue #219 / #221
+
+Single canonical Behavioral Change research path:
+
+- provider-neutral point-in-time schema;
+- Google Trends alpha adapter disabled as `SOURCE_UNAVAILABLE` until approved access exists;
+- YouTube Data API v3 public-data transport with injected API key, bounded calls, caching, alias/video deduplication, and metric-separated video/activity observations;
+- optional Similarweb adapter when API access exists; no subscription is assumed or purchased;
+- versioned company/brand/product/app/domain/technology dictionary;
+- immutable raw observations, daily derived snapshots, SHA-256 manifests, and fail-closed rewrite protection;
+- velocity, acceleration, abnormality/z-score, persistence, and cross-source confirmation;
+- named factors `SEARCH_ACCELERATION_SCORE`, `VIDEO_ATTENTION_ACCELERATION_SCORE`, `WEB_TRAFFIC_ACCELERATION_SCORE`, `CROSS_SOURCE_CONFIRMATION`, `PERSISTENCE_SCORE`, `BEHAVIORAL_CHANGE_SCORE`, and `INFORMATION_IMBALANCE_SCORE`;
+- minimum two independent complete sources before a composite Behavioral score exists;
+- engagement metrics remain separate until metric-specific company baselines exist;
+- `INFORMATION_IMBALANCE_SCORE` stays unavailable until independently versioned Wall Street-recognition evidence exists;
+- source-ablation and cutoff-bounded lead/lag validation scaffolding;
+- research-only flags hard false for trading/live authorization.
+
+The YouTube secret/API verification path has passed without exposing the key. #221 was last reconciled to the then-current operational `main` with repository CI #645 and secured YouTube verification #27 green; subsequent #213 operational merges are authoritative and must be reconciled before any eventual Behavioral Change merge if GitHub reports drift/conflict.
+
+Behavioral/Information Edge may change research priority only. It must not double-count OVTLYR, earnings revisions, relative strength, or sector rotation, and it cannot authorize a trade.
+
+### AI Industrial Mobilization — issue #216 / #225
+
+Single canonical provider-neutral research path across:
+
+compute -> memory -> packaging -> networking/optics -> data-center infrastructure -> electrical equipment -> generation -> transmission -> materials.
+
+It derives point-in-time capex momentum, layer bottlenecks, power scarcity, monetization-vs-capex validation, and bottleneck migration from auditable industrial evidence. Speculative AGI-timing claims are excluded. #225 is research-only and should be reconciled onto current `main` before further integration if its branch remains behind/conflicted.
 
 ## ORATS reliability
 
-These are distinct reliability layers, not duplicate implementations:
-
 - **#82** — workflow-level serialization for ORATS-heavy research jobs.
-- **#95** — bounded retry/backoff and explicit rate-limit classification for the standard `OratsClient`; remains a draft and is separate from historical transport.
-- **Merged #188** — strict historical daily/earnings transport and `fetch_orats_history()` wiring.
-- **Merged #197** — strict historical option-chain / contract-snapshot transport on current `main`.
+- **#95** — bounded retry/backoff and explicit rate-limit classification for the standard `OratsClient`.
+- **Merged #188** — strict historical daily/earnings transport.
+- **Merged #197** — strict historical option-chain/contract-snapshot transport.
 
-Historical duplicates/replaced foundations such as #110, #137 and #190 are closed unmerged. Issue #106's historical transport objective is completed. Future historical ORATS work must extend current `main`; future standard-client resilience should continue through #95 or explicitly supersede it before new implementation begins.
+Historical transport completion does not make midpoint-only historical options promotion-grade evidence. Future work must preserve executable-side/provenance limitations.
+
+## Sector / industry / portfolio-risk / scanner sequencing
+
+After #213/#218 operational integrity, continue canonical work without parallel implementations:
+
+1. ACTIVE_BUY continuity (#189, approval-gated merge);
+2. Strategy Forensics (#193) evidence accumulation;
+3. Factor Attribution (#209) evidence accumulation;
+4. scanner/universe automation and actionable-universe integrity;
+5. ORATS reliability and explicit DATA_ERROR/rate-limit handling;
+6. portfolio risk/concentration/correlation evidence;
+7. sector/industry rotation;
+8. issue #216 AI industrial bottleneck research;
+9. issue #219 Behavioral Change research;
+10. commercialization readiness.
+
+## Commercial control-plane ownership
+
+Keep these specialized layers separate and composable:
+
+### Identity / subscription / entitlement
+
+- **#145** — provider-neutral account/auth/session/tenant/entitlement/billing control plane.
+- **#101** — beta product tiers and onboarding scope.
+
+### Performance / provenance / claims / methodology
+
+- **#140** — canonical performance methodology contract.
+- **#96** — customer-facing performance-claim evidence gate.
+- **#150** — immutable report provenance/source evidence.
+- **#201** — correction/supersession/retraction state machine.
+- **#204** — methodology release/version governance.
+
+### Delivery / reliability / release
+
+- **#100** — scheduled delivery SLO/readiness.
+- **#164** — recipient-level email preferences/suppression/bounce/complaint controls.
+- **#111** — disaster recovery and incident readiness.
+- **#169** — commercial production release/environment/rollback architecture.
+- **#172** — composite commercial-beta GO/NO-GO evidence manifest.
+
+### Security / privacy / data rights
+
+- **#104** — security/privacy assurance baseline.
+- **#158** — customer-data lifecycle controls.
+- **#160** — vendor data-rights/redistribution gate.
+
+### Positioning / packaging
+
+- **#108** — GTM/positioning/site/analytics planning.
+- **#101** — beta product tiers/onboarding.
+
+Commercial beta remains NO-GO until the specialized evidence gates are satisfied. Passing repository tests is not customer-launch authorization.
 
 ## Automation / reporting consistency rule
 
-Every automated engineering or reporting job must reconcile against:
+Every automated engineering/research loop must reconcile against:
 
-1. current `main` for landed behavior and configuration, including merged #215/#223/#224/#226/#227 operational monitoring;
-2. this canonical workstream map / PR #141 for proposed ownership and roadmap state;
-3. explicitly labeled draft research for non-production hypotheses.
+1. current `main`, including merged issue #213 controls through #235 and the merged #218 liquidity contract;
+2. this canonical workstream map / PR #141;
+3. the live rolling issue #213 monitor evidence for staging state;
+4. explicitly labeled research branches for non-production hypotheses.
 
-If an older automation instruction conflicts with current `main`, current `main` wins. If two draft PRs claim the same objective, stop parallel implementation and designate one canonical chain before adding more code. Staging integration PR #212 may compose canonical draft branches for external proof, but it must not redefine strategy/risk rules or become a parallel production implementation.
+If two draft PRs claim the same objective, stop parallel implementation and designate one canonical path before adding code. If a staging integration branch conflicts with current `main`, current `main` wins and the integration branch must be reconciled or retired rather than redeployed as an alternate handler.
 
 ## Safety invariants
 
@@ -182,6 +286,9 @@ If an older automation instruction conflicts with current `main`, current `main`
 - `live_trading_enabled=false`
 - no live brokerage execution
 - no AWS production deployment
-- no unapproved TradingView mutation; validated active SH24/SH25 alerts remain frozen unless a verified defect/platform limitation requires intervention
-- no customer launch or public performance claim
-- no research challenger self-promotes into paper/live execution
+- no secret exposure
+- no paid-data purchase without explicit approval
+- no unapproved TradingView mutation; validated SH24/SH25 configuration remains frozen unless a verified defect/platform limitation requires intervention
+- no major strategy/ranking merge without explicit approval
+- no research challenger self-promotes into PAPER/live execution
+- no customer launch or public performance claim without the required commercial evidence/review gates
