@@ -35,9 +35,10 @@ def test_failure_status_never_reuses_prior_green_state() -> None:
 
 
 def test_failure_status_requires_timezone_aware_time() -> None:
+    naive_time = datetime(2026, 8, 20, 10, 30, tzinfo=UTC).replace(tzinfo=None)
     with pytest.raises(ValueError, match="timezone-aware"):
         build_failure_status(
-            now=datetime(2026, 8, 20, 10, 30),
+            now=naive_time,
             repository="shannonburgess/daily-alpha-engine1",
             workflow="Monitor Daily Alpha paper shadows",
             run_id="123",
