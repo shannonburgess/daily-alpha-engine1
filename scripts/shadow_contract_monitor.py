@@ -37,7 +37,7 @@ def _parse_aware_datetime(value: Any) -> datetime | None:
     if value in (None, ""):
         return None
     try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value))
     except ValueError:
         return None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
@@ -225,14 +225,20 @@ def render_markdown(result: dict[str, Any]) -> str:
     lines = [
         "",
         "### Shadow runtime / source-contract drift guard",
-        f"Monitor source: `{result.get('monitor_service') or 'missing'}` / "
-        f"`{result.get('monitor_operation') or 'missing'}`  ",
-        f"Monitor snapshot: `{result.get('monitor_snapshot_at') or 'invalid'}` "
-        f"(age `{snapshot_age_text}`)  ",
+        (
+            f"Monitor source: `{result.get('monitor_service') or 'missing'}` / "
+            f"`{result.get('monitor_operation') or 'missing'}`  "
+        ),
+        (
+            f"Monitor snapshot: `{result.get('monitor_snapshot_at') or 'invalid'}` "
+            f"(age `{snapshot_age_text}`)  "
+        ),
         f"Expected forward-test start: `{result.get('expected_forward_test_start') or 'missing'}`  ",
         f"Deployed forward-test start: `{result.get('deployed_forward_test_start') or 'missing'}`  ",
-        f"Processor state/update: `{result.get('processor_state')}` / "
-        f"`{result.get('processor_last_update_status')}`  ",
+        (
+            f"Processor state/update: `{result.get('processor_state')}` / "
+            f"`{result.get('processor_last_update_status')}`  "
+        ),
     ]
     if result.get("latest_staging_deployment_found") is not None:
         status = result.get("latest_staging_deployment_status") or "missing"
