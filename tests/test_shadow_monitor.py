@@ -9,24 +9,48 @@ REGULAR_NOW = datetime(2026, 8, 19, 18, 0, tzinfo=UTC)
 PREMARKET_NOW = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
 
 
+def _armed_signals(account: str, count: int) -> list[dict]:
+    return [
+        {
+            "persisted_signal_id": f"persisted-{account}-{index}",
+            "signal_id": f"armed-{account}-{index}",
+            "symbol": "AAPL",
+            "action": "ENTRY_LONG",
+            "model_id": account,
+            "forward_test_start": "2026-08-19",
+            "received_at": "2026-08-19T19:55:00+00:00",
+            "replay_max_price": 230.0,
+        }
+        for index in range(count)
+    ]
+
+
+def _book(account: str, *, events=None, armed=0) -> dict:
+    rows = events or []
+    return {
+        "open_count": 0,
+        "open_positions": [],
+        "armed_count_visible": armed,
+        "armed_limit": 25,
+        "armed_limit_reached": False,
+        "armed_signals": _armed_signals(account, armed),
+        "events": rows,
+        "event_count_visible": len(rows),
+        "event_limit": 100,
+        "scan_truncated": False,
+    }
+
+
 def monitor_state(*, v24=None, v25=None, v24_armed=0, v25_armed=0):
     return {
         "ok": True,
         "books": {
-            "PAPER_SHADOW_V24": {
-                "open_count": 0,
-                "open_positions": [],
-                "armed_count_visible": v24_armed,
-                "events": v24 or [],
-                "scan_truncated": False,
-            },
-            "PAPER_SHADOW_V25": {
-                "open_count": 0,
-                "open_positions": [],
-                "armed_count_visible": v25_armed,
-                "events": v25 or [],
-                "scan_truncated": False,
-            },
+            "PAPER_SHADOW_V24": _book(
+                "PAPER_SHADOW_V24", events=v24, armed=v24_armed
+            ),
+            "PAPER_SHADOW_V25": _book(
+                "PAPER_SHADOW_V25", events=v25, armed=v25_armed
+            ),
         },
         "trading_authorized": False,
         "live_trading_enabled": False,
@@ -206,3 +230,70 @@ def test_truncated_event_scan_fails_closed_instead_of_calling_day_complete():
     assert summary["ok"] is False
     assert summary["diagnosis"] == "SAFETY_OR_EVIDENCE_VIOLATION"
     assert "PAPER_SHADOW_V24:EVENT_EVIDENCE_TRUNCATED" in summary["safety"]["violations"]
+
+
+def test_armed_limit_reached_fails_closed_instead_of_understating_state():
+    state = monitor_state(v25_armed=25)
+    state["books"]["PAPER_SHADOW_V25"]["armed_limit_reached"] = True
+
+    summary = summarize(state, now=NOW)
+
+    assert summary["ok"] is False
+    assert summary["diagnosis"] == "SAFETY_OR_EVIDENCE_VIOLATION"
+    assert (
+        "PAPER_SHADOW_V25:ARMED_EVIDENCE_LIMIT_REACHED"
+        in summary["safety"]["violations"]
+    )
+
+
+def test_event_visible_count_mismatch_fails_evidence_integrity():
+    state = monitor_state(v24=[event("PAPER_SHADOW_V24")])
+    state["books"]["PAPER_SHADOW_V24"]["event_count_visible"] = 0
+
+    summary = summarize(state, now=NOW)
+
+    assert summary["ok"] is False
+    assert "PAPER_SHADOW_V24:EVENT_COUNT_MISMATCH" in summary["safety"]["violations"]
+
+
+def test_open_position_count_mismatch_fails_evidence_integrity():
+    state = monitor_state()
+    state["books"]["PAPER_SHADOW_V24"]["open_count"] = 1
+
+    summary = summarize(state, now=NOW)
+
+    assert summary["ok"] is False
+    assert "PAPER_SHADOW_V24:OPEN_COUNT_MISMATCH" in summary["safety"]["violations"]
+
+
+def test_executed_paper_without_receipt_fails_evidence_integrity():
+    bad = event(
+        "PAPER_SHADOW_V25",
+        disposition="EXECUTED_PAPER",
+        reason="PAPER_ENTRY_EXECUTED",
+        receipt=None,
+    )
+
+    summary = summarize(monitor_state(v25=[bad]), now=NOW)
+
+    assert summary["ok"] is False
+    assert (
+        "PAPER_SHADOW_V25:EXECUTED_PAPER_RECEIPT_MISSING"
+        in summary["safety"]["violations"]
+    )
+
+
+def test_non_executed_event_with_receipt_fails_evidence_integrity():
+    receipt = {
+        "account_id": "PAPER_SHADOW_V24",
+        "symbol": "AAPL",
+        "action": "ENTRY_LONG",
+        "quantity": 1,
+        "fill_price": 100.0,
+    }
+    bad = event("PAPER_SHADOW_V24", receipt=receipt)
+
+    summary = summarize(monitor_state(v24=[bad]), now=NOW)
+
+    assert summary["ok"] is False
+    assert "PAPER_SHADOW_V24:NON_EXECUTED_RECEIPT_PRESENT" in summary["safety"]["violations"]
