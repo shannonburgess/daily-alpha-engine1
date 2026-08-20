@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from scripts.nyse_session_calendar import core_session_for
+if __package__:
+    from scripts.nyse_session_calendar import core_session_for
+else:
+    from nyse_session_calendar import core_session_for
 
 SHADOW_ACCOUNTS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
 NEW_YORK = ZoneInfo("America/New_York")
