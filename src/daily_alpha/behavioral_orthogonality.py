@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import math
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Iterable
 
 
 class CoreFactorFamily(StrEnum):
