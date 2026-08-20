@@ -1,0 +1,111 @@
+name: Watch Daily Alpha shadow monitor
+
+on:
+  workflow_run:
+    workflows:
+      - Monitor Daily Alpha paper shadows
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  failure-receipt:
+    if: >-
+      github.event.workflow_run.conclusion != 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      REPO: ${{ github.repository }}
+      MONITOR_RUN_ID: ${{ github.event.workflow_run.id }}
+      MONITOR_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      MONITOR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      MONITOR_WORKFLOW: ${{ github.event.workflow_run.name }}
+      EVIDENCE_DIR: shadow-monitor-failure-artifacts
+    steps:
+      - name: Check whether the primary monitor already published exact status
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOBS_JSON="$(gh api "repos/${REPO}/actions/runs/${MONITOR_RUN_ID}/jobs?filter=latest&per_page=100")"
+          STATUS_STEP="$(printf '%s' "${JOBS_JSON}" | jq -r '
+            [.jobs[].steps[]? | select(.name == "Update one rolling issue status") | .conclusion][0] // "MISSING"
+          ')"
+          if [[ "${STATUS_STEP}" == "success" ]]; then
+            echo "needs_receipt=false" >> "${GITHUB_OUTPUT}"
+            echo "failed_step=NONE" >> "${GITHUB_OUTPUT}"
+            echo "Primary monitor already published its exact status; watchdog will not overwrite it."
+            exit 0
+          fi
+
+          FAILED_STEP="$(printf '%s' "${JOBS_JSON}" | jq -r '
+            [.jobs[].steps[]? | select(.conclusion == "failure") | .name][0] // "UNKNOWN_STEP"
+          ')"
+          FAILED_STEP="${FAILED_STEP//$'\n'/ }"
+          echo "needs_receipt=true" >> "${GITHUB_OUTPUT}"
+          echo "failed_step=${FAILED_STEP}" >> "${GITHUB_OUTPUT}"
+          echo "Primary monitor failed before publishing an exact current status."
+
+      - name: Check out trusted main
+        if: steps.inspect.outputs.needs_receipt == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        if: steps.inspect.outputs.needs_receipt == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build fail-closed monitor failure receipt
+        if: steps.inspect.outputs.needs_receipt == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          python scripts/shadow_monitor_failure_status.py \
+            --repository "${REPO}" \
+            --workflow "${MONITOR_WORKFLOW}" \
+            --run-id "${MONITOR_RUN_ID}" \
+            --run-attempt "${MONITOR_RUN_ATTEMPT}" \
+            --head-sha "${MONITOR_HEAD_SHA}" \
+            --failed-step "${{ steps.inspect.outputs.failed_step }}" \
+            --output-json "${EVIDENCE_DIR}/shadow-monitor-failure.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-monitor-failure.md"
+          cat "${EVIDENCE_DIR}/shadow-monitor-failure.md" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Replace stale rolling issue status with failure receipt
+        if: steps.inspect.outputs.needs_receipt == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMENT_ID="$(gh api "repos/${REPO}/issues/213/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- daily-alpha-shadow-monitor -->")) | .id' \
+            | head -n 1)"
+          jq -Rs '{body:.}' "${EVIDENCE_DIR}/shadow-monitor-failure.md" \
+            > "${EVIDENCE_DIR}/comment.json"
+          if [[ -n "${COMMENT_ID}" ]]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              --input "${EVIDENCE_DIR}/comment.json" >/dev/null
+          else
+            gh api --method POST "repos/${REPO}/issues/213/comments" \
+              --input "${EVIDENCE_DIR}/comment.json" >/dev/null
+          fi
+
+      - name: Retain failure receipt
+        if: steps.inspect.outputs.needs_receipt == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-shadow-monitor-failure-${{ github.event.workflow_run.id }}
+          path: shadow-monitor-failure-artifacts/
+          retention-days: 30
