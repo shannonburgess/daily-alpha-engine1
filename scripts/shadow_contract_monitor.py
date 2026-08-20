@@ -11,6 +11,7 @@ from typing import Any
 SHADOW_ACCOUNTS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
 TEST_SIGNAL_MARKERS = ("E2E", "CONNECTIVITY", "SYSTEM-ROUNDTRIP", "STAGING-READINESS")
 ENTRY_ACTIONS = {"ENTRY", "ENTRY_LONG", "ARMED_BREAKOUT_CONFIRM", "BREAKOUT_ENTRY"}
+_PENDING_DEPLOY_STATUSES = {"queued", "in_progress", "waiting", "pending", "requested"}
 
 
 def _is_test_event(event: dict[str, Any]) -> bool:
@@ -28,7 +29,9 @@ def _positive_finite(value: Any) -> bool:
 
 
 def inspect_contract(
-    state: dict[str, Any], runtime: dict[str, Any]
+    state: dict[str, Any],
+    runtime: dict[str, Any],
+    deployment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Inspect deployed staging and durable shadow evidence for contract drift."""
     violations: list[str] = []
@@ -47,6 +50,36 @@ def inspect_contract(
         violations.append(
             f"PROCESSOR_FORWARD_START_DRIFT:{deployed_start or 'MISSING'}!={expected_start}"
         )
+
+    deployment_found = None
+    deployment_status = None
+    deployment_conclusion = None
+    deployment_head_sha = None
+    deployment_run_id = None
+    deployment_pending = False
+    if deployment is not None:
+        deployment_found = deployment.get("found") is True
+        deployment_status = str(deployment.get("status") or "").strip() or None
+        deployment_conclusion = str(deployment.get("conclusion") or "").strip() or None
+        deployment_head_sha = str(deployment.get("head_sha") or "").strip() or None
+        deployment_run_id = deployment.get("run_id")
+        if not deployment_found:
+            violations.append("STAGING_DEPLOYMENT_EVIDENCE_MISSING")
+        elif not deployment_head_sha:
+            violations.append("LATEST_STAGING_DEPLOY_HEAD_SHA_MISSING")
+        elif deployment_status == "completed":
+            if deployment_conclusion != "success":
+                violations.append(
+                    "LATEST_STAGING_DEPLOY_NOT_SUCCESSFUL:"
+                    f"{deployment_conclusion or 'MISSING'}"
+                )
+        elif deployment_status in _PENDING_DEPLOY_STATUSES:
+            deployment_pending = True
+        else:
+            violations.append(
+                "LATEST_STAGING_DEPLOY_STATUS_INVALID:"
+                f"{deployment_status or 'MISSING'}"
+            )
 
     books = state.get("books")
     if not isinstance(books, dict):
@@ -112,6 +145,12 @@ def inspect_contract(
         "processor_state": runtime.get("state"),
         "processor_last_update_status": runtime.get("last_update_status"),
         "processor_last_modified": runtime.get("last_modified"),
+        "latest_staging_deployment_found": deployment_found,
+        "latest_staging_deployment_status": deployment_status,
+        "latest_staging_deployment_conclusion": deployment_conclusion,
+        "latest_staging_deployment_head_sha": deployment_head_sha,
+        "latest_staging_deployment_run_id": deployment_run_id,
+        "latest_staging_deployment_pending": deployment_pending,
         "checked_strategy_events": checked_strategy_events,
         "checked_armed_signals": checked_armed_signals,
         "violations": sorted(set(violations)),
@@ -128,9 +167,28 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"Expected forward-test start: `{result.get('expected_forward_test_start') or 'missing'}`  ",
         f"Deployed forward-test start: `{result.get('deployed_forward_test_start') or 'missing'}`  ",
         f"Processor state/update: `{result.get('processor_state')}` / `{result.get('processor_last_update_status')}`  ",
-        f"Strategy events contract-checked: **{result.get('checked_strategy_events', 0)}**  ",
-        f"ARMED signals contract-checked: **{result.get('checked_armed_signals', 0)}**",
     ]
+    if result.get("latest_staging_deployment_found") is not None:
+        status = result.get("latest_staging_deployment_status") or "missing"
+        conclusion = result.get("latest_staging_deployment_conclusion") or "pending"
+        run_id = result.get("latest_staging_deployment_run_id") or "missing"
+        head_sha = result.get("latest_staging_deployment_head_sha") or "missing"
+        lines.extend(
+            [
+                f"Latest staging deploy: `{status}` / `{conclusion}` (run `{run_id}`)  ",
+                f"Latest staging deploy head: `{head_sha}`  ",
+            ]
+        )
+        if result.get("latest_staging_deployment_pending") is True:
+            lines.append(
+                "Deployment convergence: **pending**; serialized staging deployment is still queued/running.  "
+            )
+    lines.extend(
+        [
+            f"Strategy events contract-checked: **{result.get('checked_strategy_events', 0)}**  ",
+            f"ARMED signals contract-checked: **{result.get('checked_armed_signals', 0)}**",
+        ]
+    )
     violations = list(result.get("violations") or [])
     if violations:
         lines.extend(
@@ -161,11 +219,17 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--monitor-state", required=True)
     parser.add_argument("--runtime-contract", required=True)
+    parser.add_argument("--deployment-status")
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--output-md", required=True)
     args = parser.parse_args()
 
-    result = inspect_contract(_load(args.monitor_state), _load(args.runtime_contract))
+    deployment = _load(args.deployment_status) if args.deployment_status else None
+    result = inspect_contract(
+        _load(args.monitor_state),
+        _load(args.runtime_contract),
+        deployment,
+    )
     Path(args.output_json).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     Path(args.output_md).write_text(render_markdown(result))
     return 0 if result["ok"] else 2
