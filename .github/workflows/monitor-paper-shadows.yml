@@ -10,9 +10,11 @@ on:
       - "scripts/shadow_monitor.py"
       - "scripts/shadow_contract_monitor.py"
       - "scripts/shadow_universe_monitor.py"
+      - "scripts/shadow_transport_monitor.py"
       - "tests/test_shadow_monitor.py"
       - "tests/test_shadow_contract_monitor.py"
       - "tests/test_shadow_universe_monitor.py"
+      - "tests/test_shadow_transport_monitor.py"
 
 permissions:
   contents: read
@@ -65,6 +67,69 @@ jobs:
           mv "${EVIDENCE_DIR}/shadow-runtime-contract.tmp.json" \
             "${EVIDENCE_DIR}/shadow-runtime-contract.json"
 
+      - name: Capture backend ingress and queue wiring health
+        run: |
+          set -euo pipefail
+          aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-ingress \
+            --query '{function_name:FunctionName,state:State,last_update_status:LastUpdateStatus,last_modified:LastModified,secret_id:Environment.Variables.PINE_WEBHOOK_SECRET_ID,queue_url:Environment.Variables.PINE_INGRESS_QUEUE_URL}' \
+            --output json > "${EVIDENCE_DIR}/shadow-ingress-runtime.raw.json"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw_path = Path("shadow-monitor-artifacts/shadow-ingress-runtime.raw.json")
+          raw = json.loads(raw_path.read_text())
+          queue_url = str(raw.get("queue_url") or "").strip()
+          sanitized = {
+              "function_name": raw.get("function_name"),
+              "state": raw.get("state"),
+              "last_update_status": raw.get("last_update_status"),
+              "last_modified": raw.get("last_modified"),
+              "secret_configured": bool(str(raw.get("secret_id") or "").strip()),
+              "queue_configured": bool(queue_url),
+              "queue_name": queue_url.rstrip("/").split("/")[-1] if queue_url else None,
+          }
+          Path("shadow-monitor-artifacts/shadow-ingress-runtime.json").write_text(
+              json.dumps(sanitized, indent=2, sort_keys=True) + "\n"
+          )
+          raw_path.unlink()
+          PY
+
+          aws lambda invoke \
+            --function-name daily-alpha-pine-ingress \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{}' \
+            "${EVIDENCE_DIR}/shadow-ingress-auth-probe.json" >/dev/null
+
+          aws lambda list-event-source-mappings \
+            --function-name daily-alpha-pine-processor \
+            --query '{mappings:EventSourceMappings[].{state:State,last_processing_result:LastProcessingResult,event_source_arn:EventSourceArn}}' \
+            --output json > "${EVIDENCE_DIR}/shadow-event-source-mappings.raw.json"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw_path = Path("shadow-monitor-artifacts/shadow-event-source-mappings.raw.json")
+          raw = json.loads(raw_path.read_text())
+          sanitized = {"mappings": []}
+          for row in raw.get("mappings") or []:
+              arn = str(row.get("event_source_arn") or "").strip()
+              sanitized["mappings"].append(
+                  {
+                      "state": row.get("state"),
+                      "last_processing_result": row.get("last_processing_result"),
+                      "event_source_name": arn.rsplit(":", 1)[-1] if arn else None,
+                  }
+              )
+          Path("shadow-monitor-artifacts/shadow-event-source-mappings.json").write_text(
+              json.dumps(sanitized, indent=2, sort_keys=True) + "\n"
+          )
+          raw_path.unlink()
+          PY
+
       - name: Read isolated positions, ARMED state, events and receipts
         run: |
           set -euo pipefail
@@ -97,7 +162,7 @@ jobs:
           aws s3 cp "${PREFIX}/shortlist.json" \
             "${EVIDENCE_DIR}/shortlist.json" --only-show-errors
 
-      - name: Build exact shadow, contract and universe status
+      - name: Build exact shadow, contract, transport and universe status
         id: summarize
         shell: bash
         run: |
@@ -115,6 +180,14 @@ jobs:
             --output-md "${EVIDENCE_DIR}/shadow-contract-status.md"
           CONTRACT_CODE=$?
 
+          python scripts/shadow_transport_monitor.py \
+            --ingress-runtime "${EVIDENCE_DIR}/shadow-ingress-runtime.json" \
+            --ingress-probe "${EVIDENCE_DIR}/shadow-ingress-auth-probe.json" \
+            --event-source-mappings "${EVIDENCE_DIR}/shadow-event-source-mappings.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-transport-status.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-transport-status.md"
+          TRANSPORT_CODE=$?
+
           python scripts/shadow_universe_monitor.py \
             --summary "${EVIDENCE_DIR}/shortlist-summary.json" \
             --shortlist "${EVIDENCE_DIR}/shortlist.json" \
@@ -124,15 +197,19 @@ jobs:
 
           cat "${EVIDENCE_DIR}/shadow-contract-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-transport-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-universe-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
           cat "${EVIDENCE_DIR}/shadow-status.json"
           cat "${EVIDENCE_DIR}/shadow-contract-status.json"
+          cat "${EVIDENCE_DIR}/shadow-transport-status.json"
           cat "${EVIDENCE_DIR}/shadow-universe-status.json"
 
           if [ "${STATUS_CODE}" -ne 0 ] || \
              [ "${CONTRACT_CODE}" -ne 0 ] || \
+             [ "${TRANSPORT_CODE}" -ne 0 ] || \
              [ "${UNIVERSE_CODE}" -ne 0 ]; then
             CODE=2
           else
@@ -171,5 +248,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, runtime-contract, or canonical-universe violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, runtime-contract, backend-transport, or canonical-universe violation."
           exit 1
