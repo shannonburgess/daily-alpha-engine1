@@ -150,9 +150,11 @@ def render_markdown(status: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "TradingView private alert/watchlist membership is not readable through a "
-            "supported API. The canonical universe is monitored automatically and the "
-            "validated SH24/SH25 TradingView configuration remains frozen.",
+            (
+                "TradingView private alert/watchlist membership is not readable through a "
+                "supported API. The canonical universe is monitored automatically and the "
+                "validated SH24/SH25 TradingView configuration remains frozen."
+            ),
             "",
         ]
     )
