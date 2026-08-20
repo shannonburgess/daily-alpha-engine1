@@ -13,6 +13,7 @@ from datetime import date, datetime
 from typing import Any
 
 from .dynamo_ledger import DynamoPaperLedger
+from .equity_liquidity import LiquidityEvidenceStore, LiquidityGatedPaperExecutor
 from .pine_processor import DynamoPineEventStore, PineProcessorError, PineProcessorResult
 from .reconciled_receipt_executor import ReceiptReconciledAwsPinePaperExecutor
 
@@ -130,19 +131,21 @@ class ShadowRoutedPinePaperExecutor:
         secret_id: str | None = None,
         orats_factory: Any | None = None,
         ledger_factory: Callable[[str], Any] | None = None,
+        liquidity_store: LiquidityEvidenceStore | None = None,
     ) -> None:
         self.paper_nav = paper_nav
         self.secrets_client = secrets_client
         self.secret_id = secret_id
         self.orats_factory = orats_factory
         self.ledger_factory = ledger_factory
+        self.liquidity_store = liquidity_store
 
     def _ledger(self, account_id: str):
         if self.ledger_factory is not None:
             return self.ledger_factory(account_id)
         return DynamoPaperLedger(account_id=account_id)
 
-    def _executor(self, account_id: str) -> ReceiptReconciledAwsPinePaperExecutor:
+    def _executor(self, account_id: str):
         kwargs: dict[str, Any] = {"ledger": self._ledger(account_id)}
         if self.paper_nav is not None:
             kwargs["paper_nav"] = self.paper_nav
@@ -152,7 +155,10 @@ class ShadowRoutedPinePaperExecutor:
             kwargs["secret_id"] = self.secret_id
         if self.orats_factory is not None:
             kwargs["orats_factory"] = self.orats_factory
-        return ReceiptReconciledAwsPinePaperExecutor(**kwargs)
+        executor: Any = ReceiptReconciledAwsPinePaperExecutor(**kwargs)
+        if self.liquidity_store is not None:
+            executor = LiquidityGatedPaperExecutor(executor, self.liquidity_store)
+        return executor
 
     def _decorate(
         self,
