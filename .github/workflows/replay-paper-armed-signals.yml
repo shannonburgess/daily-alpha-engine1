@@ -151,7 +151,6 @@ jobs:
           AFTER_V25="$(jq '.books.PAPER_SHADOW_V25.armed_count_visible' /tmp/after.json)"
           EXECUTED="$(jq '[.[] | .outcome_counts.EXECUTED_PAPER // 0] | add // 0' /tmp/replay-attempts.json)"
           CANCELLED="$(jq '[.[] | .outcome_counts.CANCELLED_REPLAY // 0] | add // 0' /tmp/replay-attempts.json)"
-          LEASE_CONFLICTS="$(jq '[.[] | .lease_conflicts // 0] | add // 0' /tmp/replay-attempts.json)"
           REMAINING="$((AFTER_V24 + AFTER_V25))"
 
           STATUS="COMPLETE"
@@ -168,7 +167,6 @@ jobs:
             --argjson after_v25 "${AFTER_V25}" \
             --argjson executed "${EXECUTED}" \
             --argjson cancelled "${CANCELLED}" \
-            --argjson lease_conflicts "${LEASE_CONFLICTS}" \
             '{
               status: $status,
               session_date_et: $session_date,
@@ -176,7 +174,6 @@ jobs:
               after: {PAPER_SHADOW_V24: $after_v24, PAPER_SHADOW_V25: $after_v25},
               executed_paper: $executed,
               cancelled_replay: $cancelled,
-              lease_conflicts: $lease_conflicts,
               trading_authorized: false,
               live_trading_enabled: false
             }' >/tmp/replay-summary.json
@@ -208,7 +205,6 @@ jobs:
             AFTER_V25="$(jq '.after.PAPER_SHADOW_V25' /tmp/replay-summary.json)"
             EXECUTED="$(jq '.executed_paper' /tmp/replay-summary.json)"
             CANCELLED="$(jq '.cancelled_replay' /tmp/replay-summary.json)"
-            LEASE_CONFLICTS="$(jq '.lease_conflicts' /tmp/replay-summary.json)"
             {
               echo "## Daily Alpha ARMED replay"
               echo "- Status: ${STATUS}"
@@ -216,7 +212,6 @@ jobs:
               echo "- SH25 ARMED: ${BEFORE_V25} -> ${AFTER_V25}"
               echo "- PAPER executions: ${EXECUTED}"
               echo "- Replay cancellations: ${CANCELLED}"
-              echo "- Concurrent lease conflicts: ${LEASE_CONFLICTS}"
               echo "- Trading authorized: false"
               echo "- Live trading enabled: false"
             } >> "$GITHUB_STEP_SUMMARY"
