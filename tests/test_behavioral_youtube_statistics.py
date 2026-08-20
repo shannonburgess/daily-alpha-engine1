@@ -83,7 +83,7 @@ def test_statistics_fetcher_keeps_metric_units_separate_and_dedupes_ids():
     params = parse_qs(urlparse(http.urls[0]).query)
     assert params["part"] == ["statistics"]
     assert params["id"] == ["v1,v2"]
-    assert params["maxResults"] == ["2"]
+    assert "maxResults" not in params
     assert params["key"] == ["secret-key"]
 
 
@@ -131,7 +131,7 @@ def test_statistics_quota_fails_before_partial_fetch():
     assert http.urls == []
 
 
-def test_missing_provider_statistics_are_visible_without_fabricated_video_rows():
+def test_missing_provider_video_is_visible_without_fabricated_video_row():
     http = RecordingHttp([_stats_response(("v1", 1000, 100, 10))])
     fetcher = YouTubeVideoStatisticsFetcher(
         api_key="key",
@@ -151,3 +151,47 @@ def test_missing_provider_statistics_are_visible_without_fabricated_video_rows()
     provenance = json.loads(rows[0].provenance)
     assert provenance["missing_video_ids"] == 1
     assert provenance["research_only"] is True
+
+
+def test_missing_metric_field_omits_that_aggregate_instead_of_fabricating_zero():
+    http = RecordingHttp(
+        [
+            {
+                "items": [
+                    {
+                        "id": "v1",
+                        "statistics": {
+                            "viewCount": "1000",
+                            "likeCount": "100",
+                            "commentCount": "10",
+                        },
+                    },
+                    {
+                        "id": "v2",
+                        "statistics": {
+                            "viewCount": "2000",
+                            "likeCount": "150",
+                        },
+                    },
+                ]
+            }
+        ]
+    )
+    fetcher = YouTubeVideoStatisticsFetcher(
+        api_key="key",
+        max_statistics_calls_per_run=1,
+        timeout_seconds=5.0,
+        http_get=http,
+    )
+
+    rows, coverage = fetcher.collect(ENTITY, ("v1", "v2"), as_of=NOW)
+    metrics = {row.metric: row.raw_level for row in rows}
+
+    assert coverage.returned_video_ids == 2
+    assert metrics == {
+        "VIDEO_VIEW_TOTAL_SELECTED_SET": 3000.0,
+        "VIDEO_LIKE_TOTAL_SELECTED_SET": 250.0,
+    }
+    assert "VIDEO_COMMENT_TOTAL_SELECTED_SET" not in metrics
+    provenance = json.loads(rows[0].provenance)
+    assert provenance["missing_metric_counts"]["VIDEO_COMMENT_TOTAL_SELECTED_SET"] == 1
