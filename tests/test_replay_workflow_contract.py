@@ -1,6 +1,7 @@
 import pathlib
 
 WORKFLOW = pathlib.Path(".github/workflows/replay-paper-armed-signals.yml")
+MONITOR_WORKFLOW = pathlib.Path(".github/workflows/monitor-paper-shadows.yml")
 
 
 def test_replay_workflow_is_staging_paper_only_and_session_gated():
@@ -50,3 +51,17 @@ def test_replay_workflow_never_reads_or_prints_secret_values():
     )
     for value in forbidden:
         assert value not in text
+
+
+def test_primary_shadow_monitor_surfaces_replay_scheduler_health_without_parallel_status():
+    text = MONITOR_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Capture scheduled ARMED replay workflow health" in text
+    assert "replay-paper-armed-signals.yml" in text
+    assert "shadow_replay_scheduler_monitor.py" in text
+    assert "shadow-replay-scheduler-status.md" in text
+    assert "REPLAY_SCHEDULER_CODE" in text
+    assert "ARMED-replay-scheduler" in text
+    # Reuse the existing single rolling issue status; do not create a second replay comment writer.
+    assert text.count("<!-- daily-alpha-shadow-monitor -->") == 0
+    assert text.count("Update one rolling issue status") == 1
