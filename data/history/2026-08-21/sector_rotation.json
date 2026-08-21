@@ -1,0 +1,101 @@
+[
+  {
+    "advancing": 8,
+    "current_buys": 14,
+    "deteriorating": 2,
+    "leaders": 4,
+    "net_score": 2,
+    "removed": 7,
+    "sector": "Real Estate"
+  },
+  {
+    "advancing": 15,
+    "current_buys": 60,
+    "deteriorating": 1,
+    "leaders": 41,
+    "net_score": 1,
+    "removed": 34,
+    "sector": "Energy"
+  },
+  {
+    "advancing": 8,
+    "current_buys": 24,
+    "deteriorating": 3,
+    "leaders": 12,
+    "net_score": -10,
+    "removed": 16,
+    "sector": "Staples"
+  },
+  {
+    "advancing": 1,
+    "current_buys": 3,
+    "deteriorating": 1,
+    "leaders": 0,
+    "net_score": -16,
+    "removed": 8,
+    "sector": "Utilities"
+  },
+  {
+    "advancing": 4,
+    "current_buys": 23,
+    "deteriorating": 5,
+    "leaders": 14,
+    "net_score": -18,
+    "removed": 15,
+    "sector": "Communication"
+  },
+  {
+    "advancing": 23,
+    "current_buys": 77,
+    "deteriorating": 4,
+    "leaders": 49,
+    "net_score": -19,
+    "removed": 53,
+    "sector": "Health Care"
+  },
+  {
+    "advancing": 11,
+    "current_buys": 35,
+    "deteriorating": 2,
+    "leaders": 20,
+    "net_score": -36,
+    "removed": 37,
+    "sector": "Materials"
+  },
+  {
+    "advancing": 4,
+    "current_buys": 23,
+    "deteriorating": 7,
+    "leaders": 11,
+    "net_score": -83,
+    "removed": 44,
+    "sector": "Discretionary"
+  },
+  {
+    "advancing": 16,
+    "current_buys": 70,
+    "deteriorating": 10,
+    "leaders": 31,
+    "net_score": -115,
+    "removed": 79,
+    "sector": "Technology"
+  },
+  {
+    "advancing": 2,
+    "current_buys": 23,
+    "deteriorating": 6,
+    "leaders": 13,
+    "net_score": -183,
+    "removed": 94,
+    "sector": "Industrials"
+  },
+  {
+    "advancing": 9,
+    "current_buys": 19,
+    "deteriorating": 6,
+    "leaders": 4,
+    "net_score": -272,
+    "removed": 141,
+    "sector": "Financials"
+  }
+]
