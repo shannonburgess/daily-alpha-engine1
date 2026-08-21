@@ -1,15 +1,7 @@
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
-from daily_alpha.agentic.contracts import (
-    EvidenceContractError,
-    EvidenceRecord,
-    EvidenceStatus,
-    ReadinessStatus,
-)
-from daily_alpha.agentic.evidence_store import EvidenceConflictError, InMemoryEvidenceStore
-from daily_alpha.agentic.source_registry import SourcePolicy, SourceRegistry
-from daily_alpha.agentic.supervisor import DataSupervisor
+from daily_alpha import agentic
 
 
 NOW = datetime(2026, 8, 21, 20, 0, tzinfo=UTC)
@@ -32,13 +24,13 @@ def _record(
     value="Energy",
     observed_at: datetime | None = None,
     received_at: datetime | None = None,
-    status: EvidenceStatus = EvidenceStatus.COMPLETE,
+    status: agentic.EvidenceStatus = agentic.EvidenceStatus.COMPLETE,
     confidence: float = 1.0,
     provenance=None,
-) -> EvidenceRecord:
+) -> agentic.EvidenceRecord:
     observed = observed_at or NOW - timedelta(minutes=5)
     received = received_at or observed + timedelta(seconds=5)
-    return EvidenceRecord(
+    return agentic.EvidenceRecord(
         symbol="dino",
         evidence_type=evidence_type,
         value=value,
@@ -59,8 +51,8 @@ def _policy(
     required: bool = True,
     freshness: int = 3_600,
     agreement: bool = False,
-) -> SourcePolicy:
-    return SourcePolicy(
+) -> agentic.SourcePolicy:
+    return agentic.SourcePolicy(
         source=source,
         owner="test",
         evidence_types=(evidence_type,),
@@ -82,20 +74,20 @@ def test_evidence_identity_is_deterministic_and_provenance_order_independent():
 
 
 def test_evidence_rejects_naive_or_future_point_in_time_data():
-    with _raises(EvidenceContractError, "OBSERVED_AT_MUST_BE_TIMEZONE_AWARE"):
+    with _raises(agentic.EvidenceContractError, "OBSERVED_AT_MUST_BE_TIMEZONE_AWARE"):
         _record(observed_at=NOW.replace(tzinfo=None))
 
     record = _record(
         observed_at=NOW + timedelta(seconds=1),
         received_at=NOW + timedelta(seconds=2),
     )
-    with _raises(EvidenceContractError, "FUTURE_EVIDENCE_NOT_ALLOWED"):
+    with _raises(agentic.EvidenceContractError, "FUTURE_EVIDENCE_NOT_ALLOWED"):
         record.validate_point_in_time(NOW)
 
 
 def test_agentic_foundation_cannot_authorize_trading():
-    with _raises(EvidenceContractError, "AGENTIC_FOUNDATION_MUST_REMAIN_RESEARCH_ONLY"):
-        EvidenceRecord(
+    with _raises(agentic.EvidenceContractError, "AGENTIC_FOUNDATION_MUST_REMAIN_RESEARCH_ONLY"):
+        agentic.EvidenceRecord(
             symbol="DINO",
             evidence_type="SECTOR",
             value="Energy",
@@ -108,7 +100,7 @@ def test_agentic_foundation_cannot_authorize_trading():
 
 
 def test_store_is_idempotent_but_rejects_logical_observation_rewrite():
-    store = InMemoryEvidenceStore()
+    store = agentic.InMemoryEvidenceStore()
     record = _record()
 
     first_id = store.put(record)
@@ -116,12 +108,12 @@ def test_store_is_idempotent_but_rejects_logical_observation_rewrite():
     assert first_id == second_id
 
     conflicting = _record(value="Technology")
-    with _raises(EvidenceConflictError, "EVIDENCE_IMMUTABILITY_VIOLATION"):
+    with _raises(agentic.EvidenceConflictError, "EVIDENCE_IMMUTABILITY_VIOLATION"):
         store.put(conflicting)
 
 
 def test_store_returns_only_evidence_available_at_as_of_boundary():
-    store = InMemoryEvidenceStore()
+    store = agentic.InMemoryEvidenceStore()
     available = _record(
         observed_at=NOW - timedelta(minutes=10),
         received_at=NOW - timedelta(minutes=9),
@@ -138,16 +130,16 @@ def test_store_returns_only_evidence_available_at_as_of_boundary():
 
 
 def test_supervisor_passes_complete_fresh_required_evidence():
-    store = InMemoryEvidenceStore()
+    store = agentic.InMemoryEvidenceStore()
     store.put(_record())
-    supervisor = DataSupervisor(
-        registry=SourceRegistry((_policy(),)),
+    supervisor = agentic.DataSupervisor(
+        registry=agentic.SourceRegistry((_policy(),)),
         store=store,
     )
 
     packet = supervisor.evaluate("dino", NOW)
 
-    assert packet.status is ReadinessStatus.PASS
+    assert packet.status is agentic.ReadinessStatus.PASS
     assert packet.completeness_score == 100.0
     assert packet.blockers == ()
     assert packet.trading_authorized is False
@@ -155,56 +147,59 @@ def test_supervisor_passes_complete_fresh_required_evidence():
 
 
 def test_supervisor_blocks_missing_or_stale_required_evidence():
-    registry = SourceRegistry((_policy(freshness=60),))
-    missing = DataSupervisor(registry=registry, store=InMemoryEvidenceStore()).evaluate("DINO", NOW)
-    assert missing.status is ReadinessStatus.BLOCKED
+    registry = agentic.SourceRegistry((_policy(freshness=60),))
+    missing = agentic.DataSupervisor(
+        registry=registry,
+        store=agentic.InMemoryEvidenceStore(),
+    ).evaluate("DINO", NOW)
+    assert missing.status is agentic.ReadinessStatus.BLOCKED
     assert missing.blockers == ("MISSING_REQUIRED_EVIDENCE:SOURCE_A:SECTOR",)
 
-    store = InMemoryEvidenceStore()
+    store = agentic.InMemoryEvidenceStore()
     store.put(
         _record(
             observed_at=NOW - timedelta(minutes=10),
             received_at=NOW - timedelta(minutes=9),
         )
     )
-    stale = DataSupervisor(registry=registry, store=store).evaluate("DINO", NOW)
-    assert stale.status is ReadinessStatus.BLOCKED
+    stale = agentic.DataSupervisor(registry=registry, store=store).evaluate("DINO", NOW)
+    assert stale.status is agentic.ReadinessStatus.BLOCKED
     assert stale.blockers == ("STALE:SOURCE_A:SECTOR",)
 
 
 def test_optional_bad_evidence_warns_without_blocking():
-    store = InMemoryEvidenceStore()
-    store.put(_record(status=EvidenceStatus.DATA_ERROR))
-    supervisor = DataSupervisor(
-        registry=SourceRegistry((_policy(required=False),)),
+    store = agentic.InMemoryEvidenceStore()
+    store.put(_record(status=agentic.EvidenceStatus.DATA_ERROR))
+    supervisor = agentic.DataSupervisor(
+        registry=agentic.SourceRegistry((_policy(required=False),)),
         store=store,
     )
 
     packet = supervisor.evaluate("DINO", NOW)
 
-    assert packet.status is ReadinessStatus.WARNING
+    assert packet.status is agentic.ReadinessStatus.WARNING
     assert packet.blockers == ()
     assert packet.warnings == ("DATA_ERROR:SOURCE_A:SECTOR",)
 
 
 def test_cross_source_disagreement_blocks_when_agreement_is_required():
-    store = InMemoryEvidenceStore()
+    store = agentic.InMemoryEvidenceStore()
     store.put(_record(source="SOURCE_A", value="Energy"))
     store.put(_record(source="SOURCE_B", value="Technology"))
-    registry = SourceRegistry(
+    registry = agentic.SourceRegistry(
         (
             _policy(source="SOURCE_A", agreement=True),
             _policy(source="SOURCE_B", agreement=True),
         )
     )
 
-    packet = DataSupervisor(registry=registry, store=store).evaluate("DINO", NOW)
+    packet = agentic.DataSupervisor(registry=registry, store=store).evaluate("DINO", NOW)
 
-    assert packet.status is ReadinessStatus.BLOCKED
+    assert packet.status is agentic.ReadinessStatus.BLOCKED
     assert packet.blockers == ("CROSS_SOURCE_CONFLICT:SECTOR:SOURCE_A,SOURCE_B",)
 
 
 def test_source_registry_rejects_silent_policy_redefinition():
-    registry = SourceRegistry((_policy(),))
-    with _raises(EvidenceContractError, "SOURCE_POLICY_CONFLICT:SOURCE_A"):
+    registry = agentic.SourceRegistry((_policy(),))
+    with _raises(agentic.EvidenceContractError, "SOURCE_POLICY_CONFLICT:SOURCE_A"):
         registry.register(_policy(freshness=7_200))
