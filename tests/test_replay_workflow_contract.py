@@ -65,6 +65,7 @@ def test_primary_shadow_monitor_surfaces_replay_scheduler_health_without_paralle
     assert "--workflow-metadata" in text
     assert "shadow-replay-scheduler-status.md" in text
     assert "REPLAY_SCHEDULER_CODE" in text
-    assert "ARMED-replay-scheduler" in text
+    assert "Enforce blocking monitor result" in text
+    assert "ARMED-replay violation" in text
     # Reuse the existing single rolling issue status; do not create a second replay writer.
     assert text.count("Update one rolling issue status") == 1
