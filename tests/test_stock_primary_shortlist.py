@@ -63,6 +63,11 @@ class FakeSource:
         )
 
 
+class ExplodingSource:
+    def fetch(self, symbols, *, as_of):
+        raise RuntimeError("provider unavailable")
+
+
 def test_non_optionable_stock_is_retained_and_does_not_consume_orats_quota(tmp_path):
     previous = write_csv(
         tmp_path / "OVTLYR_2026-08-20.csv",
@@ -145,6 +150,29 @@ def test_missing_orats_provider_keeps_stock_shortlist_available(tmp_path):
     assert result.items[0].orats_status == "SOURCE_UNAVAILABLE"
     assert result.items[0].orats_reason == "ORATS_NOT_CONFIGURED_STOCK_RETAINED"
     assert result.summary["orats_requests"] == 0
+
+
+def test_wholesale_orats_provider_exception_keeps_stock_candidate(tmp_path):
+    previous = write_csv(
+        tmp_path / "OVTLYR_2026-08-20.csv",
+        ["AAA,Hold,2026-08-20,Technology,Software,Up,Rising,Yes,100,2500000"],
+    )
+    current = write_csv(
+        tmp_path / "OVTLYR_2026-08-21.csv",
+        ["AAA,Buy,2026-08-21,Technology,Software,Up,Accelerating,Yes,101,2500000"],
+    )
+    result = build_stock_primary_shortlist(
+        previous,
+        current,
+        as_of=NOW,
+        orats_source=ExplodingSource(),
+        company_symbols=frozenset({"AAA"}),
+    )
+
+    assert [item.symbol for item in result.items] == ["AAA"]
+    assert result.items[0].orats_status == "DATA_ERROR"
+    assert result.items[0].orats_reason == "ORATS_PROVIDER_RUNTIMEERROR_STOCK_RETAINED"
+    assert result.summary["orats_data_error_count"] == 1
 
 
 def test_option_quality_does_not_change_stock_score_or_rank(tmp_path):
