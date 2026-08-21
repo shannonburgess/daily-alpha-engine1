@@ -1,19 +1,14 @@
-"""Production source discovery and fail-closed batch retrieval adapters."""
+"""Production source discovery for Daily Alpha inputs.
+
+The automated trading path intentionally has no external options-data vendor
+dependency. Options are user-directed and broker-chain sourced outside this module.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
-from .orats import (
-    OratsChain,
-    OratsClient,
-    OratsConfigurationError,
-    OratsDataError,
-    OratsNoOptionsError,
-    OratsRequestError,
-)
 
 
 class SourceError(RuntimeError):
@@ -63,38 +58,3 @@ class OvtlyrInbox:
         if age > self.max_age:
             raise SourceError("OVTLYR_CSV_STALE")
         return OvtlyrSourceFile(selected, observed, selected.stat().st_size)
-
-
-@dataclass(frozen=True)
-class OratsBatchResult:
-    chains: tuple[OratsChain, ...]
-    errors: tuple[tuple[str, str], ...]
-
-    @property
-    def complete(self) -> bool:
-        return not self.errors
-
-
-class OratsBatchSource:
-    """Retrieve required chains and preserve per-symbol DATA_ERROR reason codes."""
-
-    def __init__(self, client: OratsClient) -> None:
-        self.client = client
-
-    def fetch(self, symbols: tuple[str, ...], *, as_of: datetime) -> OratsBatchResult:
-        chains: list[OratsChain] = []
-        errors: list[tuple[str, str]] = []
-        for symbol in tuple(
-            dict.fromkeys(value.strip().upper() for value in symbols if value.strip())
-        ):
-            try:
-                chains.append(self.client.fetch_chain(symbol, as_of=as_of))
-            except OratsConfigurationError:
-                errors.append((symbol, "ORATS_CONFIGURATION_ERROR"))
-            except OratsRequestError:
-                errors.append((symbol, "ORATS_REQUEST_ERROR"))
-            except OratsNoOptionsError:
-                errors.append((symbol, "ORATS_NO_45_75_DTE_OPTIONS"))
-            except OratsDataError:
-                errors.append((symbol, "ORATS_DATA_ERROR"))
-        return OratsBatchResult(tuple(chains), tuple(errors))
