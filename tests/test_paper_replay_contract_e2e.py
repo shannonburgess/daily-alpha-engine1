@@ -2,13 +2,11 @@ import json
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 
-from daily_alpha.armed_replay import replay_armed_events
-from daily_alpha.pine_paper_reconciliation import ReconciledAwsPinePaperExecutor
+from daily_alpha.ledger import PaperLedger
 from daily_alpha.pine_processor import DynamoPineEventStore, process_sqs_batch
 from daily_alpha.reconciled_receipt_executor import ReceiptReconciledAwsPinePaperExecutor
 
 AFTER_CLOSE = datetime(2026, 8, 19, 21, 5, tzinfo=UTC)
-REPLAY_TIME = datetime(2026, 8, 20, 14, 5, tzinfo=UTC)
 
 
 class InMemoryDynamo:
@@ -70,16 +68,9 @@ class InMemoryDynamo:
         return {"Items": matches[:limit]}
 
 
-class EmptyLedger:
-    account_id = "paper-shadow-v24"
-
-    def find_open(self, symbol, instrument=None):
-        return []
-
-
-def _executor():
+def _executor(tmp_path):
     return ReceiptReconciledAwsPinePaperExecutor(
-        ledger=EmptyLedger(),
+        ledger=PaperLedger(tmp_path / "paper-ledger"),
         secrets_client=object(),
         paper_nav=1_000_000,
         orats_factory=lambda token: None,
@@ -111,14 +102,16 @@ def _ingress():
     }
 
 
-def test_local_contract_receive_arm_replay_and_persist_exact_receipt(monkeypatch):
+def test_local_contract_receive_executes_stock_model_fill_and_persists_exact_receipt(
+    tmp_path,
+):
     client = InMemoryDynamo()
     store = DynamoPineEventStore(
         table_name="paper-test",
         account_id="paper-shadow-v24",
         client=client,
     )
-    executor = _executor()
+    executor = _executor(tmp_path)
     ingress = _ingress()
     event = {
         "Records": [
@@ -134,76 +127,29 @@ def test_local_contract_receive_arm_replay_and_persist_exact_receipt(monkeypatch
     assert first == {"batchItemFailures": []}
     key = ("ACCOUNT#paper-shadow-v24#PINE_EVENT#AMD-E2E-1", "RECEIVED")
     persisted = client.items[key]
-    assert persisted["disposition"]["S"] == "ARMED_FOR_NEXT_TRADABLE_WINDOW"
-    armed_execution = json.loads(persisted["execution_json"]["S"])
-    assert armed_execution["paper_execution_triggered"] is False
-    assert armed_execution["trading_authorized"] is False
-    assert armed_execution["live_trading_enabled"] is False
-
-    replay_signal_id = "AMD-E2E-1-REPLAY-20260820T140500"
-
-    def fake_replay(self, ingress, *, now=None):
-        return {
-            "disposition": "EXECUTED_PAPER",
-            "reason": "PAPER_POSITION_OPENED",
-            "action": "ENTRY_LONG",
-            "symbol": "AMD",
-            "paper_execution_triggered": True,
-            "paper_ledger_updated": True,
-            "trading_authorized": False,
-            "live_trading_enabled": False,
-            "paper": {
-                "trade": {
-                    "trade_id": "amd-trade-1",
-                    "signal_id": replay_signal_id,
-                    "symbol": "AMD",
-                    "instrument": "STOCK",
-                    "quantity": 5,
-                    "entry_price": 102.0,
-                    "entry_time": REPLAY_TIME.isoformat(),
-                    "state": "OPEN",
-                    "exit_price": None,
-                    "exit_time": None,
-                    "realized_pnl": 0.0,
-                    "fallback_reason": "STOCK_FALLBACK",
-                    "option_expiration": None,
-                    "option_strike": None,
-                    "option_type": None,
-                    "target_quantity": 5,
-                    "runner_stage": "STARTER",
-                    "add1_signal_id": None,
-                    "add2_signal_id": None,
-                    "harvest_signal_id": None,
-                    "sector": "Information Technology",
-                    "initial_risk_basis": 500.0,
-                },
-                "paper_ledger_updated": True,
-            },
-            "context": {
-                "replayed_from_armed_signal": True,
-                "origin_signal_id": ingress["signal_id"],
-                "origin_signal_price": ingress["price"],
-                "replay_market_price": 102.0,
-            },
-        }
-
-    monkeypatch.setattr(ReconciledAwsPinePaperExecutor, "replay_armed", fake_replay)
-    replay = replay_armed_events(store, executor, now=REPLAY_TIME, limit=5)
-
-    assert replay["armed_found"] == 1
-    assert replay["armed_claimed"] == 1
-    assert replay["outcome_counts"] == {"EXECUTED_PAPER": 1}
-    persisted_after = client.items[key]
-    assert persisted_after["disposition"]["S"] == "EXECUTED_PAPER"
-    execution = json.loads(persisted_after["execution_json"]["S"])
+    assert persisted["disposition"]["S"] == "EXECUTED_PAPER"
+    execution = json.loads(persisted["execution_json"]["S"])
     receipt = execution["execution_receipt"]
-    assert receipt["signal_id"] == replay_signal_id
+    trade = executor.ledger.find_open("AMD")[0]
+
+    assert execution["reason"] == "PAPER_STOCK_POSITION_OPENED"
+    assert execution["context"]["execution_policy"] == (
+        "STOCK_PRIMARY_MODEL_VALIDATION_V1"
+    )
+    assert execution["context"]["options_execution_enabled"] is False
+    assert execution["context"]["orats_required_for_new_entry"] is False
+    assert execution["context"]["fill_model"] == (
+        "CONFIRMED_SIGNAL_PRICE_PROCESS_ORDERS_ON_CLOSE"
+    )
+    assert trade.instrument.value == "STOCK"
+    assert trade.entry_price == 100.0
+    assert receipt["signal_id"] == "AMD-E2E-1"
     assert receipt["instrument"] == "STOCK"
-    assert receipt["fill_price"] == 102.0
-    assert receipt["fill_quantity"] == 5
-    assert receipt["fill_notional"] == 510.0
-    assert receipt["remaining_quantity"] == 5
-    assert receipt["initial_risk_basis"] == 500.0
+    assert receipt["fill_price"] == 100.0
+    assert receipt["fill_quantity"] == trade.quantity
+    assert receipt["fill_notional"] == trade.quantity * 100.0
+    assert receipt["remaining_quantity"] == trade.quantity
+    assert receipt["initial_risk_basis"] == trade.initial_risk_basis
     assert receipt["r_basis_status"] == "NO_REALIZED_PNL_YET"
     assert receipt["trading_authorized"] is False
     assert receipt["live_trading_enabled"] is False
