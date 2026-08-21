@@ -17,6 +17,12 @@ CONTROL_KEYS = (
     "source_diagnostic",
 )
 
+# These controls protect the active PAPER path directly. Their failure or
+# indeterminate state must keep the GitHub monitor red. Source diagnostics are
+# evidence-quality diagnostics only, while replay is conditional on whether a
+# genuinely pre-existing ARMED record actually exists.
+CI_CRITICAL_CONTROLS = frozenset({"contract", "transport", "universe", "liquidity"})
+
 
 def _load(path: str) -> dict[str, Any]:
     payload = json.loads(Path(path).read_text())
@@ -94,6 +100,42 @@ def build_operator_summary(evidence: Mapping[str, Mapping[str, Any]]) -> dict[st
             if isinstance(value, int) and not isinstance(value, bool):
                 open_positions += value
 
+    armed = core.get("total_armed")
+    armed_count = armed if isinstance(armed, int) and not isinstance(armed, bool) else None
+
+    # GitHub Actions notification severity is intentionally narrower than the
+    # fail-closed operator state. Evidence-only diagnostic gaps still appear as
+    # FAIL_CLOSED in #213, but they must not generate hourly failure noise when
+    # the active PAPER path is safe and requires no human action.
+    ci_blocking_failures: list[str] = []
+    ci_nonblocking_findings: list[str] = []
+    for failure in hard_failures:
+        if failure in {"core", "safety_flags", "safety_evidence"}:
+            ci_blocking_failures.append(failure)
+        elif failure in CI_CRITICAL_CONTROLS:
+            ci_blocking_failures.append(failure)
+        elif failure == "replay_scheduler" and (armed_count is None or armed_count > 0):
+            ci_blocking_failures.append(failure)
+        else:
+            ci_nonblocking_findings.append(failure)
+
+    for control in unknown:
+        if control in CI_CRITICAL_CONTROLS:
+            ci_blocking_failures.append(f"{control}:UNKNOWN")
+        elif control == "replay_scheduler" and (armed_count is None or armed_count > 0):
+            ci_blocking_failures.append("replay_scheduler:UNKNOWN")
+        else:
+            ci_nonblocking_findings.append(f"{control}:UNKNOWN")
+
+    ci_blocking_failures = sorted(set(ci_blocking_failures))
+    ci_nonblocking_findings = sorted(set(ci_nonblocking_findings))
+    if ci_blocking_failures:
+        ci_gate_status = "FAIL"
+    elif ci_nonblocking_findings or pending or overall != "HEALTHY":
+        ci_gate_status = "PASS_WITH_EVIDENCE_WARNINGS"
+    else:
+        ci_gate_status = "PASS"
+
     return {
         "overall_status": overall,
         "operator_action": operator_action,
@@ -102,12 +144,15 @@ def build_operator_summary(evidence: Mapping[str, Mapping[str, Any]]) -> dict[st
         "diagnosis": core.get("diagnosis"),
         "zero_trade_status": core.get("zero_trade_status"),
         "paper_fills": core.get("total_session_fills"),
-        "armed": core.get("total_armed"),
+        "armed": armed,
         "open_positions": open_positions,
         "controls": controls,
         "pending_controls": pending,
         "hard_failures": hard_failures,
         "unknown_controls": unknown,
+        "ci_gate_status": ci_gate_status,
+        "ci_blocking_failures": ci_blocking_failures,
+        "ci_nonblocking_findings": ci_nonblocking_findings,
         "tradingview_configuration": "FROZEN",
         "trading_authorized": trading_authorized,
         "live_trading_enabled": live_trading_enabled,
@@ -137,6 +182,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
                 f"diagnosis=`{summary.get('diagnosis') or 'unknown'}`  "
             ),
             f"**Controls:** {control_text}  ",
+            f"**Automation notification gate:** `{summary.get('ci_gate_status')}`  ",
             "**TradingView:** frozen; private alert/watchlist membership is not inferred  ",
             "**Safety:** `trading_authorized=false`, `live_trading_enabled=false`",
             "",
