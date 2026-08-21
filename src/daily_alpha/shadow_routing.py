@@ -1,8 +1,8 @@
-"""Route explicitly tagged Pine models into isolated paper shadow accounts.
+"""Route explicitly tagged Pine models into isolated stock-only PAPER shadow accounts.
 
 Existing untagged Pine traffic remains on the configured default paper account.
 Only an explicit PAPER_SHADOW_V24 / PAPER_SHADOW_V25 model_id may enter a shadow
-book. This prevents an accidental cutover of existing paper state.
+book. Options-data vendors and option execution are intentionally absent.
 """
 
 from __future__ import annotations
@@ -121,22 +121,16 @@ class ShadowRoutedPineEventStore:
 
 
 class ShadowRoutedPinePaperExecutor:
-    """Execute and replay tagged models against isolated receipt-aware paper ledgers."""
+    """Execute tagged models against isolated receipt-aware STOCK PAPER ledgers."""
 
     def __init__(
         self,
         *,
         paper_nav: float | None = None,
-        secrets_client: Any | None = None,
-        secret_id: str | None = None,
-        orats_factory: Any | None = None,
         ledger_factory: Callable[[str], Any] | None = None,
         liquidity_store: LiquidityEvidenceStore | None = None,
     ) -> None:
         self.paper_nav = paper_nav
-        self.secrets_client = secrets_client
-        self.secret_id = secret_id
-        self.orats_factory = orats_factory
         self.ledger_factory = ledger_factory
         self.liquidity_store = liquidity_store
 
@@ -149,12 +143,6 @@ class ShadowRoutedPinePaperExecutor:
         kwargs: dict[str, Any] = {"ledger": self._ledger(account_id)}
         if self.paper_nav is not None:
             kwargs["paper_nav"] = self.paper_nav
-        if self.secrets_client is not None:
-            kwargs["secrets_client"] = self.secrets_client
-        if self.secret_id is not None:
-            kwargs["secret_id"] = self.secret_id
-        if self.orats_factory is not None:
-            kwargs["orats_factory"] = self.orats_factory
         executor: Any = ReceiptReconciledAwsPinePaperExecutor(**kwargs)
         if self.liquidity_store is not None:
             executor = LiquidityGatedPaperExecutor(executor, self.liquidity_store)
@@ -176,6 +164,7 @@ class ShadowRoutedPinePaperExecutor:
             if account_id in SHADOW_MODELS
             else ingress.get("forward_test_start")
         )
+        result["options_mode"] = "USER_DIRECTED_BROKER_CHAIN"
         result["trading_authorized"] = False
         result["live_trading_enabled"] = False
         return result
