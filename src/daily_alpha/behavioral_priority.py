@@ -1,8 +1,10 @@
 """Research-priority overlay for Behavioral Change evidence.
 
-Behavioral / Information Edge may reorder research attention only.  This module is an
+Behavioral / Information Edge may reorder research attention only. This module is an
 explicit isolation boundary: it never authorizes execution and it never changes the
-state of Pine, ORATS, earnings, liquidity, concentration, or portfolio-risk gates.
+state of canonical signal, earnings/event, liquidity, concentration, or portfolio-risk
+gates. Under the stock-primary PAPER policy, ORATS/options are research metadata only
+and are deliberately excluded from the required execution-gate set.
 """
 
 from __future__ import annotations
@@ -17,7 +19,6 @@ from .behavioral_factors import BehavioralResearchFactors
 
 class CoreExecutionGate(StrEnum):
     PINE = "PINE"
-    ORATS = "ORATS"
     EARNINGS = "EARNINGS"
     LIQUIDITY = "LIQUIDITY"
     CONCENTRATION = "CONCENTRATION"
@@ -77,8 +78,9 @@ def apply_behavioral_research_priority(
 
     The caller owns the research hypothesis that produced ``requested_adjustment``.
     This boundary only applies a configured cap after confirming that the canonical
-    multi-source Behavioral score exists.  Core execution-gate evidence is carried
-    through unchanged for auditability and can never be converted to PASS here.
+    multi-source Behavioral score exists. Canonical execution-gate evidence is carried
+    through unchanged for auditability and can never be converted to PASS here. ORATS
+    is intentionally absent because it cannot block a new STOCK PAPER entry.
     """
     _require_aware(as_of, "as_of")
     symbol = ticker.strip().upper()
