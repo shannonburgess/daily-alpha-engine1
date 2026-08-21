@@ -1,0 +1,249 @@
+name: Replay Daily Alpha paper ARMED signals
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 09:40-15:40 ET across EDT/EST. The NYSE calendar gate below suppresses
+    # holidays, premarket/post-session invocations, and hours outside core trading.
+    - cron: "40 13-20 * * 1-5"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-alpha-paper-armed-replay-staging
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.market.outputs.run }}
+      phase: ${{ steps.market.outputs.phase }}
+      session_date: ${{ steps.market.outputs.session_date }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve official NYSE core-session gate
+        id: market
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from datetime import UTC, datetime
+
+          from scripts.nyse_session_calendar import core_session_for
+
+          session = core_session_for(datetime.now(UTC))
+          eligible = (
+              session.calendar_status == "VERIFIED"
+              and session.is_trading_day is True
+              and session.session_phase == "REGULAR_SESSION"
+          )
+          print(f"run={'true' if eligible else 'false'}")
+          print(f"phase={session.session_phase}")
+          print(f"session_date={session.session_date_et}")
+          PY
+
+      - name: Summarize closed replay gate
+        if: steps.market.outputs.run != 'true'
+        shell: bash
+        run: |
+          {
+            echo "## Daily Alpha ARMED replay"
+            echo "- Status: NOT_RUN"
+            echo "- Session phase: ${{ steps.market.outputs.phase }}"
+            echo "- Session date ET: ${{ steps.market.outputs.session_date }}"
+            echo "- Trading authorized: false"
+            echo "- Live trading enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  replay:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 12
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-paper-armed-replay
+          aws-region: us-east-2
+
+      - name: Snapshot shadow books before replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":100,"event_limit":100}' \
+            /tmp/before.json >/tmp/before-meta.json
+
+          jq -e '
+            .ok == true and
+            .service == "daily-alpha-pine-processor" and
+            .operation == "GET_SHADOW_MONITOR_STATE" and
+            .trading_authorized == false and
+            .live_trading_enabled == false and
+            (.books.PAPER_SHADOW_V24.armed_limit_reached == false) and
+            (.books.PAPER_SHADOW_V25.armed_limit_reached == false) and
+            (.books.PAPER_SHADOW_V24.scan_truncated == false) and
+            (.books.PAPER_SHADOW_V25.scan_truncated == false)
+          ' /tmp/before.json >/dev/null
+
+      - name: Replay currently ARMED paper signals once per scheduled tick
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEFORE="$(jq '[.books.PAPER_SHADOW_V24.armed_count_visible, .books.PAPER_SHADOW_V25.armed_count_visible] | add' /tmp/before.json)"
+          echo '[]' >/tmp/replay-attempts.json
+
+          # Invoke exactly once each eligible tick. A no-ARMED pass is read/scan-only,
+          # while this also prevents legacy/default PAPER ARMED records from requiring
+          # manual replay just because both shadow books happen to be empty.
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"REPLAY_ARMED_SIGNALS","limit":100}' \
+            /tmp/replay-1.json >/tmp/replay-1-meta.json
+
+          jq -e '
+            .ok == true and
+            .service == "daily-alpha-pine-processor" and
+            .operation == "REPLAY_ARMED_SIGNALS" and
+            .trading_authorized == false and
+            .live_trading_enabled == false and
+            (.armed_found | type == "number" and . >= 0) and
+            (.armed_claimed | type == "number" and . >= 0) and
+            (.lease_conflicts | type == "number" and . >= 0) and
+            (.armed_found == (.armed_claimed + .lease_conflicts)) and
+            ((.outcomes | length) == .armed_claimed) and
+            (([.outcome_counts[]] | add // 0) == .armed_claimed) and
+            (.account_results | type == "array")
+          ' /tmp/replay-1.json >/dev/null
+
+          jq --slurpfile attempt /tmp/replay-1.json \
+            '. + $attempt' /tmp/replay-attempts.json >/tmp/replay-attempts-next.json
+          mv /tmp/replay-attempts-next.json /tmp/replay-attempts.json
+
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":100,"event_limit":100}' \
+            /tmp/after.json >/tmp/after-meta.json
+
+          jq -e '
+            .ok == true and
+            .service == "daily-alpha-pine-processor" and
+            .operation == "GET_SHADOW_MONITOR_STATE" and
+            .trading_authorized == false and
+            .live_trading_enabled == false and
+            (.books.PAPER_SHADOW_V24.armed_limit_reached == false) and
+            (.books.PAPER_SHADOW_V25.armed_limit_reached == false) and
+            (.books.PAPER_SHADOW_V24.scan_truncated == false) and
+            (.books.PAPER_SHADOW_V25.scan_truncated == false)
+          ' /tmp/after.json >/dev/null
+
+          BEFORE_V24="$(jq '.books.PAPER_SHADOW_V24.armed_count_visible' /tmp/before.json)"
+          BEFORE_V25="$(jq '.books.PAPER_SHADOW_V25.armed_count_visible' /tmp/before.json)"
+          AFTER_V24="$(jq '.books.PAPER_SHADOW_V24.armed_count_visible' /tmp/after.json)"
+          AFTER_V25="$(jq '.books.PAPER_SHADOW_V25.armed_count_visible' /tmp/after.json)"
+          ARMED_FOUND="$(jq '[.[] | .armed_found // 0] | add // 0' /tmp/replay-attempts.json)"
+          ARMED_CLAIMED="$(jq '[.[] | .armed_claimed // 0] | add // 0' /tmp/replay-attempts.json)"
+          EXECUTED="$(jq '[.[] | .outcome_counts.EXECUTED_PAPER // 0] | add // 0' /tmp/replay-attempts.json)"
+          CANCELLED="$(jq '[.[] | .outcome_counts.CANCELLED_REPLAY // 0] | add // 0' /tmp/replay-attempts.json)"
+          RETRYABLE_ARMED="$(jq '[.[] | .outcome_counts.ARMED_FOR_NEXT_TRADABLE_WINDOW // 0] | add // 0' /tmp/replay-attempts.json)"
+          LEASE_CONFLICTS="$(jq '[.[] | .lease_conflicts // 0] | add // 0' /tmp/replay-attempts.json)"
+          OUTCOME_COUNTS="$(jq 'reduce .[] as $attempt ({}; reduce (($attempt.outcome_counts // {}) | to_entries[]) as $entry (. ; .[$entry.key] = ((.[$entry.key] // 0) + $entry.value)))' /tmp/replay-attempts.json)"
+          ACCOUNT_RESULTS="$(jq '[.[] | .account_results[]?]' /tmp/replay-attempts.json)"
+          REMAINING="$((AFTER_V24 + AFTER_V25))"
+
+          STATUS="COMPLETE"
+          if [[ "${BEFORE}" -eq 0 && "${ARMED_FOUND}" -eq 0 ]]; then
+            STATUS="NO_ARMED_SIGNALS"
+          elif [[ "${REMAINING}" -gt 0 || "${LEASE_CONFLICTS}" -gt 0 || "${RETRYABLE_ARMED}" -gt 0 ]]; then
+            STATUS="RETRY_PENDING_NEXT_SCHEDULE"
+          fi
+
+          jq -n \
+            --arg status "${STATUS}" \
+            --arg session_date "${{ needs.gate.outputs.session_date }}" \
+            --argjson before_v24 "${BEFORE_V24}" \
+            --argjson before_v25 "${BEFORE_V25}" \
+            --argjson after_v24 "${AFTER_V24}" \
+            --argjson after_v25 "${AFTER_V25}" \
+            --argjson armed_found "${ARMED_FOUND}" \
+            --argjson armed_claimed "${ARMED_CLAIMED}" \
+            --argjson executed "${EXECUTED}" \
+            --argjson cancelled "${CANCELLED}" \
+            --argjson retryable_armed "${RETRYABLE_ARMED}" \
+            --argjson lease_conflicts "${LEASE_CONFLICTS}" \
+            --argjson outcome_counts "${OUTCOME_COUNTS}" \
+            --argjson account_results "${ACCOUNT_RESULTS}" \
+            '{
+              status: $status,
+              session_date_et: $session_date,
+              before: {PAPER_SHADOW_V24: $before_v24, PAPER_SHADOW_V25: $before_v25},
+              after: {PAPER_SHADOW_V24: $after_v24, PAPER_SHADOW_V25: $after_v25},
+              armed_found: $armed_found,
+              armed_claimed: $armed_claimed,
+              executed_paper: $executed,
+              cancelled_replay: $cancelled,
+              retryable_armed: $retryable_armed,
+              lease_conflicts: $lease_conflicts,
+              outcome_counts: $outcome_counts,
+              account_results: $account_results,
+              trading_authorized: false,
+              live_trading_enabled: false
+            }' >/tmp/replay-summary.json
+
+          cat /tmp/replay-summary.json
+
+      - name: Upload sanitized replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-armed-replay-${{ github.run_id }}
+          path: |
+            /tmp/before.json
+            /tmp/after.json
+            /tmp/replay-attempts.json
+            /tmp/replay-summary.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish workflow summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/replay-summary.json ]]; then
+            STATUS="$(jq -r '.status' /tmp/replay-summary.json)"
+            BEFORE_V24="$(jq '.before.PAPER_SHADOW_V24' /tmp/replay-summary.json)"
+            BEFORE_V25="$(jq '.before.PAPER_SHADOW_V25' /tmp/replay-summary.json)"
+            AFTER_V24="$(jq '.after.PAPER_SHADOW_V24' /tmp/replay-summary.json)"
+            AFTER_V25="$(jq '.after.PAPER_SHADOW_V25' /tmp/replay-summary.json)"
+            ARMED_FOUND="$(jq '.armed_found' /tmp/replay-summary.json)"
+            ARMED_CLAIMED="$(jq '.armed_claimed' /tmp/replay-summary.json)"
+            EXECUTED="$(jq '.executed_paper' /tmp/replay-summary.json)"
+            CANCELLED="$(jq '.cancelled_replay' /tmp/replay-summary.json)"
+            RETRYABLE_ARMED="$(jq '.retryable_armed' /tmp/replay-summary.json)"
+            LEASE_CONFLICTS="$(jq '.lease_conflicts' /tmp/replay-summary.json)"
+            OUTCOME_COUNTS="$(jq -c '.outcome_counts' /tmp/replay-summary.json)"
+            {
+              echo "## Daily Alpha ARMED replay"
+              echo "- Status: ${STATUS}"
+              echo "- SH24 ARMED: ${BEFORE_V24} -> ${AFTER_V24}"
+              echo "- SH25 ARMED: ${BEFORE_V25} -> ${AFTER_V25}"
+              echo "- ARMED found / claimed: ${ARMED_FOUND} / ${ARMED_CLAIMED}"
+              echo "- PAPER executions: ${EXECUTED}"
+              echo "- Replay cancellations: ${CANCELLED}"
+              echo "- Retryable ARMED outcomes: ${RETRYABLE_ARMED}"
+              echo "- Lease conflicts: ${LEASE_CONFLICTS}"
+              echo "- Outcome counts: ${OUTCOME_COUNTS}"
+              echo "- Trading authorized: false"
+              echo "- Live trading enabled: false"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

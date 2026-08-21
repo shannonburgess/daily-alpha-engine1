@@ -43,6 +43,7 @@ ACTIONABLE_STATUSES = {
 
 _DATE_PATTERN = re.compile(r"(20\d{2}-\d{2}-\d{2})")
 _ORATS_NO_DTE_OPTIONS = "ORATS_NO_45_75_DTE_OPTIONS"
+CANONICAL_COMPANY_MIN_AVERAGE_VOLUME = 1_500_000.0
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,7 @@ def build_research_shortlist(
     congressional: tuple[CongressionalAccumulation, ...] = (),
     institutional: tuple[InstitutionalAccumulation, ...] = (),
     trump_policy: tuple[TrumpPolicyCompany, ...] = (),
+    min_company_average_volume: float | None = None,
 ) -> ResearchShortlistResult:
     """Rank OVTLYR changes, apply research confirmation, then enrich with ORATS.
 
@@ -140,11 +142,18 @@ def build_research_shortlist(
     factors only. They can change which candidates receive scarce ORATS research
     requests, but they never authorize a trade or bypass Pine, ORATS freshness,
     or portfolio risk gates.
+
+    ``min_company_average_volume`` is an explicit company-equity pre-screen used by
+    the canonical actionable workflow. Passing 1.5M enforces issue #218 before ORATS
+    quota is spent or candidates are ranked. ETF workflows must keep their separate
+    liquidity/capacity rules and should not route through this company-only gate.
     """
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
     if request_limit <= 0:
         raise ValueError("request_limit must be positive")
+    if min_company_average_volume is not None and min_company_average_volume < 0:
+        raise ValueError("min_company_average_volume must be non-negative")
 
     previous = load_ovtlyr_csv(previous_path)
     current = load_ovtlyr_csv(current_path)
@@ -172,6 +181,8 @@ def build_research_shortlist(
     ] = []
     excluded_not_optionable = 0
     excluded_partial = 0
+    excluded_liquidity_filtered = 0
+    excluded_liquidity_missing = 0
     smart_money_matched = 0
     trump_policy_matched = 0
     for classified in classifications:
@@ -182,6 +193,13 @@ def build_research_shortlist(
             or classified.status not in ACTIONABLE_STATUSES
         ):
             continue
+        if min_company_average_volume is not None:
+            if source.average_volume <= 0:
+                excluded_liquidity_missing += 1
+                continue
+            if source.average_volume <= min_company_average_volume:
+                excluded_liquidity_filtered += 1
+                continue
         if source.partial_data:
             excluded_partial += 1
             continue
@@ -357,6 +375,10 @@ def build_research_shortlist(
         "current_universe_count": len(current),
         "current_buy_count": sum(record.signal == "BUY" for record in current),
         "actionable_ranked_count": len(ranked),
+        "company_average_volume_gate_enabled": min_company_average_volume is not None,
+        "company_min_average_volume": min_company_average_volume,
+        "excluded_liquidity_filtered": excluded_liquidity_filtered,
+        "excluded_liquidity_missing": excluded_liquidity_missing,
         "excluded_not_optionable": excluded_not_optionable,
         "excluded_orats_no_45_75_dte_options": excluded_orats_no_dte,
         "excluded_partial_data": excluded_partial,

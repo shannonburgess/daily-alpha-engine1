@@ -4,17 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 * * * 1-5"
-  pull_request:
-    paths:
-      - ".github/workflows/monitor-paper-shadows.yml"
-      - "scripts/shadow_monitor.py"
-      - "scripts/shadow_contract_monitor.py"
-      - "scripts/shadow_universe_monitor.py"
-      - "tests/test_shadow_monitor.py"
-      - "tests/test_shadow_contract_monitor.py"
-      - "tests/test_shadow_universe_monitor.py"
 
 permissions:
+  actions: read
   contents: read
   id-token: write
   issues: write
@@ -65,6 +57,90 @@ jobs:
           mv "${EVIDENCE_DIR}/shadow-runtime-contract.tmp.json" \
             "${EVIDENCE_DIR}/shadow-runtime-contract.json"
 
+      - name: Capture latest staging deployment health
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api \
+            "repos/${REPO}/actions/workflows/deploy-staging-lambdas.yml/runs?branch=main&per_page=1" \
+            > "${EVIDENCE_DIR}/staging-deployment-status.raw.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw_path = Path("shadow-monitor-artifacts/staging-deployment-status.raw.json")
+          payload = json.loads(raw_path.read_text())
+          runs = payload.get("workflow_runs")
+          if not isinstance(runs, list) or not runs:
+              sanitized = {"found": False}
+          else:
+              run = runs[0]
+              sanitized = {
+                  "found": True,
+                  "run_id": run.get("id"),
+                  "run_number": run.get("run_number"),
+                  "status": run.get("status"),
+                  "conclusion": run.get("conclusion"),
+                  "head_sha": run.get("head_sha"),
+                  "event": run.get("event"),
+                  "run_started_at": run.get("run_started_at"),
+                  "updated_at": run.get("updated_at"),
+              }
+          Path("shadow-monitor-artifacts/staging-deployment-status.json").write_text(
+              json.dumps(sanitized, indent=2, sort_keys=True) + "\n"
+          )
+          raw_path.unlink()
+          PY
+
+      - name: Capture scheduled ARMED replay workflow health
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            "repos/${REPO}/actions/workflows/replay-paper-armed-signals.yml" \
+            --jq '{name:.name,path:.path,state:.state,created_at:.created_at,updated_at:.updated_at}' \
+            > "${EVIDENCE_DIR}/armed-replay-workflow-metadata.json"
+          gh run list \
+            --repo "${REPO}" \
+            --workflow replay-paper-armed-signals.yml \
+            --branch main \
+            --limit 8 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event \
+            > "${EVIDENCE_DIR}/armed-replay-runs.json"
+
+      - name: Capture sanitized backend ingress health
+        run: |
+          set -euo pipefail
+          aws lambda get-function-configuration \
+            --function-name daily-alpha-pine-ingress \
+            --query '{function_name:FunctionName,state:State,last_update_status:LastUpdateStatus,last_modified:LastModified,secret_id:Environment.Variables.PINE_WEBHOOK_SECRET_ID,queue_url:Environment.Variables.PINE_INGRESS_QUEUE_URL}' \
+            --output json > "${EVIDENCE_DIR}/shadow-ingress-runtime.raw.json"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw_path = Path("shadow-monitor-artifacts/shadow-ingress-runtime.raw.json")
+          raw = json.loads(raw_path.read_text())
+          queue_url = str(raw.get("queue_url") or "").strip()
+          sanitized = {
+              "function_name": raw.get("function_name"),
+              "state": raw.get("state"),
+              "last_update_status": raw.get("last_update_status"),
+              "last_modified": raw.get("last_modified"),
+              "secret_configured": bool(str(raw.get("secret_id") or "").strip()),
+              "queue_configured": bool(queue_url),
+              "queue_name": queue_url.rstrip("/").split("/")[-1] if queue_url else None,
+          }
+          Path("shadow-monitor-artifacts/shadow-ingress-runtime.json").write_text(
+              json.dumps(sanitized, indent=2, sort_keys=True) + "\n"
+          )
+          raw_path.unlink()
+          PY
+
       - name: Read isolated positions, ARMED state, events and receipts
         run: |
           set -euo pipefail
@@ -97,7 +173,41 @@ jobs:
           aws s3 cp "${PREFIX}/shortlist.json" \
             "${EVIDENCE_DIR}/shortlist.json" --only-show-errors
 
-      - name: Build exact shadow, contract and universe status
+      - name: Capture canonical company-liquidity evidence
+        id: liquidity_evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="s3://${STAGING_BUCKET}/ovtlyr/shortlist/latest"
+          if aws s3 cp \
+            "${PREFIX}/company_liquidity_eligibility.json" \
+            "${EVIDENCE_DIR}/company_liquidity_eligibility.json" \
+            --only-show-errors 2>/tmp/liquidity-copy-error.log; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            rm -f "${EVIDENCE_DIR}/company_liquidity_eligibility.json"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f /tmp/liquidity-copy-error.log
+
+      - name: Capture latest SH24 source-diagnostic publication
+        id: source_diagnostic_evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_PUBLICATION="s3://${STAGING_BUCKET}/daily-alpha/shadow-diagnostics/sh24-source/latest/publication.json"
+          if aws s3 cp \
+            "${SOURCE_PUBLICATION}" \
+            "${EVIDENCE_DIR}/sh24-source-publication.json" \
+            --only-show-errors 2>/tmp/source-diagnostic-copy-error.log; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            rm -f "${EVIDENCE_DIR}/sh24-source-publication.json"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f /tmp/source-diagnostic-copy-error.log
+
+      - name: Build exact shadow, contract, replay, ingress, universe, liquidity and source-diagnostic status
         id: summarize
         shell: bash
         run: |
@@ -111,9 +221,23 @@ jobs:
           python scripts/shadow_contract_monitor.py \
             --monitor-state "${EVIDENCE_DIR}/shadow-monitor-state.json" \
             --runtime-contract "${EVIDENCE_DIR}/shadow-runtime-contract.json" \
+            --deployment-status "${EVIDENCE_DIR}/staging-deployment-status.json" \
             --output-json "${EVIDENCE_DIR}/shadow-contract-status.json" \
             --output-md "${EVIDENCE_DIR}/shadow-contract-status.md"
           CONTRACT_CODE=$?
+
+          python scripts/shadow_replay_scheduler_monitor.py \
+            --runs-json "${EVIDENCE_DIR}/armed-replay-runs.json" \
+            --workflow-metadata "${EVIDENCE_DIR}/armed-replay-workflow-metadata.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-replay-scheduler-status.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-replay-scheduler-status.md"
+          REPLAY_SCHEDULER_CODE=$?
+
+          python scripts/shadow_transport_monitor.py \
+            --ingress-runtime "${EVIDENCE_DIR}/shadow-ingress-runtime.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-transport-status.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-transport-status.md"
+          TRANSPORT_CODE=$?
 
           python scripts/shadow_universe_monitor.py \
             --summary "${EVIDENCE_DIR}/shortlist-summary.json" \
@@ -122,18 +246,99 @@ jobs:
             --output-md "${EVIDENCE_DIR}/shadow-universe-status.md"
           UNIVERSE_CODE=$?
 
+          LIQUIDITY_ARGS=(
+            --summary "${EVIDENCE_DIR}/shortlist-summary.json"
+            --shortlist "${EVIDENCE_DIR}/shortlist.json"
+            --evidence-found "${{ steps.liquidity_evidence.outputs.found }}"
+            --output-json "${EVIDENCE_DIR}/shadow-liquidity-status.json"
+            --output-md "${EVIDENCE_DIR}/shadow-liquidity-status.md"
+          )
+          if [[ "${{ steps.liquidity_evidence.outputs.found }}" == "true" ]]; then
+            LIQUIDITY_ARGS+=(
+              --evidence "${EVIDENCE_DIR}/company_liquidity_eligibility.json"
+            )
+          fi
+          python scripts/shadow_liquidity_monitor.py "${LIQUIDITY_ARGS[@]}"
+          LIQUIDITY_CODE=$?
+
+          SOURCE_DIAGNOSTIC_ARGS=(
+            --output-json "${EVIDENCE_DIR}/shadow-source-diagnostic-status.json"
+            --output-md "${EVIDENCE_DIR}/shadow-source-diagnostic-status.md"
+          )
+          if [[ "${{ steps.source_diagnostic_evidence.outputs.found }}" == "true" ]]; then
+            SOURCE_DIAGNOSTIC_ARGS+=(
+              --publication "${EVIDENCE_DIR}/sh24-source-publication.json"
+            )
+          fi
+          python scripts/shadow_source_diagnostic_monitor.py "${SOURCE_DIAGNOSTIC_ARGS[@]}"
+          SOURCE_DIAGNOSTIC_CODE=$?
+
+          python scripts/shadow_operator_summary.py \
+            --core "${EVIDENCE_DIR}/shadow-status.json" \
+            --contract "${EVIDENCE_DIR}/shadow-contract-status.json" \
+            --replay-scheduler "${EVIDENCE_DIR}/shadow-replay-scheduler-status.json" \
+            --transport "${EVIDENCE_DIR}/shadow-transport-status.json" \
+            --universe "${EVIDENCE_DIR}/shadow-universe-status.json" \
+            --liquidity "${EVIDENCE_DIR}/shadow-liquidity-status.json" \
+            --source-diagnostic "${EVIDENCE_DIR}/shadow-source-diagnostic-status.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-operator-summary.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-operator-summary.md"
+          OPERATOR_CODE=$?
+
+          if [ "${OPERATOR_CODE}" -ne 0 ]; then
+            cat > "${EVIDENCE_DIR}/shadow-operator-summary.md" <<'EOF'
+          ### Operator Summary
+          **Status:** `EVIDENCE_INCOMPLETE`  
+          **Operator action:** NONE — fail closed; do not edit TradingView or run CloudShell as a routine workaround.  
+          **Safety:** `trading_authorized=false`, `live_trading_enabled=false`
+
+          EOF
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path("shadow-monitor-artifacts")
+          core_path = root / "shadow-status.md"
+          operator_path = root / "shadow-operator-summary.md"
+          core = core_path.read_text().splitlines()
+          if len(core) < 2 or core[0] != "<!-- daily-alpha-shadow-monitor -->":
+              raise SystemExit("SHADOW_STATUS_MARKER_MISSING")
+          operator = operator_path.read_text().rstrip()
+          merged = "\n".join([core[0], core[1], "", operator, "", *core[2:]]) + "\n"
+          core_path.write_text(merged)
+          PY
+
           cat "${EVIDENCE_DIR}/shadow-contract-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-replay-scheduler-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-transport-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-universe-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-liquidity-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
+          cat "${EVIDENCE_DIR}/shadow-source-diagnostic-status.md" >> \
+            "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "${EVIDENCE_DIR}/shadow-operator-summary.json" 2>/dev/null || true
           cat "${EVIDENCE_DIR}/shadow-status.json"
           cat "${EVIDENCE_DIR}/shadow-contract-status.json"
+          cat "${EVIDENCE_DIR}/shadow-replay-scheduler-status.json"
+          cat "${EVIDENCE_DIR}/shadow-transport-status.json"
           cat "${EVIDENCE_DIR}/shadow-universe-status.json"
+          cat "${EVIDENCE_DIR}/shadow-liquidity-status.json"
+          cat "${EVIDENCE_DIR}/shadow-source-diagnostic-status.json"
 
           if [ "${STATUS_CODE}" -ne 0 ] || \
              [ "${CONTRACT_CODE}" -ne 0 ] || \
-             [ "${UNIVERSE_CODE}" -ne 0 ]; then
+             [ "${REPLAY_SCHEDULER_CODE}" -ne 0 ] || \
+             [ "${TRANSPORT_CODE}" -ne 0 ] || \
+             [ "${UNIVERSE_CODE}" -ne 0 ] || \
+             [ "${LIQUIDITY_CODE}" -ne 0 ] || \
+             [ "${SOURCE_DIAGNOSTIC_CODE}" -ne 0 ] || \
+             [ "${OPERATOR_CODE}" -ne 0 ]; then
             CODE=2
           else
             CODE=0
@@ -171,5 +376,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, runtime-contract, or canonical-universe violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, ARMED-replay-scheduler, backend-ingress, canonical-universe, company-liquidity, SH24 source-diagnostic, or operator-summary violation."
           exit 1
