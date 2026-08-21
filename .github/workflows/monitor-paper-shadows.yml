@@ -290,6 +290,7 @@ jobs:
           ### Operator Summary
           **Status:** `EVIDENCE_INCOMPLETE`  
           **Operator action:** NONE — fail closed; do not edit TradingView or run CloudShell as a routine workaround.  
+          **Automation notification gate:** `FAIL`  
           **Safety:** `trading_authorized=false`, `live_trading_enabled=false`
 
           EOF
@@ -344,6 +345,13 @@ jobs:
             CODE=0
           fi
           echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+
+          if [ "${OPERATOR_CODE}" -eq 0 ]; then
+            CI_GATE_STATUS="$(jq -r '.ci_gate_status // "FAIL"' "${EVIDENCE_DIR}/shadow-operator-summary.json")"
+          else
+            CI_GATE_STATUS="FAIL"
+          fi
+          echo "ci_gate_status=${CI_GATE_STATUS}" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Update one rolling issue status
@@ -373,8 +381,8 @@ jobs:
           path: shadow-monitor-artifacts/
           retention-days: 30
 
-      - name: Enforce fail-closed monitor result
-        if: steps.summarize.outputs.exit_code != '0'
+      - name: Enforce blocking monitor result
+        if: steps.summarize.outputs.ci_gate_status == 'FAIL'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, ARMED-replay-scheduler, backend-ingress, canonical-universe, company-liquidity, SH24 source-diagnostic, or operator-summary violation."
+          echo "Paper-shadow monitor detected a blocking active-path safety, runtime-contract, ingress, universe, liquidity, or ARMED-replay violation. Evidence-only diagnostic gaps remain fail-closed in issue #213 but do not create recurring operator-action failure notifications."
           exit 1
