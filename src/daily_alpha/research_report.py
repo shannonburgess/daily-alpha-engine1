@@ -1,4 +1,9 @@
-"""Deterministic, newsletter-ready Daily Alpha research records."""
+"""Deterministic, newsletter-ready Daily Alpha research records.
+
+Automated research is stock-primary. Option contracts may appear only when they are
+explicitly user-directed and sourced from the user's broker chain; there is no
+automatic derivatives-flow or external option-data dependency in this model.
+"""
 
 from __future__ import annotations
 
@@ -18,34 +23,6 @@ class ResearchDisposition(StrEnum):
 
 
 @dataclass(frozen=True)
-class OptionFlowEvidence:
-    """One quality-filtered unusual option-flow observation for newsletter use."""
-
-    option_type: str
-    contract: str
-    volume: int
-    open_interest: int
-    volume_oi_ratio: float
-    bid: float
-    ask: float
-    classification: str = "UNUSUAL_CONFIRMATION"
-
-    def __post_init__(self) -> None:
-        if self.option_type not in {"CALL", "PUT"}:
-            raise ValueError("option flow evidence must be CALL or PUT")
-        if not self.contract:
-            raise ValueError("option flow evidence requires contract identity")
-        if self.volume < 0 or self.open_interest < 0:
-            raise ValueError("option flow counts cannot be negative")
-        if self.volume_oi_ratio < 0:
-            raise ValueError("option flow ratio cannot be negative")
-        if self.bid < 0 or self.ask < self.bid:
-            raise ValueError("option flow quote is invalid")
-        if self.classification != "UNUSUAL_CONFIRMATION":
-            raise ValueError("side-specific flow evidence must be unusual confirmation")
-
-
-@dataclass(frozen=True)
 class ResearchCandidate:
     symbol: str
     disposition: ResearchDisposition
@@ -59,29 +36,13 @@ class ResearchCandidate:
     option_contract: str | None = None
     planned_loss_nav: float | None = None
     expected_move_pct: float | None = None
-    flow_classification: str | None = None
-    option_volume: int = 0
-    option_open_interest: int = 0
-    option_volume_oi_ratio: float | None = None
-    option_bid: float | None = None
-    option_ask: float | None = None
-    option_flow_evidence: tuple[OptionFlowEvidence, ...] = ()
-    standalone_flow_signal: bool = False
+    user_directed_option: bool = False
 
     def __post_init__(self) -> None:
         if not self.symbol or not self.signal_label or not self.thesis:
             raise ValueError("symbol, signal label, and thesis are required")
         if not self.reasons:
             raise ValueError("at least one explainable reason is required")
-        if self.standalone_flow_signal:
-            raise ValueError("options flow cannot be a standalone signal")
-        if self.option_volume < 0 or self.option_open_interest < 0:
-            raise ValueError("option flow counts cannot be negative")
-        if self.option_volume_oi_ratio is not None and self.option_volume_oi_ratio < 0:
-            raise ValueError("option_volume_oi_ratio cannot be negative")
-        flow_sides = [item.option_type for item in self.option_flow_evidence]
-        if len(flow_sides) != len(set(flow_sides)):
-            raise ValueError("only one unusual flow observation per option side is allowed")
         if self.disposition == ResearchDisposition.DATA_ERROR:
             if self.instrument != InstrumentSelected.NONE:
                 raise ValueError("DATA_ERROR cannot select an instrument")
@@ -90,8 +51,13 @@ class ResearchCandidate:
                 raise ValueError("paper candidate requires a selected instrument")
             if self.risk_status != "APPROVED" or self.data_status != "PASS":
                 raise ValueError("paper candidate requires approved risk and passing data")
-        if self.instrument == InstrumentSelected.OPTION and not self.option_contract:
-            raise ValueError("selected option requires contract identity")
+        if self.instrument == InstrumentSelected.OPTION:
+            if not self.option_contract:
+                raise ValueError("selected option requires contract identity")
+            if not self.user_directed_option:
+                raise ValueError("options require explicit user-directed authorization")
+        elif self.user_directed_option:
+            raise ValueError("user_directed_option applies only to OPTION candidates")
         if self.planned_loss_nav is not None and self.planned_loss_nav < 0:
             raise ValueError("planned_loss_nav cannot be negative")
 
@@ -113,6 +79,7 @@ class DailyResearchPacket:
     disclosures: tuple[str, ...] = (
         "Research and paper-trading output only; not investment advice.",
         "No live order execution is authorized.",
+        "Options are user-directed and use broker-chain contract data only.",
     )
     smart_money: SmartMoneySnapshot | None = None
 
@@ -148,7 +115,7 @@ class DailyResearchPacket:
 
 
 def data_error_candidate(symbol: str, *, reason: str, signal_label: str) -> ResearchCandidate:
-    """Fail closed: missing/stale ORATS data never creates a stock substitute."""
+    """Fail closed when required stock research data cannot be validated."""
     return ResearchCandidate(
         symbol=symbol,
         disposition=ResearchDisposition.DATA_ERROR,
