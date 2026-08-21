@@ -10,7 +10,6 @@ from daily_alpha.next_session_execution import (
     UnsafeExecutionError,
     run_next_session_execution,
 )
-from daily_alpha.orats import OratsChain, OratsDataError
 
 NOW = datetime(2026, 8, 18, 13, 45, tzinfo=UTC)
 
@@ -45,7 +44,7 @@ class FakeLambda:
             "live_trading_enabled": False,
             "execution": {
                 "disposition": "EXECUTED_PAPER",
-                "reason": "PAPER_POSITION_OPENED",
+                "reason": "PAPER_STOCK_POSITION_OPENED",
             },
         }
         self.calls = []
@@ -55,26 +54,7 @@ class FakeLambda:
         return {"Payload": io.BytesIO(json.dumps(self.body).encode("utf-8"))}
 
 
-class FakeOrats:
-    def __init__(self, stock_price=101.0, error=None):
-        self.stock_price = stock_price
-        self.error = error
-        self.calls = []
-
-    def fetch_chain(self, ticker, *, as_of=None, dte_min=45, dte_max=75):
-        self.calls.append((ticker, as_of, dte_min, dte_max))
-        if self.error:
-            raise self.error
-        return OratsChain(
-            ticker=ticker,
-            candidates=(),
-            observed_at=NOW,
-            source_mode="delayed",
-            stock_price=self.stock_price,
-        )
-
-
-def _pending_doc():
+def _pending_doc(*, stock_price=101.0):
     state = ScannerState(
         symbol="MU",
         entry_date="2026-08-17",
@@ -105,6 +85,8 @@ def _pending_doc():
         state_before=None,
         state_after=state,
     )
+    if stock_price is not None:
+        pending["execution_stock_price"] = stock_price
     pending["human_approval"] = {
         "status": "APPROVED",
         "approval_id": "test-approval-1",
@@ -113,11 +95,11 @@ def _pending_doc():
     return {"schema_version": "2026-08-17-pending-v1", "actions": [pending]}
 
 
-def _s3_with_pending():
+def _s3_with_pending(*, stock_price=101.0):
     return FakeS3(
         {
             "daily-alpha/execution-universe/latest/pending_actions.json": json.dumps(
-                _pending_doc()
+                _pending_doc(stock_price=stock_price)
             ),
             "daily-alpha/execution-universe/latest/state.json": "{}",
             "daily-alpha/execution-universe/latest/active_watch.json": json.dumps(
@@ -128,23 +110,22 @@ def _s3_with_pending():
 
 
 def test_valid_next_session_entry_routes_to_paper_processor(tmp_path):
-    s3 = _s3_with_pending()
+    s3 = _s3_with_pending(stock_price=101.0)
     lamb = FakeLambda()
-    orats = FakeOrats(stock_price=101.0)
 
     audit = run_next_session_execution(
         mode="morning_primary",
         bucket="test",
-        token="token",
         workdir=tmp_path,
         now=NOW,
         s3_client=s3,
         lambda_client=lamb,
-        orats_client=orats,
         run_id="123",
     )
 
     assert audit["executed_paper"] == 1
+    assert audit["instrument_policy"] == "STOCK_ONLY"
+    assert audit["options_mode"] == "USER_DIRECTED_BROKER_CHAIN"
     assert audit["live_trading_enabled"] is False
     assert len(lamb.calls) == 1
     payload = json.loads(lamb.calls[0]["Payload"].decode("utf-8"))
@@ -158,20 +139,17 @@ def test_valid_next_session_entry_routes_to_paper_processor(tmp_path):
     assert state["MU"]["runner_stage"] == "STARTER"
 
 
-def test_orats_data_error_is_deferred_not_filled(tmp_path):
-    s3 = _s3_with_pending()
+def test_missing_current_stock_price_is_deferred_not_filled(tmp_path):
+    s3 = _s3_with_pending(stock_price=None)
     lamb = FakeLambda()
-    orats = FakeOrats(error=OratsDataError("stale"))
 
     audit = run_next_session_execution(
         mode="morning_primary",
         bucket="test",
-        token="token",
         workdir=tmp_path,
         now=NOW,
         s3_client=s3,
         lambda_client=lamb,
-        orats_client=orats,
     )
 
     assert audit["executed_paper"] == 0
@@ -181,6 +159,7 @@ def test_orats_data_error_is_deferred_not_filled(tmp_path):
         s3.uploads["daily-alpha/execution-universe/latest/pending_actions.json"]
     )
     assert pending["actions"][0]["status"] == RETRY_STATUS
+    assert "CURRENT_STOCK_PRICE_REQUIRED" in pending["actions"][0]["last_error"]
 
 
 def test_unsafe_live_enabled_processor_response_fails_hard(tmp_path):
@@ -197,18 +176,17 @@ def test_unsafe_live_enabled_processor_response_fails_hard(tmp_path):
         run_next_session_execution(
             mode="morning_primary",
             bucket="test",
-            token="token",
             workdir=tmp_path,
             now=NOW,
             s3_client=s3,
             lambda_client=lamb,
-            orats_client=FakeOrats(stock_price=101.0),
         )
 
 
-def test_unapproved_entry_remains_pending_without_market_or_processor_calls(tmp_path):
+def test_unapproved_entry_remains_pending_without_price_or_processor_use(tmp_path):
     doc = _pending_doc()
     doc["actions"][0].pop("human_approval")
+    doc["actions"][0].pop("execution_stock_price")
     s3 = FakeS3(
         {
             "daily-alpha/execution-universe/latest/pending_actions.json": json.dumps(doc),
@@ -217,22 +195,18 @@ def test_unapproved_entry_remains_pending_without_market_or_processor_calls(tmp_
         }
     )
     lamb = FakeLambda()
-    orats = FakeOrats(stock_price=101.0)
 
     audit = run_next_session_execution(
         mode="morning_primary",
         bucket="test",
-        token="token",
         workdir=tmp_path,
         now=NOW,
         s3_client=s3,
         lambda_client=lamb,
-        orats_client=orats,
     )
 
     assert audit["executed_paper"] == 0
     assert lamb.calls == []
-    assert orats.calls == []
     pending = json.loads(
         s3.uploads["daily-alpha/execution-universe/latest/pending_actions.json"]
     )
