@@ -1,6 +1,5 @@
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-
-import pytest
 
 from daily_alpha.agentic.contracts import (
     EvidenceContractError,
@@ -14,6 +13,16 @@ from daily_alpha.agentic.supervisor import DataSupervisor
 
 
 NOW = datetime(2026, 8, 21, 20, 0, tzinfo=UTC)
+
+
+@contextmanager
+def _raises(error_type, match: str):
+    try:
+        yield
+    except error_type as exc:
+        assert match in str(exc)
+    else:
+        raise AssertionError(f"expected {error_type.__name__}: {match}")
 
 
 def _record(
@@ -73,19 +82,19 @@ def test_evidence_identity_is_deterministic_and_provenance_order_independent():
 
 
 def test_evidence_rejects_naive_or_future_point_in_time_data():
-    with pytest.raises(EvidenceContractError, match="OBSERVED_AT_MUST_BE_TIMEZONE_AWARE"):
+    with _raises(EvidenceContractError, "OBSERVED_AT_MUST_BE_TIMEZONE_AWARE"):
         _record(observed_at=NOW.replace(tzinfo=None))
 
     record = _record(
         observed_at=NOW + timedelta(seconds=1),
         received_at=NOW + timedelta(seconds=2),
     )
-    with pytest.raises(EvidenceContractError, match="FUTURE_EVIDENCE_NOT_ALLOWED"):
+    with _raises(EvidenceContractError, "FUTURE_EVIDENCE_NOT_ALLOWED"):
         record.validate_point_in_time(NOW)
 
 
 def test_agentic_foundation_cannot_authorize_trading():
-    with pytest.raises(EvidenceContractError, match="AGENTIC_FOUNDATION_MUST_REMAIN_RESEARCH_ONLY"):
+    with _raises(EvidenceContractError, "AGENTIC_FOUNDATION_MUST_REMAIN_RESEARCH_ONLY"):
         EvidenceRecord(
             symbol="DINO",
             evidence_type="SECTOR",
@@ -107,7 +116,7 @@ def test_store_is_idempotent_but_rejects_logical_observation_rewrite():
     assert first_id == second_id
 
     conflicting = _record(value="Technology")
-    with pytest.raises(EvidenceConflictError, match="EVIDENCE_IMMUTABILITY_VIOLATION"):
+    with _raises(EvidenceConflictError, "EVIDENCE_IMMUTABILITY_VIOLATION"):
         store.put(conflicting)
 
 
@@ -197,5 +206,5 @@ def test_cross_source_disagreement_blocks_when_agreement_is_required():
 
 def test_source_registry_rejects_silent_policy_redefinition():
     registry = SourceRegistry((_policy(),))
-    with pytest.raises(EvidenceContractError, match="SOURCE_POLICY_CONFLICT:SOURCE_A"):
+    with _raises(EvidenceContractError, "SOURCE_POLICY_CONFLICT:SOURCE_A"):
         registry.register(_policy(freshness=7_200))
