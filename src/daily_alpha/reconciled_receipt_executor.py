@@ -1,11 +1,12 @@
 """Reconciled stock-primary PAPER executor with exact lifecycle receipts.
 
-Daily Alpha is currently validating the signal/model itself. New PAPER entries are
-therefore shares only: the confirmed Pine/scanner signal price is used as the
-model-validation fill, matching the frozen v2.4 Pine strategy's
-``process_orders_on_close=true`` semantics. ORATS remains available for research
-and for safely managing any legacy OPTION position, but it cannot authorize or
-block a new PAPER stock entry.
+New Daily Alpha PAPER positions are shares only. The confirmed Pine/scanner signal
+price is the model-validation fill so option-chain selection cannot obscure whether
+the signal model has edge. The existing after-hours ARMED/replay control loop is
+preserved: an after-hours event is persisted first and the scheduled replay worker
+applies the stock decision during a regular execution window. ORATS is not read for
+new stock entries. It remains available only for research and for fail-closed
+management of a legacy OPTION PAPER position.
 
 This module never enables live brokerage execution.
 """
@@ -26,6 +27,7 @@ from .pine_paper_orchestrator import (
     _aware,
     _execution_result,
     _paper_risk_state,
+    _regular_execution_window,
     _required_text,
     _signal_payload,
 )
@@ -117,6 +119,25 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
                     symbol=symbol,
                     context=_policy_context(),
                 )
+            if not _regular_execution_window(now):
+                return _result(
+                    disposition="ARMED_FOR_NEXT_TRADABLE_WINDOW",
+                    reason="MARKET_CLOSED_REVALIDATION_REQUIRED",
+                    action=action,
+                    symbol=symbol,
+                    context={
+                        **_policy_context(),
+                        "armed": True,
+                        "armed_at": now.isoformat(),
+                        "signal_id": str(ingress.get("signal_id", "")),
+                        "revalidation_required": True,
+                        "refresh_portfolio_risk": True,
+                        "refresh_no_chase": True,
+                        "model_validation_fill_price": _positive_float_or_none(
+                            ingress.get("price")
+                        ),
+                    },
+                )
             return self._stock_entry(ingress, now=now)
 
         open_trades = self.ledger.find_open(symbol)
@@ -138,9 +159,27 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
         if len(open_trades) != 1:
             raise PinePaperExecutionError("MULTIPLE_OPEN_INSTRUMENTS_FOR_SYMBOL")
 
-        # No new options can be opened. If an old option position exists, retain
-        # the prior fail-closed quote/reconciliation path solely to manage it.
-        if open_trades[0].instrument == InstrumentSelected.OPTION:
+        if not _regular_execution_window(now):
+            return _result(
+                disposition="ARMED_FOR_NEXT_TRADABLE_WINDOW",
+                reason="MARKET_CLOSED_RUNNER_REVALIDATION_REQUIRED",
+                action=action,
+                symbol=symbol,
+                context={
+                    **_policy_context(),
+                    "armed": True,
+                    "armed_at": now.isoformat(),
+                    "signal_id": str(ingress.get("signal_id", "")),
+                    "runner_stage": ingress.get("runner_stage"),
+                    "revalidation_required": True,
+                    "model_validation_fill_price": _positive_float_or_none(
+                        ingress.get("price")
+                    ),
+                },
+            )
+
+        instrument = _trade_instrument(open_trades[0])
+        if instrument == InstrumentSelected.OPTION:
             result = ReconciledAwsPinePaperExecutor.execute(self, ingress, now=now)
             context = dict(result.get("context") or {})
             context.update(
@@ -151,6 +190,8 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
             )
             result["context"] = context
             return result
+        if instrument != InstrumentSelected.STOCK:
+            raise PinePaperExecutionError("OPEN_PAPER_INSTRUMENT_INVALID")
 
         result = self._runner(ingress, now)
         context = dict(result.get("context") or {})
@@ -359,7 +400,7 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
         if len(open_trades) > 1:
             raise PinePaperExecutionError("MULTIPLE_OPEN_INSTRUMENTS_FOR_SYMBOL")
 
-        if open_trades and open_trades[0].instrument == InstrumentSelected.OPTION:
+        if open_trades and _trade_instrument(open_trades[0]) == InstrumentSelected.OPTION:
             result = ReconciledAwsPinePaperExecutor.replay_armed(
                 self,
                 ingress,
@@ -513,6 +554,20 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
                     return replay_price
             return float(ingress["price"])
         raise ValueError("EXECUTION_RECEIPT_INSTRUMENT_INVALID")
+
+
+def _trade_instrument(trade: Any) -> InstrumentSelected:
+    raw = getattr(trade, "instrument", None)
+    if raw is None and hasattr(trade, "to_dict"):
+        payload = trade.to_dict()
+        if isinstance(payload, Mapping):
+            raw = payload.get("instrument")
+    if isinstance(raw, InstrumentSelected):
+        return raw
+    try:
+        return InstrumentSelected(str(raw).upper())
+    except ValueError as exc:
+        raise PinePaperExecutionError("OPEN_PAPER_INSTRUMENT_INVALID") from exc
 
 
 def _policy_context() -> dict[str, Any]:

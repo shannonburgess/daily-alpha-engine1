@@ -12,6 +12,7 @@ The current forward-test objective is to determine whether the Daily Alpha signa
 - A stock entry still requires the canonical Daily Alpha signal, lifecycle, sector, company-liquidity, portfolio-risk and other active safety gates.
 - The broad server-side stock floor is $10. Frozen SH24/SH25 v2.4 Pine remains unchanged and retains its stricter $25 price floor.
 - The confirmed Pine/scanner signal price is the PAPER model-validation fill. This mirrors the frozen v2.4 Pine strategy's `process_orders_on_close=true` semantics and must not be represented as a live brokerage fill.
+- After-hours SH24/SH25 signals retain the canonical #213 state machine: persist as `ARMED_FOR_NEXT_TRADABLE_WINDOW`, then let the scheduled regular-session replay worker revalidate risk/no-chase and apply the stock PAPER decision. The economic model-validation fill remains the originating confirmed signal price; replay/evaluation time remains separately auditable.
 - The validated stock stop carried by the signal is required for risk-based share sizing.
 - Existing runner rules (ADD, PARTIAL/HARVEST, EXIT) continue on shares using the corresponding confirmed signal price.
 - New OPTION positions are disabled.
