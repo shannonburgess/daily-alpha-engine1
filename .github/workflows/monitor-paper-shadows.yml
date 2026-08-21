@@ -273,6 +273,42 @@ jobs:
           python scripts/shadow_source_diagnostic_monitor.py "${SOURCE_DIAGNOSTIC_ARGS[@]}"
           SOURCE_DIAGNOSTIC_CODE=$?
 
+          python scripts/shadow_operator_summary.py \
+            --core "${EVIDENCE_DIR}/shadow-status.json" \
+            --contract "${EVIDENCE_DIR}/shadow-contract-status.json" \
+            --replay-scheduler "${EVIDENCE_DIR}/shadow-replay-scheduler-status.json" \
+            --transport "${EVIDENCE_DIR}/shadow-transport-status.json" \
+            --universe "${EVIDENCE_DIR}/shadow-universe-status.json" \
+            --liquidity "${EVIDENCE_DIR}/shadow-liquidity-status.json" \
+            --source-diagnostic "${EVIDENCE_DIR}/shadow-source-diagnostic-status.json" \
+            --output-json "${EVIDENCE_DIR}/shadow-operator-summary.json" \
+            --output-md "${EVIDENCE_DIR}/shadow-operator-summary.md"
+          OPERATOR_CODE=$?
+
+          if [ "${OPERATOR_CODE}" -ne 0 ]; then
+            cat > "${EVIDENCE_DIR}/shadow-operator-summary.md" <<'EOF'
+          ### Operator Summary
+          **Status:** `EVIDENCE_INCOMPLETE`  
+          **Operator action:** NONE — fail closed; do not edit TradingView or run CloudShell as a routine workaround.  
+          **Safety:** `trading_authorized=false`, `live_trading_enabled=false`
+
+          EOF
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path("shadow-monitor-artifacts")
+          core_path = root / "shadow-status.md"
+          operator_path = root / "shadow-operator-summary.md"
+          core = core_path.read_text().splitlines()
+          if len(core) < 2 or core[0] != "<!-- daily-alpha-shadow-monitor -->":
+              raise SystemExit("SHADOW_STATUS_MARKER_MISSING")
+          operator = operator_path.read_text().rstrip()
+          merged = "\n".join([core[0], core[1], "", operator, "", *core[2:]]) + "\n"
+          core_path.write_text(merged)
+          PY
+
           cat "${EVIDENCE_DIR}/shadow-contract-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-replay-scheduler-status.md" >> \
@@ -286,6 +322,7 @@ jobs:
           cat "${EVIDENCE_DIR}/shadow-source-diagnostic-status.md" >> \
             "${EVIDENCE_DIR}/shadow-status.md"
           cat "${EVIDENCE_DIR}/shadow-status.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "${EVIDENCE_DIR}/shadow-operator-summary.json" 2>/dev/null || true
           cat "${EVIDENCE_DIR}/shadow-status.json"
           cat "${EVIDENCE_DIR}/shadow-contract-status.json"
           cat "${EVIDENCE_DIR}/shadow-replay-scheduler-status.json"
@@ -300,7 +337,8 @@ jobs:
              [ "${TRANSPORT_CODE}" -ne 0 ] || \
              [ "${UNIVERSE_CODE}" -ne 0 ] || \
              [ "${LIQUIDITY_CODE}" -ne 0 ] || \
-             [ "${SOURCE_DIAGNOSTIC_CODE}" -ne 0 ]; then
+             [ "${SOURCE_DIAGNOSTIC_CODE}" -ne 0 ] || \
+             [ "${OPERATOR_CODE}" -ne 0 ]; then
             CODE=2
           else
             CODE=0
@@ -338,5 +376,5 @@ jobs:
       - name: Enforce fail-closed monitor result
         if: steps.summarize.outputs.exit_code != '0'
         run: |
-          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, ARMED-replay-scheduler, backend-ingress, canonical-universe, company-liquidity, or SH24 source-diagnostic violation."
+          echo "Paper-shadow monitor detected a safety, isolation, evidence-completeness, staging-deployment, runtime-contract, ARMED-replay-scheduler, backend-ingress, canonical-universe, company-liquidity, SH24 source-diagnostic, or operator-summary violation."
           exit 1
