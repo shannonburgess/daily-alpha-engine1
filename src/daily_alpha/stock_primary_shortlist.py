@@ -136,10 +136,13 @@ def build_stock_primary_shortlist(
         if source.partial_data:
             excluded_partial += 1
             continue
-        if known_companies is not None and source.symbol in known_companies:
-            if source.price < min_company_price:
-                excluded_company_price += 1
-                continue
+        if (
+            known_companies is not None
+            and source.symbol in known_companies
+            and source.price < min_company_price
+        ):
+            excluded_company_price += 1
+            continue
         if source.optionable is False:
             research_non_optionable += 1
 
