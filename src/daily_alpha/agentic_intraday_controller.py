@@ -21,6 +21,7 @@ from .agentic_intraday import (
     IntradayState,
     advance_intraday_state,
     evaluate_intraday_entry,
+    intraday_bar_phase,
     intraday_phase,
     management_timeframe,
     must_flatten,
@@ -256,7 +257,7 @@ def _move_to_watch_state(
     ):
         return snapshot
 
-    phase = intraday_phase(observation.observed_at)
+    phase = intraday_bar_phase(observation.observed_at, observation.timeframe)
     if phase == IntradayPhase.OPENING_2M:
         target = IntradayState.WATCHING_2M
     elif phase == IntradayPhase.STANDARD_5M:
