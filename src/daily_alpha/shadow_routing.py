@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from typing import Any
 
+from .actionable_sector import attach_sector_evidence, enrich_entry_sector
 from .dynamo_ledger import DynamoPaperLedger
 from .equity_liquidity import LiquidityEvidenceStore, LiquidityGatedPaperExecutor
 from .pine_processor import DynamoPineEventStore, PineProcessorError, PineProcessorResult
@@ -187,7 +188,9 @@ class ShadowRoutedPinePaperExecutor:
         now: datetime | None = None,
     ) -> dict[str, Any]:
         account_id = account_id_for_ingress(ingress)
-        execution = self._executor(account_id).execute(ingress, now=now)
+        enriched, sector_evidence = enrich_entry_sector(ingress, self.liquidity_store)
+        execution = self._executor(account_id).execute(enriched, now=now)
+        execution = attach_sector_evidence(execution, sector_evidence)
         return self._decorate(ingress, execution, account_id)
 
     def replay_armed(
@@ -197,5 +200,7 @@ class ShadowRoutedPinePaperExecutor:
         now: datetime | None = None,
     ) -> dict[str, Any]:
         account_id = account_id_for_ingress(ingress)
-        execution = self._executor(account_id).replay_armed(ingress, now=now)
+        enriched, sector_evidence = enrich_entry_sector(ingress, self.liquidity_store)
+        execution = self._executor(account_id).replay_armed(enriched, now=now)
+        execution = attach_sector_evidence(execution, sector_evidence)
         return self._decorate(ingress, execution, account_id)
