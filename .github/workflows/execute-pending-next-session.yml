@@ -1,148 +1,29 @@
-name: Execute Daily Alpha pending actions next session
+name: Legacy Daily Alpha next-session executor (disabled)
 
 on:
   workflow_dispatch:
-  schedule:
-    # Covers EDT/EST. The gate permits only 09:45 ET primary and 10:05 ET retry.
-    - cron: "45 13,14 * * 1-5"
-    - cron: "5 14,15 * * 1-5"
 
 permissions:
   contents: read
-  id-token: write
-
-concurrency:
-  group: daily-alpha-next-session-execution
-  cancel-in-progress: false
 
 jobs:
-  gate:
+  disabled:
     runs-on: ubuntu-latest
-    outputs:
-      run: ${{ steps.market.outputs.run }}
-      mode: ${{ steps.market.outputs.mode }}
     steps:
-      - name: Resolve regular-session execution window
-        id: market
+      - name: Stock-primary policy guard
         shell: bash
         run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          from datetime import UTC, datetime
-          from zoneinfo import ZoneInfo
-          local = datetime.now(UTC).astimezone(ZoneInfo("America/New_York"))
-          if local.weekday() >= 5:
-              print("run=false")
-              print("mode=none")
-          elif local.hour == 9 and 40 <= local.minute <= 59:
-              print("run=true")
-              print("mode=morning_primary")
-          elif local.hour == 10 and 0 <= local.minute <= 20:
-              print("run=true")
-              print("mode=morning_retry")
-          else:
-              print("run=false")
-              print("mode=none")
-          PY
+          cat <<'EOF'
+          This legacy next-session execution path is disabled.
 
-  execute:
-    needs: gate
-    if: needs.gate.outputs.run == 'true'
-    environment: staging
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
-      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
-      EXECUTION_MODE: ${{ needs.gate.outputs.mode }}
+          Canonical policy:
+          - New PAPER entries are SHARES ONLY.
+          - Fresh confirmed Pine/scanner signal prices are PAPER model-validation fills.
+          - Fresh after-close stock signals must not be forced into next-session execution/replay.
+          - ORATS/options data must not authorize, reject, delay, or block a new STOCK PAPER entry.
+          - Replay remains only for genuinely pre-existing ARMED records through the canonical replay workflow.
+          - trading_authorized=false
+          - live_trading_enabled=false
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Require ORATS secret
-        shell: bash
-        run: |
-          if [[ -z "$ORATS_TOKEN" ]]; then
-            echo "ORATS_TOKEN GitHub secret is missing" >&2
-            exit 1
-          fi
-
-      - name: Install next-session execution runner
-        run: python -m pip install --disable-pip-version-check . boto3
-
-      - name: Configure short-lived AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
-          role-session-name: daily-alpha-next-session-execution
-          aws-region: us-east-2
-
-      - name: Verify execution-state S3 read/write permissions
-        shell: bash
-        run: |
-          set -euo pipefail
-          PREFIX="daily-alpha/execution-universe"
-          PROBE_KEY="${PREFIX}/healthchecks/${GITHUB_RUN_ID}.json"
-          printf '{"run_id":"%s","purpose":"paper-execution-s3-preflight"}\n' "$GITHUB_RUN_ID" >/tmp/daily-alpha-s3-probe.json
-
-          # ListBucket is required so a genuinely missing optional state object is
-          # distinguishable from AccessDenied instead of surfacing as an ambiguous 403.
-          aws s3api list-objects-v2 \
-            --bucket "$STAGING_BUCKET" \
-            --prefix "${PREFIX}/latest/" \
-            --max-keys 5 \
-            >/tmp/daily-alpha-execution-prefix.json
-
-          # Prove PutObject and GetObject before any signal can reach paper execution.
-          # The tiny healthcheck object is intentionally retained as an audit breadcrumb.
-          aws s3api put-object \
-            --bucket "$STAGING_BUCKET" \
-            --key "$PROBE_KEY" \
-            --body /tmp/daily-alpha-s3-probe.json \
-            --server-side-encryption AES256 \
-            >/tmp/daily-alpha-s3-put.json
-          aws s3api get-object \
-            --bucket "$STAGING_BUCKET" \
-            --key "$PROBE_KEY" \
-            /tmp/daily-alpha-s3-probe-read.json \
-            >/tmp/daily-alpha-s3-get.json
-          cmp /tmp/daily-alpha-s3-probe.json /tmp/daily-alpha-s3-probe-read.json
-          echo "Execution-state S3 preflight passed: ListBucket/GetObject/PutObject are available."
-
-      - name: Revalidate and execute paper-only pending actions
-        id: execute
-        run: |
-          python -m daily_alpha.next_session_execution \
-            --mode "$EXECUTION_MODE" \
-            --bucket "$STAGING_BUCKET" \
-            --workdir data/execution-universe-morning \
-            --run-id "$GITHUB_RUN_ID"
-
-      - name: Upload next-session execution audit
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-alpha-next-session-${{ github.run_id }}
-          path: data/execution-universe-morning/*
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Summarize next-session paper execution
-        shell: bash
-        run: |
-          {
-            echo "## Daily Alpha next-session paper execution"
-            echo "- Window: $EXECUTION_MODE"
-            echo "- Pending actions attempted: ${{ steps.execute.outputs.attempted }}"
-            echo "- Paper actions executed: ${{ steps.execute.outputs.executed }}"
-            echo "- Cancelled / no-trade: ${{ steps.execute.outputs.cancelled }}"
-            echo "- Deferred DATA_ERROR: ${{ steps.execute.outputs.deferred }}"
-            echo "- Remaining pending: ${{ steps.execute.outputs.remaining }}"
-            echo "- S3 execution-state preflight: required before any paper action"
-            echo "- Entry revalidation: breakout must remain valid and price must remain below +1 ATR add level"
-            echo "- Underlying + option data: refreshed from ORATS before execution"
-            echo "- Downstream gates: portfolio risk + fresh ORATS + option-first instrument selection"
-            echo "- Live trading: DISABLED"
-          } >> "$GITHUB_STEP_SUMMARY"
+          Historical pending-action artifacts remain audit evidence only and are not executable by this workflow.
+          EOF
