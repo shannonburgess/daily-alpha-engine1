@@ -95,14 +95,14 @@ def test_bind_forward_return_uses_snapshot_identity_and_available_factors_only()
     assert binding.outcome_id == outcome.outcome_id
     assert binding.forward_return == pytest.approx(0.10)
     assert binding.horizon_bars == 20
-    assert len(binding.observations) == 5
+    assert len(binding.observations) == 4
     assert {item.factor for item in binding.observations} == {
         "momentum",
         "trendability",
         "liquidity_capacity",
         "sector_industry_leadership",
-        "options_confirmation",
     }
+    assert "options_confirmation" not in {item.factor for item in binding.observations}
     assert all(item.forward_return == pytest.approx(0.10) for item in binding.observations)
     assert all(item.sector == "Communication Services" for item in binding.observations)
     assert binding.trading_authorized is False
