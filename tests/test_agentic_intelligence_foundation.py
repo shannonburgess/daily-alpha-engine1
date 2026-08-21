@@ -5,6 +5,7 @@ import pytest
 from daily_alpha.agentic import (
     DataSupervisor,
     EvidenceConflictError,
+    EvidenceContractError,
     EvidenceRecord,
     EvidenceStatus,
     InMemoryEvidenceStore,
@@ -12,7 +13,6 @@ from daily_alpha.agentic import (
     SourcePolicy,
     SourceRegistry,
 )
-from daily_alpha.agentic.contracts import EvidenceContractError
 
 
 NOW = datetime(2026, 8, 21, 20, 0, tzinfo=UTC)
@@ -76,7 +76,7 @@ def test_evidence_identity_is_deterministic_and_provenance_order_independent():
 
 def test_evidence_rejects_naive_or_future_point_in_time_data():
     with pytest.raises(EvidenceContractError, match="OBSERVED_AT_MUST_BE_TIMEZONE_AWARE"):
-        _record(observed_at=datetime(2026, 8, 21, 19, 0))
+        _record(observed_at=NOW.replace(tzinfo=None))
 
     record = _record(
         observed_at=NOW + timedelta(seconds=1),
@@ -115,7 +115,10 @@ def test_store_is_idempotent_but_rejects_logical_observation_rewrite():
 
 def test_store_returns_only_evidence_available_at_as_of_boundary():
     store = InMemoryEvidenceStore()
-    available = _record(observed_at=NOW - timedelta(minutes=10), received_at=NOW - timedelta(minutes=9))
+    available = _record(
+        observed_at=NOW - timedelta(minutes=10),
+        received_at=NOW - timedelta(minutes=9),
+    )
     future_received = _record(
         source="SOURCE_B",
         observed_at=NOW - timedelta(minutes=2),
