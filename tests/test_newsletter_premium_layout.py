@@ -26,6 +26,7 @@ def _packet() -> DailyResearchPacket:
         data_status="PASS",
         sector="Energy — Exploration & Production",
         option_contract="2026-10-16 CALL 25",
+        user_directed_option=True,
     )
     return DailyResearchPacket(
         report_date="2026-08-20",
@@ -43,7 +44,8 @@ def test_premium_newsletter_has_executive_dashboard_and_institutional_cards():
     assert "EXECUTIVE SIGNAL BOARD" in html
     assert "Primary focus:" in html
     assert "candidate-card" in html
-    assert "DERIVATIVES INTELLIGENCE" in html
+    assert "USER-DIRECTED OPTIONS" in html
+    assert "broker-chain" in html.lower()
     assert "CAPITAL POSITIONING" not in html  # no smart-money evidence in this fixture
     assert "#0b1733" in html
     assert "#caa85e" in html
