@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 SCRIPT = Path("tradingview/da_agentic_intraday_mu_v1_sensor.pine")
 
 
