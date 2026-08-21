@@ -2,7 +2,15 @@ name: Replay Daily Alpha paper ARMED signals
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Monitor Daily Alpha paper shadows
+    types:
+      - completed
   schedule:
+    # Primary default-branch cadence. The workflow_run trigger below is a fail-safe
+    # tied to the already-proven canonical monitor scheduler so a missed GitHub cron
+    # tick cannot strand genuinely pre-existing PAPER ARMED records.
     # 09:40-15:40 ET across EDT/EST. The NYSE calendar gate below suppresses
     # holidays, premarket/post-session invocations, and hours outside core trading.
     - cron: "40 13-20 * * 1-5"
@@ -17,6 +25,13 @@ concurrency:
 
 jobs:
   gate:
+    # A monitor-triggered fallback is trusted only when the canonical default-branch
+    # monitor itself completed successfully. Standalone schedule/manual runs retain
+    # the existing session gate below.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     outputs:
       run: ${{ steps.market.outputs.run }}
@@ -101,7 +116,7 @@ jobs:
           BEFORE="$(jq '[.books.PAPER_SHADOW_V24.armed_count_visible, .books.PAPER_SHADOW_V25.armed_count_visible] | add' /tmp/before.json)"
           echo '[]' >/tmp/replay-attempts.json
 
-          # Invoke exactly once each eligible tick. A no-ARMED pass is read/scan-only,
+          # Invoke exactly once each eligible automated tick. A no-ARMED pass is read/scan-only,
           # while this also prevents legacy/default PAPER ARMED records from requiring
           # manual replay just because both shadow books happen to be empty.
           aws lambda invoke \
