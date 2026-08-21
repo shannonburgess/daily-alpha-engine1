@@ -20,7 +20,7 @@ from .agentic_intraday import (
     AGENTIC_INTRADAY_ACCOUNT,
     AGENTIC_INTRADAY_PILOT_SYMBOL,
     IntradayPhase,
-    intraday_phase,
+    intraday_bar_phase,
 )
 from .agentic_intraday_momentum import IntradayMomentumObservation
 
@@ -154,9 +154,16 @@ def parse_intraday_sensor_payload(payload: Mapping[str, Any]) -> IntradaySensorB
         raise IntradaySensorError("INTRADAY_SENSOR_TIMEFRAME_INVALID")
 
     observed_at = _timestamp(payload, "bar_time")
-    actual_phase = intraday_phase(observed_at)
-    if declared_phase != actual_phase:
-        raise IntradaySensorError("INTRADAY_SENSOR_PHASE_TIMESTAMP_MISMATCH")
+    if event_type == IntradaySensorEventType.CONTEXT_15M_BAR:
+        # Pine session state is based on the context bar's open, while bar_time is
+        # the close. A 09:45-10:00 15M bar can therefore declare OPENING_2M even
+        # though its close timestamp is 10:00. Context only needs to be regular-session.
+        if declared_phase == IntradayPhase.CLOSED:
+            raise IntradaySensorError("INTRADAY_15M_CONTEXT_OUTSIDE_SESSION")
+    else:
+        actual_phase = intraday_bar_phase(observed_at, timeframe)
+        if declared_phase != actual_phase:
+            raise IntradaySensorError("INTRADAY_SENSOR_PHASE_TIMESTAMP_MISMATCH")
     _validate_event_type_contract(event_type, timeframe, declared_phase)
 
     open_price = _required_number(payload, "open")
