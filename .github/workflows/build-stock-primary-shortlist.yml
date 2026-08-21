@@ -66,16 +66,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Require core research secret; treat ORATS as optional enrichment
+      - name: Record optional research-source availability
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$STOCKDATA_API_KEY" ]]; then
-            echo "STOCKDATA_API_KEY GitHub secret is missing" >&2
-            exit 1
-          fi
           if [[ -z "$ORATS_TOKEN" ]]; then
-            echo "ORATS_TOKEN unavailable: continuing with STOCK shortlist; option research will be SOURCE_UNAVAILABLE."
+            echo "ORATS unavailable: continuing with the stock shortlist; option research will be marked unavailable."
+          fi
+          if [[ -z "$STOCKDATA_API_KEY" ]]; then
+            echo "StockData unavailable: continuing with the stock shortlist; smart-money research will be omitted."
           fi
 
       - name: Install shortlist tools
@@ -132,40 +131,76 @@ jobs:
               if row.get("security_type") == "COMPANY_EQUITY"
           )
 
-          smart_client = StockDataSmartMoneyClient()
-          congress_trades = smart_client.fetch_congressional_purchases(days=90, limit=500)
-          congressional = rank_congressional_acquisitions(
-              congress_trades,
-              as_of=now.date(),
-              lookback_days=90,
-              limit=5,
-          )
-          current_13f, previous_13f, institutional_coverage = (
-              smart_client.fetch_institutional_holdings_pair(
-                  as_of=now.date(),
-                  institution_limit=25,
-                  portfolio_limit=500,
+          congressional = ()
+          institutional = ()
+          current_13f_period = "SOURCE_UNAVAILABLE"
+          previous_13f_period = "SOURCE_UNAVAILABLE"
+          stockdata_status = "SOURCE_UNAVAILABLE"
+          if os.environ.get("STOCKDATA_API_KEY", "").strip():
+              try:
+                  smart_client = StockDataSmartMoneyClient()
+                  congress_trades = smart_client.fetch_congressional_purchases(
+                      days=90,
+                      limit=500,
+                  )
+                  congressional = rank_congressional_acquisitions(
+                      congress_trades,
+                      as_of=now.date(),
+                      lookback_days=90,
+                      limit=5,
+                  )
+                  current_13f, previous_13f, institutional_coverage = (
+                      smart_client.fetch_institutional_holdings_pair(
+                          as_of=now.date(),
+                          institution_limit=25,
+                          portfolio_limit=500,
+                      )
+                  )
+                  institutional = rank_institutional_acquisitions(
+                      current_13f,
+                      previous_13f,
+                      limit=5,
+                  )
+                  current_13f_period = institutional_coverage.current_period
+                  previous_13f_period = institutional_coverage.previous_period
+                  stockdata_status = "COMPLETE"
+              except Exception as exc:
+                  stockdata_status = f"DATA_ERROR:{type(exc).__name__}"
+                  print(
+                      "StockData research unavailable; continuing stock shortlist: "
+                      + stockdata_status
+                  )
+
+          policy_watch = ()
+          white_house_status = "SOURCE_UNAVAILABLE"
+          try:
+              policy_watch = rank_trump_policy_companies(
+                  fetch_white_house_investments(limit=50),
+                  limit=10,
               )
-          )
-          institutional = rank_institutional_acquisitions(
-              current_13f,
-              previous_13f,
-              limit=5,
-          )
-          policy_watch = rank_trump_policy_companies(
-              fetch_white_house_investments(limit=50),
-              limit=10,
-          )
+              white_house_status = "COMPLETE"
+          except Exception as exc:
+              white_house_status = f"DATA_ERROR:{type(exc).__name__}"
+              print(
+                  "White House policy research unavailable; continuing stock shortlist: "
+                  + white_house_status
+              )
 
           token = os.environ.get("ORATS_TOKEN", "").strip()
           orats_source = None
           if token:
-              # Research may legitimately use Friday's close on Monday premarket.
-              # This source enriches newsletter context only; it cannot change stock
-              # eligibility or score in build_stock_primary_shortlist.
-              orats_source = OratsBatchSource(
-                  OratsClient(mode="delayed", max_age_minutes=72 * 60)
-              )
+              try:
+                  # Research may legitimately use Friday's close on Monday premarket.
+                  # The builder guarantees this enrichment cannot change stock
+                  # eligibility or stock score.
+                  orats_source = OratsBatchSource(
+                      OratsClient(mode="delayed", max_age_minutes=72 * 60)
+                  )
+              except Exception as exc:
+                  print(
+                      "ORATS research client unavailable; continuing stock shortlist: "
+                      f"DATA_ERROR:{type(exc).__name__}"
+                  )
 
           result = build_stock_primary_shortlist(
               previous,
@@ -190,6 +225,8 @@ jobs:
                   "new_paper_entries": "STOCK_ONLY",
                   "orats_research_only": True,
                   "orats_can_block_stock_entry": False,
+                  "stockdata_research_status": stockdata_status,
+                  "white_house_research_status": white_house_status,
               }
           )
           outputs = write_research_shortlist_outputs("data/shortlist", result)
@@ -213,6 +250,10 @@ jobs:
               f"no-45-75-DTE retained={summary['research_orats_no_45_75_dte_count']}, "
               f"data_errors retained={summary['orats_data_error_count']}, "
               f"qualified research options={summary['qualified_option_count']}."
+          )
+          print(
+              f"External research: StockData={stockdata_status}; "
+              f"WhiteHouse={white_house_status}."
           )
           print("Top stock-primary candidates:")
           for rank, item in enumerate(result.items[:10], start=1):
@@ -270,12 +311,10 @@ jobs:
                   + ", ".join(item.symbol for item in policy_watch[:5])
                   + "\n"
               )
-              handle.write(
-                  f"current_13f_period={institutional_coverage.current_period}\n"
-              )
-              handle.write(
-                  f"previous_13f_period={institutional_coverage.previous_period}\n"
-              )
+              handle.write(f"current_13f_period={current_13f_period}\n")
+              handle.write(f"previous_13f_period={previous_13f_period}\n")
+              handle.write(f"stockdata_status={stockdata_status}\n")
+              handle.write(f"white_house_status={white_house_status}\n")
           assert all(path.exists() for path in outputs.values())
 
       - name: Configure short-lived AWS credentials
@@ -349,6 +388,9 @@ jobs:
             echo "- ORATS data-error names retained for stock: ${{ steps.shortlist.outputs.orats_error_research_count }}"
             echo "- Qualified option setups: ${{ steps.shortlist.outputs.qualified_count }} (research only)"
             echo "- ORATS/options cannot change stock eligibility or stock score."
+            echo "- StockData research: ${{ steps.shortlist.outputs.stockdata_status }}"
+            echo "- White House policy research: ${{ steps.shortlist.outputs.white_house_status }}"
+            echo "- External research-source failure cannot remove an otherwise eligible stock."
             echo "- New PAPER entries remain STOCK ONLY; this workflow does not execute trades."
             echo "- trading_authorized=false; live_trading_enabled=false"
           } >> "$GITHUB_STEP_SUMMARY"
