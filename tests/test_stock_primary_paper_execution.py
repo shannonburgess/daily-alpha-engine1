@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 from daily_alpha.ledger import PaperLedger
 from daily_alpha.reconciled_receipt_executor import (
-    STOCK_PRIMARY_POLICY,
     ReceiptReconciledAwsPinePaperExecutor,
+    STOCK_PRIMARY_POLICY,
 )
 
 NOW = datetime(2026, 8, 20, 19, 55, tzinfo=UTC)
