@@ -216,6 +216,15 @@ jobs:
           print(json.dumps(manifest, indent=2, sort_keys=True))
           PY
 
+      - name: Refresh AWS credentials before sanitized publication
+        if: steps.finalized.outputs.skip != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-sh24-source-publication
+          aws-region: us-east-2
+          unset-current-credentials: true
+
       - name: Publish bounded sanitized evidence to staging
         if: steps.finalized.outputs.skip != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         shell: bash
