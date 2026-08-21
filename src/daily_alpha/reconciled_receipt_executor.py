@@ -285,11 +285,15 @@ class ReceiptReconciledAwsPinePaperExecutor(ReconciledAwsPinePaperExecutor):
             fallback_reason=STOCK_PRIMARY_POLICY,
         )
         decision_payload = decision.to_dict()
+        signal_payload = _signal_payload(ingress)
+        signal_payload["received_at"] = str(
+            ingress.get("received_at") or now.isoformat()
+        )
         engine_result = {
             "ok": True,
             "mode": "PAPER",
             "live_trading_enabled": False,
-            "signal": _signal_payload(ingress),
+            "signal": signal_payload,
             "risk": risk_payload,
             "decision": decision_payload,
         }
