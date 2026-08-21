@@ -1,4 +1,8 @@
-"""Run staged Daily Alpha actions during the next regular market session."""
+"""Run staged Daily Alpha stock actions during the next regular market session.
+
+This module has no option-chain dependency. A current stock price must be supplied
+by the execution-time market-data path; missing price evidence fails closed.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,6 @@ from .execution_queue import (
     prepare_next_session_signal,
 )
 from .execution_universe import ScannerState, execution_succeeded, load_state, write_state
-from .orats import OratsClient, OratsError
 
 DEFAULT_BUCKET = "daily-alpha-staging-490809405132-us-east-2"
 LATEST_PREFIX = "daily-alpha/execution-universe/latest"
@@ -32,20 +35,16 @@ def run_next_session_execution(
     *,
     mode: str,
     bucket: str,
-    token: str,
     workdir: str | Path,
     now: datetime | None = None,
     s3_client: Any | None = None,
     lambda_client: Any | None = None,
-    orats_client: OratsClient | None = None,
     run_id: str = "manual",
 ) -> dict[str, Any]:
-    """Revalidate staged actions and route valid ones to the paper-only processor."""
+    """Revalidate staged STOCK actions and route valid ones to the PAPER processor."""
     if mode not in {"morning_primary", "morning_retry"}:
         raise ValueError("Execution mode must be morning_primary or morning_retry")
     timestamp = _aware(now or datetime.now(UTC))
-    if not token.strip():
-        raise ValueError("ORATS token is required")
 
     if s3_client is None or lambda_client is None:
         try:
@@ -56,12 +55,6 @@ def run_next_session_execution(
             s3_client = boto3.client("s3")
         if lambda_client is None:
             lambda_client = boto3.client("lambda")
-
-    orats = orats_client or OratsClient(
-        token=token,
-        mode="delayed",
-        max_age_minutes=25,
-    )
 
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
@@ -132,12 +125,9 @@ def run_next_session_execution(
                 )
                 continue
         try:
-            chain = orats.fetch_chain(symbol, as_of=timestamp)
-            stock_price = float(chain.stock_price)
-            if stock_price <= 0:
-                raise ValueError("ORATS underlying stock price is unavailable")
-            record["orats_observed_at"] = chain.observed_at.isoformat()
+            stock_price = _execution_stock_price(item)
             record["stock_price"] = stock_price
+            record["price_source"] = "EXECUTION_TIME_MARKET_DATA"
             prepared = prepare_next_session_signal(
                 item,
                 stock_price=stock_price,
@@ -206,7 +196,7 @@ def run_next_session_execution(
             attempts.append(record)
         except UnsafeExecutionError:
             raise
-        except (OratsError, RuntimeError, ValueError, TypeError) as exc:
+        except (RuntimeError, ValueError, TypeError) as exc:
             deferred_data_error += 1
             retry_item = dict(item)
             retry_item["status"] = RETRY_STATUS
@@ -223,7 +213,7 @@ def run_next_session_execution(
                 scanner_status=RETRY_STATUS,
                 execution=RETRY_STATUS,
             )
-        time.sleep(0.35)
+        time.sleep(0.05)
 
     write_state(state_path, state)
     pending_doc["last_execution_attempt_at"] = timestamp.isoformat()
@@ -242,7 +232,7 @@ def run_next_session_execution(
     _write_watch_csv(watch_csv, watch)
 
     audit = {
-        "schema_version": "2026-08-17-next-session-v1",
+        "schema_version": "2026-08-21-next-session-stock-v2",
         "generated_at": timestamp.isoformat(),
         "execution_mode": mode,
         "attempted": attempted,
@@ -250,6 +240,8 @@ def run_next_session_execution(
         "cancelled_or_no_trade": cancelled,
         "deferred_data_error": deferred_data_error,
         "remaining_pending": len(remaining),
+        "instrument_policy": "STOCK_ONLY",
+        "options_mode": "USER_DIRECTED_BROKER_CHAIN",
         "trading_authorized": False,
         "live_trading_enabled": False,
         "attempts": attempts,
@@ -262,6 +254,20 @@ def run_next_session_execution(
         s3_client.upload_file(str(path), bucket, f"{LATEST_PREFIX}/{path.name}")
         s3_client.upload_file(str(path), bucket, f"{history}/{path.name}")
     return audit
+
+
+def _execution_stock_price(item: dict[str, Any]) -> float:
+    """Require current execution-time stock-price evidence; never guess it."""
+    raw = item.get("execution_stock_price")
+    if raw in (None, ""):
+        raise ValueError("CURRENT_STOCK_PRICE_REQUIRED")
+    try:
+        price = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("CURRENT_STOCK_PRICE_INVALID") from exc
+    if price <= 0:
+        raise ValueError("CURRENT_STOCK_PRICE_INVALID")
+    return price
 
 
 def _download_optional(
@@ -368,7 +374,6 @@ def main() -> int:
     audit = run_next_session_execution(
         mode=args.mode,
         bucket=args.bucket,
-        token=os.getenv("ORATS_TOKEN", ""),
         workdir=args.workdir,
         run_id=args.run_id,
     )
