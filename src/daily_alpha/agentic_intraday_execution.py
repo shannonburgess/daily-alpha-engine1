@@ -21,7 +21,7 @@ from .agentic_intraday import (
     IntradayPhase,
     IntradaySignalEvent,
     IntradayState,
-    intraday_phase,
+    intraday_bar_phase,
     must_flatten,
     required_entry_timeframe,
     validate_event_identity,
@@ -272,7 +272,7 @@ class AgenticIntradayPaperExecutor:
             raise IntradayPaperExecutionError("INTRADAY_SHARES_ONLY")
         if event.action.value != "ENTRY_LONG":
             raise IntradayPaperExecutionError("INTRADAY_ENTRY_ACTION_INVALID")
-        phase = intraday_phase(event.observed_at)
+        phase = intraday_bar_phase(event.observed_at, event.timeframe)
         required = required_entry_timeframe(phase)
         if phase not in {IntradayPhase.OPENING_2M, IntradayPhase.STANDARD_5M} or required is None:
             raise IntradayPaperExecutionError("INTRADAY_ENTRY_OUTSIDE_ENTRY_WINDOW")
@@ -363,7 +363,7 @@ class AgenticIntradayPaperExecutor:
             symbol=base.symbol,
             instrument=base.instrument,
             timeframe=timeframe.upper(),
-            phase=intraday_phase(occurred_at).value,
+            phase=intraday_bar_phase(occurred_at, timeframe).value,
             fill_price=base.fill_price,
             fill_quantity=base.fill_quantity,
             fill_notional=base.fill_notional,
