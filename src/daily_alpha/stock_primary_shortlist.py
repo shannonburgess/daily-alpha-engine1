@@ -3,6 +3,7 @@
 This module preserves the Daily Alpha stock model-validation contract:
 
 * stock eligibility is determined before ORATS research enrichment;
+* persistent ``ACTIVE_BUY`` names remain visible while the underlying BUY stays valid;
 * OVTLYR optionability and ORATS availability/chain quality never remove or
   promote an otherwise eligible stock candidate;
 * option research never changes the stock ranking score;
@@ -50,6 +51,7 @@ STOCK_PRIMARY_ACTIONABLE_STATUSES = {
     OvtlyrStatus.LEADER,
     OvtlyrStatus.ENTRY_WATCH,
     OvtlyrStatus.RE_ENTRY,
+    OvtlyrStatus.ACTIVE_BUY,
 }
 
 CANONICAL_COMPANY_MIN_PRICE = 10.0
@@ -400,6 +402,7 @@ def _stock_base_score(
         OvtlyrStatus.RE_ENTRY: 34,
         OvtlyrStatus.ENTRY_WATCH: 30,
         OvtlyrStatus.LEADER: 26,
+        OvtlyrStatus.ACTIVE_BUY: 20,
     }.get(classified.status, 0)
     points = float(status_points)
     if source.trend in {"UP", "UPTREND", "BULLISH", "RISING"}:
