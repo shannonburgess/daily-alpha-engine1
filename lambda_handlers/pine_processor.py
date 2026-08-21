@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from daily_alpha.actionable_sector import (
+    S3ActionableContextStore,
+    attach_sector_evidence,
+    enrich_entry_sector,
+)
 from daily_alpha.armed_replay import (
     list_armed_ingress,
     list_recent_pine_event_state,
     replay_armed_events,
 )
 from daily_alpha.dynamo_ledger import DynamoPaperLedger
-from daily_alpha.equity_liquidity import (
-    LiquidityGatedPaperExecutor,
-    S3ActionableLiquidityStore,
-)
+from daily_alpha.equity_liquidity import LiquidityGatedPaperExecutor
 from daily_alpha.execution_universe import build_scanner_ingress
 from daily_alpha.pine_paper_orchestrator import _all_open_trades
 from daily_alpha.pine_processor import (
@@ -33,8 +35,8 @@ from daily_alpha.shadow_routing import (
 )
 
 
-def _liquidity_store() -> S3ActionableLiquidityStore:
-    return S3ActionableLiquidityStore()
+def _liquidity_store() -> S3ActionableContextStore:
+    return S3ActionableContextStore()
 
 
 def _replay_all_paper_accounts(*, now: datetime, limit: int) -> dict:
@@ -258,6 +260,8 @@ def lambda_handler(event, context):
             if not isinstance(raw_signal, dict):
                 raise TypeError("SCANNER_SIGNAL_REQUIRED")
             ingress = build_scanner_ingress(raw_signal, received_at=now)
+            liquidity_store = _liquidity_store()
+            ingress, sector_evidence = enrich_entry_sector(ingress, liquidity_store)
             processor_result = PineProcessorResult(
                 schema_version="2026-08-17-scanner-v1",
                 signal_id=str(ingress["signal_id"]),
@@ -274,9 +278,10 @@ def lambda_handler(event, context):
             persisted = store.persist(ingress, processor_result)
             executor = LiquidityGatedPaperExecutor(
                 ReceiptReconciledAwsPinePaperExecutor(),
-                _liquidity_store(),
+                liquidity_store,
             )
             execution = executor.execute(ingress, now=now)
+            execution = attach_sector_evidence(execution, sector_evidence)
             store.mark_execution(processor_result.signal_id, execution)
             return {
                 "ok": True,
