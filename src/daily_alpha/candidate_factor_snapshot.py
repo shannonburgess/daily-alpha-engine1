@@ -3,6 +3,10 @@
 This adapter intentionally runs in parallel with the production/research candidate ranker.
 It does not alter candidate scores, execution eligibility, sizing, or any paper/live gate.
 Unavailable factor families remain explicit rather than being inferred from weak proxies.
+
+Under the stock-primary PAPER model-validation policy, option-chain quality is instrument
+expression research only. The candidate snapshot therefore does not derive or weight
+``options_confirmation`` while the Alpha Engine itself is being validated.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .candidates import CandidateAssessment, CandidateBucket
+from .candidates import CandidateAssessment
 from .factor_attribution import FACTOR_NAMES, FactorScore, FactorVector, score_factor_vector
 from .ovtlyr import ClassifiedRecord, OvtlyrRecord, OvtlyrStatus
 
@@ -28,7 +32,7 @@ DEFAULT_CANDIDATE_FACTOR_WEIGHTS = {
     "liquidity_capacity": 0.15,
     "sector_industry_leadership": 0.15,
     "volatility_quality": 0.05,
-    "options_confirmation": 0.10,
+    "options_confirmation": 0.0,
     "catalyst_state": 0.025,
     "breadth_regime": 0.025,
 }
@@ -82,7 +86,8 @@ def build_candidate_factor_snapshot(
 
     Factors that do not have a trustworthy point-in-time input in the current candidate
     contract are left at zero *and* marked unavailable. The factor score is therefore a
-    research diagnostic only; coverage must be inspected alongside it.
+    research diagnostic only; coverage must be inspected alongside it. Option expression
+    evidence is intentionally unavailable during stock-primary model validation.
     """
     symbols = {source.symbol.upper(), classified.symbol.upper(), candidate.symbol.upper()}
     if len(symbols) != 1:
@@ -109,11 +114,6 @@ def build_candidate_factor_snapshot(
 
     factors["sector_industry_leadership"] = _clamp(candidate.sector_net_score / 40.0)
     availability["sector_industry_leadership"] = True
-
-    options_confirmation = _options_confirmation_value(candidate)
-    if options_confirmation is not None:
-        factors["options_confirmation"] = options_confirmation
-        availability["options_confirmation"] = True
 
     vector = FactorVector(
         symbol=source.symbol.upper(),
@@ -251,17 +251,6 @@ def _liquidity_capacity_value(source: OvtlyrRecord) -> float | None:
     if average_daily_dollar_volume >= 20_000_000:
         return 0.25
     return 0.0
-
-
-def _options_confirmation_value(candidate: CandidateAssessment) -> float | None:
-    if candidate.bucket != CandidateBucket.OPTION_SETUP:
-        return None
-    spread = candidate.selected_spread_pct
-    if spread is None or spread < 0:
-        return None
-    spread_quality = 1.0 - min(spread / 0.10, 1.0)
-    unusual_bonus = 0.25 if candidate.unusual_options_activity else 0.0
-    return _clamp(spread_quality + unusual_bonus)
 
 
 def _weighted_coverage(
