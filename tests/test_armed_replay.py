@@ -6,10 +6,7 @@ from daily_alpha.armed_replay import (
     list_recent_pine_event_state,
     replay_armed_events,
 )
-from daily_alpha.pine_paper_reconciliation import (
-    ReconciledAwsPinePaperExecutor,
-    prepare_armed_replay,
-)
+from daily_alpha.pine_paper_reconciliation import prepare_armed_replay
 from daily_alpha.reconciled_receipt_executor import ReceiptReconciledAwsPinePaperExecutor
 
 NOW = datetime(2026, 8, 19, 14, 0, tzinfo=UTC)
@@ -310,11 +307,15 @@ def test_durable_worker_persists_replay_receipt_with_risk_basis(monkeypatch):
             "context": {
                 "replayed_from_armed_signal": True,
                 "origin_signal_id": "CAT-ADD-ORIGIN",
-                "replay_market_price": 105.0,
+                "model_validation_fill_price": 105.0,
             },
         }
 
-    monkeypatch.setattr(ReconciledAwsPinePaperExecutor, "replay_armed", fake_replay)
+    monkeypatch.setattr(
+        ReceiptReconciledAwsPinePaperExecutor,
+        "_replay_stock_primary",
+        fake_replay,
+    )
     result = replay_armed_events(store, executor, now=NOW, limit=5)
 
     assert result["outcome_counts"] == {"EXECUTED_PAPER": 1}

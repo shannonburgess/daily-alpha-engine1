@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
 from daily_alpha.execution_receipts import build_paper_execution_receipt
-from daily_alpha.pine_paper_reconciliation import ReconciledAwsPinePaperExecutor
 from daily_alpha.reconciled_receipt_executor import ReceiptReconciledAwsPinePaperExecutor
 
 NOW = datetime(2026, 8, 19, 14, 5, tzinfo=UTC)
@@ -104,7 +103,7 @@ def test_reconciled_entry_attaches_receipt_without_changing_execution(monkeypatc
     def fake_execute(self, ingress, *, now=None):
         return {
             "disposition": "EXECUTED_PAPER",
-            "reason": "PAPER_POSITION_OPENED",
+            "reason": "PAPER_STOCK_POSITION_OPENED",
             "action": "ENTRY_LONG",
             "symbol": "CAT",
             "paper_execution_triggered": True,
@@ -115,7 +114,11 @@ def test_reconciled_entry_attaches_receipt_without_changing_execution(monkeypatc
             "context": {"risk": {"planned_loss": 500.0}},
         }
 
-    monkeypatch.setattr(ReconciledAwsPinePaperExecutor, "execute", fake_execute)
+    monkeypatch.setattr(
+        ReceiptReconciledAwsPinePaperExecutor,
+        "_execute_stock_primary",
+        fake_execute,
+    )
     result = executor.execute(ingress, now=NOW)
 
     receipt = result["execution_receipt"]
@@ -129,7 +132,7 @@ def test_reconciled_entry_attaches_receipt_without_changing_execution(monkeypatc
     assert result["paper"]["execution_receipt"] == receipt
 
 
-def test_armed_replay_receipt_uses_refreshed_market_price_and_replay_signal_id(
+def test_armed_replay_receipt_uses_model_validation_price_and_replay_signal_id(
     monkeypatch,
 ):
     before = _stock_trade(quantity=10, entry_price=100.0)
@@ -169,11 +172,15 @@ def test_armed_replay_receipt_uses_refreshed_market_price_and_replay_signal_id(
             "context": {
                 "replayed_from_armed_signal": True,
                 "origin_signal_id": "CAT-ADD-ORIGIN",
-                "replay_market_price": 105.0,
+                "model_validation_fill_price": 105.0,
             },
         }
 
-    monkeypatch.setattr(ReconciledAwsPinePaperExecutor, "replay_armed", fake_replay)
+    monkeypatch.setattr(
+        ReceiptReconciledAwsPinePaperExecutor,
+        "_replay_stock_primary",
+        fake_replay,
+    )
     result = executor.replay_armed(ingress, now=NOW)
 
     receipt = result["execution_receipt"]
@@ -203,7 +210,11 @@ def test_armed_or_state_mismatch_never_fabricates_receipt(monkeypatch):
             "context": {},
         }
 
-    monkeypatch.setattr(ReconciledAwsPinePaperExecutor, "execute", fake_execute)
+    monkeypatch.setattr(
+        ReceiptReconciledAwsPinePaperExecutor,
+        "_execute_stock_primary",
+        fake_execute,
+    )
     result = executor.execute(
         {"signal_id": "vlo-exit", "symbol": "VLO", "action": "EXIT", "price": 1.0},
         now=NOW,
