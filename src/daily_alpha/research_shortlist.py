@@ -1,7 +1,8 @@
-"""Day-over-day OVTLYR ranking with quota-aware ORATS research enrichment.
+"""Day-over-day OVTLYR research ranking for Daily Alpha.
 
-This module builds a newsletter/research shortlist only. It does not consume Pine
-signals, run the portfolio risk gate, create paper trades, or enable live trading.
+This module is stock-first and vendor-independent. It does not fetch option chains,
+select option contracts, or use derivatives data to alter stock eligibility or
+ranking. Options are user-directed and broker-chain sourced separately.
 """
 
 from __future__ import annotations
@@ -14,8 +15,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import OptionQualityRules
-from .models import OptionCandidate
 from .ovtlyr import (
     ClassifiedRecord,
     OvtlyrRecord,
@@ -30,7 +29,6 @@ from .smart_money import (
     InstitutionalAccumulation,
     smart_money_bonus,
 )
-from .sources import OratsBatchSource
 from .trump_policy import TrumpPolicyCompany, trump_policy_bonus
 
 ACTIONABLE_STATUSES = {
@@ -42,7 +40,6 @@ ACTIONABLE_STATUSES = {
 }
 
 _DATE_PATTERN = re.compile(r"(20\d{2}-\d{2}-\d{2})")
-_ORATS_NO_DTE_OPTIONS = "ORATS_NO_45_75_DTE_OPTIONS"
 CANONICAL_COMPANY_MIN_AVERAGE_VOLUME = 1_500_000.0
 
 
@@ -61,30 +58,7 @@ class ResearchShortlistItem:
     optionable: bool | None
     price: float
     average_volume: float
-    orats_status: str
-    orats_reason: str
-    selected_expiration: str = ""
-    selected_strike: float = 0.0
-    selected_option_type: str = ""
-    selected_delta: float | None = None
-    selected_bid: float = 0.0
-    selected_ask: float = 0.0
-    selected_spread_pct: float | None = None
-    selected_open_interest: int = 0
-    selected_volume: int = 0
-    unusual_options_activity: bool = False
-    unusual_call_contract: str = ""
-    unusual_call_volume: int = 0
-    unusual_call_open_interest: int = 0
-    unusual_call_volume_oi_ratio: float | None = None
-    unusual_call_bid: float = 0.0
-    unusual_call_ask: float = 0.0
-    unusual_put_contract: str = ""
-    unusual_put_volume: int = 0
-    unusual_put_open_interest: int = 0
-    unusual_put_volume_oi_ratio: float | None = None
-    unusual_put_bid: float = 0.0
-    unusual_put_ask: float = 0.0
+    options_mode: str = "USER_DIRECTED_BROKER_CHAIN"
     smart_money_bonus: float = 0.0
     congressional_rank: int | None = None
     institutional_rank: int | None = None
@@ -128,30 +102,14 @@ def build_research_shortlist(
     current_path: str | Path,
     *,
     as_of: datetime,
-    orats_source: OratsBatchSource,
-    request_limit: int = 20,
-    option_rules: OptionQualityRules | None = None,
     congressional: tuple[CongressionalAccumulation, ...] = (),
     institutional: tuple[InstitutionalAccumulation, ...] = (),
     trump_policy: tuple[TrumpPolicyCompany, ...] = (),
     min_company_average_volume: float | None = None,
 ) -> ResearchShortlistResult:
-    """Rank OVTLYR changes, apply research confirmation, then enrich with ORATS.
-
-    Smart-money and Trump-administration policy inputs are bounded research-ranking
-    factors only. They can change which candidates receive scarce ORATS research
-    requests, but they never authorize a trade or bypass Pine, ORATS freshness,
-    or portfolio risk gates.
-
-    ``min_company_average_volume`` is an explicit company-equity pre-screen used by
-    the canonical actionable workflow. Passing 1.5M enforces issue #218 before ORATS
-    quota is spent or candidates are ranked. ETF workflows must keep their separate
-    liquidity/capacity rules and should not route through this company-only gate.
-    """
+    """Rank actionable stock research without any option-chain dependency."""
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
-    if request_limit <= 0:
-        raise ValueError("request_limit must be positive")
     if min_company_average_volume is not None and min_company_average_volume < 0:
         raise ValueError("min_company_average_volume must be non-negative")
 
@@ -165,26 +123,16 @@ def build_research_shortlist(
     institutional_ranks = {
         item.symbol.upper(): item.rank for item in institutional if item.symbol
     }
-    trump_policy_ranks = {item.symbol.upper(): item.rank for item in trump_policy}
+    policy_ranks = {item.symbol.upper(): item.rank for item in trump_policy}
 
-    staged: list[
-        tuple[
-            ClassifiedRecord,
-            OvtlyrRecord,
-            float,
-            float,
-            int | None,
-            int | None,
-            float,
-            int | None,
-        ]
-    ] = []
-    excluded_not_optionable = 0
+    items: list[ResearchShortlistItem] = []
     excluded_partial = 0
     excluded_liquidity_filtered = 0
     excluded_liquidity_missing = 0
+    non_optionable_count = 0
     smart_money_matched = 0
-    trump_policy_matched = 0
+    policy_matched = 0
+
     for classified in classifications:
         source = current_by_symbol.get(classified.symbol)
         if (
@@ -193,6 +141,9 @@ def build_research_shortlist(
             or classified.status not in ACTIONABLE_STATUSES
         ):
             continue
+        if source.partial_data:
+            excluded_partial += 1
+            continue
         if min_company_average_volume is not None:
             if source.average_volume <= 0:
                 excluded_liquidity_missing += 1
@@ -200,109 +151,23 @@ def build_research_shortlist(
             if source.average_volume <= min_company_average_volume:
                 excluded_liquidity_filtered += 1
                 continue
-        if source.partial_data:
-            excluded_partial += 1
-            continue
         if source.optionable is False:
-            excluded_not_optionable += 1
-            continue
-        base_score = _base_score(
-            classified, source, sector_scores.get(source.sector, 0)
-        )
+            non_optionable_count += 1
+
         smart_bonus = smart_money_bonus(source.symbol, congressional, institutional)
         policy_bonus = trump_policy_bonus(source.symbol, trump_policy)
-        congress_rank = congressional_ranks.get(source.symbol.upper())
-        institution_rank = institutional_ranks.get(source.symbol.upper())
-        policy_rank = trump_policy_ranks.get(source.symbol.upper())
         if smart_bonus > 0:
             smart_money_matched += 1
         if policy_bonus > 0:
-            trump_policy_matched += 1
-        staged.append(
-            (
-                classified,
-                source,
-                base_score + smart_bonus + policy_bonus,
-                smart_bonus,
-                congress_rank,
-                institution_rank,
-                policy_bonus,
-                policy_rank,
-            )
-        )
-
-    staged.sort(key=lambda row: (-row[2], row[1].symbol))
-    requested = tuple(row[1].symbol for row in staged[:request_limit])
-    batch = orats_source.fetch(requested, as_of=as_of)
-    chains = {chain.ticker: chain for chain in batch.chains}
-    errors = dict(batch.errors)
-    requested_set = set(requested)
-    rules = option_rules or OptionQualityRules()
-
-    items: list[ResearchShortlistItem] = []
-    qualified_count = 0
-    data_error_count = 0
-    excluded_orats_no_dte = 0
-    unusual_call_company_count = 0
-    unusual_put_company_count = 0
-    for (
-        classified,
-        source,
-        ranked_score,
-        smart_bonus,
-        congress_rank,
-        institution_rank,
-        policy_bonus,
-        policy_rank,
-    ) in staged:
-        symbol = source.symbol
-        selected: OptionCandidate | None = None
-        unusual_call: OptionCandidate | None = None
-        unusual_put: OptionCandidate | None = None
-        score = ranked_score
-        if symbol not in requested_set:
-            orats_status = "NOT_REQUESTED"
-            orats_reason = "API_LIMIT_REACHED"
-            optionable = source.optionable
-        elif symbol in errors:
-            reason = errors[symbol]
-            if reason == _ORATS_NO_DTE_OPTIONS:
-                excluded_orats_no_dte += 1
-                continue
-            data_error_count += 1
-            orats_status = "DATA_ERROR"
-            orats_reason = reason
-            optionable = source.optionable
-        else:
-            chain = chains.get(symbol)
-            if chain is None:
-                data_error_count += 1
-                orats_status = "DATA_ERROR"
-                orats_reason = "ORATS_CHAIN_MISSING"
-                optionable = source.optionable
-            else:
-                optionable = True
-                selected = _best_qualified_option(chain.candidates, rules)
-                unusual_call = _most_unusual_option(chain.candidates, rules, "CALL")
-                unusual_put = _most_unusual_option(chain.candidates, rules, "PUT")
-                if unusual_call is not None:
-                    unusual_call_company_count += 1
-                if unusual_put is not None:
-                    unusual_put_company_count += 1
-                if selected is None:
-                    orats_status = "ENRICHED"
-                    orats_reason = "NO_OPTION_PASSED_QUALITY_FILTERS"
-                else:
-                    qualified_count += 1
-                    orats_status = "ENRICHED"
-                    orats_reason = "QUALIFIED_OPTION_FOUND"
-                    score += 20.0
-                    score += max(0.0, 10.0 - 50.0 * selected.spread_pct)
-                    score += min(5.0, selected.volume_to_open_interest * 5.0)
-
+            policy_matched += 1
+        score = _base_score(
+            classified,
+            source,
+            sector_scores.get(source.sector, 0),
+        ) + smart_bonus + policy_bonus
         items.append(
             ResearchShortlistItem(
-                symbol=symbol,
+                symbol=source.symbol,
                 ovtlyr_status=classified.status.value,
                 display_label=classified.display_label,
                 classification_reason=classified.reason,
@@ -312,54 +177,14 @@ def build_research_shortlist(
                 sector_net_score=sector_scores.get(source.sector, 0),
                 trend=source.trend,
                 momentum=source.momentum,
-                optionable=optionable,
+                optionable=source.optionable,
                 price=source.price,
                 average_volume=source.average_volume,
-                orats_status=orats_status,
-                orats_reason=orats_reason,
-                selected_expiration=selected.expiration if selected else "",
-                selected_strike=selected.strike if selected else 0.0,
-                selected_option_type=selected.option_type if selected else "",
-                selected_delta=selected.delta if selected else None,
-                selected_bid=selected.bid if selected else 0.0,
-                selected_ask=selected.ask if selected else 0.0,
-                selected_spread_pct=(
-                    round(selected.spread_pct, 6) if selected else None
-                ),
-                selected_open_interest=selected.open_interest if selected else 0,
-                selected_volume=selected.volume if selected else 0,
-                unusual_options_activity=(
-                    unusual_call is not None or unusual_put is not None
-                ),
-                unusual_call_contract=_flow_contract(unusual_call),
-                unusual_call_volume=unusual_call.volume if unusual_call else 0,
-                unusual_call_open_interest=(
-                    unusual_call.open_interest if unusual_call else 0
-                ),
-                unusual_call_volume_oi_ratio=(
-                    round(unusual_call.volume_to_open_interest, 6)
-                    if unusual_call
-                    else None
-                ),
-                unusual_call_bid=unusual_call.bid if unusual_call else 0.0,
-                unusual_call_ask=unusual_call.ask if unusual_call else 0.0,
-                unusual_put_contract=_flow_contract(unusual_put),
-                unusual_put_volume=unusual_put.volume if unusual_put else 0,
-                unusual_put_open_interest=(
-                    unusual_put.open_interest if unusual_put else 0
-                ),
-                unusual_put_volume_oi_ratio=(
-                    round(unusual_put.volume_to_open_interest, 6)
-                    if unusual_put
-                    else None
-                ),
-                unusual_put_bid=unusual_put.bid if unusual_put else 0.0,
-                unusual_put_ask=unusual_put.ask if unusual_put else 0.0,
                 smart_money_bonus=smart_bonus,
-                congressional_rank=congress_rank,
-                institutional_rank=institution_rank,
+                congressional_rank=congressional_ranks.get(source.symbol.upper()),
+                institutional_rank=institutional_ranks.get(source.symbol.upper()),
                 trump_policy_bonus=policy_bonus,
-                trump_policy_rank=policy_rank,
+                trump_policy_rank=policy_ranks.get(source.symbol.upper()),
             )
         )
 
@@ -379,24 +204,18 @@ def build_research_shortlist(
         "company_min_average_volume": min_company_average_volume,
         "excluded_liquidity_filtered": excluded_liquidity_filtered,
         "excluded_liquidity_missing": excluded_liquidity_missing,
-        "excluded_not_optionable": excluded_not_optionable,
-        "excluded_orats_no_45_75_dte_options": excluded_orats_no_dte,
         "excluded_partial_data": excluded_partial,
-        "orats_requests": len(requested),
-        "orats_request_limit": request_limit,
-        "qualified_option_count": qualified_count,
-        "orats_data_error_count": data_error_count,
-        "unusual_call_company_count": unusual_call_company_count,
-        "unusual_put_company_count": unusual_put_company_count,
-        "unusual_activity_threshold_volume_oi": 1.0,
-        "optionability_authority": "ORATS_FOR_ENRICHED_SYMBOLS",
+        "non_optionable_metadata_count": non_optionable_count,
+        "options_mode": "USER_DIRECTED_BROKER_CHAIN",
+        "options_affect_stock_eligibility": False,
+        "options_affect_stock_score": False,
         "smart_money_congressional_count": len(congressional),
         "smart_money_institutional_count": len(institutional),
         "smart_money_matched_candidates": smart_money_matched,
         "smart_money_max_bonus": 15.0,
         "smart_money_research_ranking_only": True,
         "trump_policy_company_count": len(trump_policy),
-        "trump_policy_matched_candidates": trump_policy_matched,
+        "trump_policy_matched_candidates": policy_matched,
         "trump_policy_max_bonus": 5.0,
         "trump_policy_research_ranking_only": True,
         "external_confirmation_max_bonus": 20.0,
@@ -433,10 +252,10 @@ def write_research_shortlist_outputs(
     trump_policy_json = destination / "trump_policy.json"
     summary_json = destination / "summary.json"
 
-    rows = []
-    for rank, item in enumerate(result.items, start=1):
-        row = {"rank": rank, **item.to_dict()}
-        rows.append(row)
+    rows = [
+        {"rank": rank, **item.to_dict()}
+        for rank, item in enumerate(result.items, start=1)
+    ]
     shortlist_json.write_text(
         json.dumps(rows, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -538,8 +357,6 @@ def _base_score(
     }:
         points += 10
     points += max(-10.0, min(15.0, sector_net_score / 10))
-    if source.optionable is True:
-        points += 3
     if source.price > 0 and source.average_volume > 0:
         dollar_volume = source.price * source.average_volume
         if dollar_volume >= 100_000_000:
@@ -547,63 +364,3 @@ def _base_score(
         elif dollar_volume >= 20_000_000:
             points += 3
     return round(points, 2)
-
-
-def _best_qualified_option(
-    candidates: tuple[OptionCandidate, ...],
-    rules: OptionQualityRules,
-) -> OptionCandidate | None:
-    qualified = [item for item in candidates if _option_passes(item, rules)]
-    if not qualified:
-        return None
-    return min(
-        qualified,
-        key=lambda item: (item.spread_pct, -item.open_interest, -item.volume),
-    )
-
-
-def _most_unusual_option(
-    candidates: tuple[OptionCandidate, ...],
-    rules: OptionQualityRules,
-    option_type: str,
-) -> OptionCandidate | None:
-    unusual = [
-        item
-        for item in candidates
-        if item.option_type == option_type
-        and _option_passes(item, rules)
-        and item.open_interest > 0
-        and item.volume_to_open_interest >= 1.0
-    ]
-    if not unusual:
-        return None
-    return max(
-        unusual,
-        key=lambda item: (
-            item.volume_to_open_interest,
-            item.volume,
-            item.open_interest,
-            -item.spread_pct,
-        ),
-    )
-
-
-def _flow_contract(option: OptionCandidate | None) -> str:
-    if option is None:
-        return ""
-    return f"{option.expiration} {option.option_type} {option.strike:g}"
-
-
-def _option_passes(option: OptionCandidate, rules: OptionQualityRules) -> bool:
-    return (
-        rules.min_dte <= option.dte <= rules.max_dte
-        and option.bid >= rules.min_bid
-        and option.ask >= option.bid
-        and option.spread_pct <= rules.max_spread_pct
-        and option.open_interest >= rules.min_open_interest
-        and option.volume >= rules.min_volume
-        and (
-            option.delta is None
-            or rules.min_abs_delta <= abs(option.delta) <= rules.max_abs_delta
-        )
-    )
