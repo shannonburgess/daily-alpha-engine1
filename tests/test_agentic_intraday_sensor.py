@@ -189,7 +189,7 @@ def test_standard_five_minute_bridge_maps_continuation_high_and_can_trigger():
             timeframe="5",
             phase="STANDARD_5M",
             bar_time="2026-08-21T14:05:00Z",
-            open=130.4,
+            open=130.8,
             high=131.2,
             low=130.6,
             close=131.0,
