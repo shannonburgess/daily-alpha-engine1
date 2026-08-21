@@ -29,6 +29,18 @@ def test_replay_workflow_is_staging_paper_only_and_session_gated():
     assert "aws scheduler create-" not in text
 
 
+def test_replay_workflow_has_fail_safe_trigger_from_canonical_monitor():
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "workflow_run:" in text
+    assert "- Monitor Daily Alpha paper shadows" in text
+    assert "github.event.workflow_run.head_branch == 'main'" in text
+    assert "github.event.workflow_run.conclusion == 'success'" in text
+    # Keep one executor and one concurrency boundary; the fallback is only a second trigger.
+    assert text.count("REPLAY_ARMED_SIGNALS") == 2
+    assert "group: daily-alpha-paper-armed-replay-staging" in text
+
+
 def test_replay_workflow_reconciles_every_claim_with_an_outcome_or_lease_conflict():
     text = WORKFLOW.read_text(encoding="utf-8")
 
