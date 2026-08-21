@@ -17,6 +17,7 @@ from .agentic_intraday import (
     AGENTIC_INTRADAY_PILOT_SYMBOL,
     IntradayPhase,
     IntradayPortfolioState,
+    IntradaySignalEvent,
     IntradayState,
     advance_intraday_state,
     evaluate_intraday_entry,
@@ -61,7 +62,7 @@ class IntradayAgentDecision:
     snapshot: IntradayAgentSnapshot
     signal_reasons: tuple[str, ...] = ()
     risk_reasons: tuple[str, ...] = ()
-    entry_event: object | None = None
+    entry_event: IntradaySignalEvent | None = None
     share_quantity: int = 0
     idempotent: bool = False
 
@@ -248,12 +249,21 @@ def _move_to_watch_state(
     snapshot: IntradayAgentSnapshot,
     observation: IntradayMomentumObservation,
 ) -> IntradayAgentSnapshot:
+    if not (
+        observation.daily_context_approved
+        and observation.context_15m_approved
+        and observation.sector_context_approved
+    ):
+        return snapshot
+
     phase = intraday_phase(observation.observed_at)
-    target = (
-        IntradayState.WATCHING_2M
-        if phase == IntradayPhase.OPENING_2M
-        else IntradayState.WATCHING_5M
-    )
+    if phase == IntradayPhase.OPENING_2M:
+        target = IntradayState.WATCHING_2M
+    elif phase == IntradayPhase.STANDARD_5M:
+        target = IntradayState.WATCHING_5M
+    else:
+        return snapshot
+
     working = snapshot
     if working.state == IntradayState.DISCOVERED:
         working = replace(
@@ -263,12 +273,12 @@ def _move_to_watch_state(
                 IntradayState.CONTEXT_APPROVED,
             ),
         )
-    if working.state == IntradayState.CONTEXT_APPROVED:
-        working = replace(
-            working,
-            state=advance_intraday_state(working.state, target),
-        )
-    elif working.state == IntradayState.WATCHING_2M and target == IntradayState.WATCHING_5M:
+
+    can_move_to_target = working.state == IntradayState.CONTEXT_APPROVED or (
+        working.state == IntradayState.WATCHING_2M
+        and target == IntradayState.WATCHING_5M
+    )
+    if can_move_to_target:
         working = replace(
             working,
             state=advance_intraday_state(working.state, target),
