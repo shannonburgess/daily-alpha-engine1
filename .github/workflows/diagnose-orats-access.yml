@@ -24,9 +24,10 @@ jobs:
             exit 1
           fi
 
-      - name: Test delayed strikes and intraday access without exposing token
+      - name: Test standard and live ORATS access without exposing token
         shell: python
         run: |
+          import json
           import os
           from urllib.error import HTTPError, URLError
           from urllib.parse import urlencode
@@ -40,41 +41,108 @@ jobs:
               if extra:
                   params.update(extra)
               query = urlencode(params)
-              request = Request(f"{base}/{path}?{query}", headers={"Accept": "*/*"})
+              request = Request(
+                  f"{base}/{path}?{query}",
+                  headers={"Accept": "*/*"},
+              )
+              content_type = ""
               try:
                   with urlopen(request, timeout=20) as response:
-                      body = response.read(600).decode("utf-8", errors="replace")
+                      body = response.read(4000).decode("utf-8", errors="replace")
                       status = int(response.status)
+                      content_type = str(response.headers.get("Content-Type") or "")
               except HTTPError as exc:
                   status = int(exc.code)
-                  body = exc.read(600).decode("utf-8", errors="replace")
+                  body = exc.read(1000).decode("utf-8", errors="replace")
+                  content_type = str(exc.headers.get("Content-Type") or "")
               except URLError as exc:
                   print(f"{name}: NETWORK_ERROR {type(exc.reason).__name__}")
                   return None
 
-              safe_body = body.replace(token, "***").replace("\n", " ").strip()[:300]
+              safe_body = body.replace(token, "***").replace("\n", " ").strip()
               print(f"{name}: HTTP {status}")
-              if safe_body:
-                  print(f"{name}_BODY: {safe_body}")
+              if 200 <= status < 300:
+                  row_count = None
+                  if "json" in content_type.lower() or body.lstrip().startswith(("{", "[")):
+                      try:
+                          payload = json.loads(body)
+                          if isinstance(payload, list):
+                              row_count = len(payload)
+                          elif isinstance(payload, dict):
+                              for key in ("data", "results", "rows"):
+                                  value = payload.get(key)
+                                  if isinstance(value, list):
+                                      row_count = len(value)
+                                      break
+                      except json.JSONDecodeError:
+                          pass
+                  else:
+                      lines = [line for line in body.splitlines() if line.strip()]
+                      if len(lines) > 1:
+                          row_count = len(lines) - 1
+                  if row_count is not None:
+                      print(f"{name}_ROWS: {row_count}")
+              elif safe_body:
+                  print(f"{name}_ERROR: {safe_body[:240]}")
               return status
 
           core_status = probe("CORE_DATA_API", "cores")
-          strikes_status = probe("DELAYED_STRIKES_API", "strikes", extra={"dte": "45,75"})
-          intraday_status = probe("DELAYED_INTRADAY_API", "one-minute/strikes/chain")
+          delayed_strikes_status = probe(
+              "DELAYED_STRIKES_API",
+              "strikes",
+              extra={"dte": "45,75"},
+          )
+          delayed_intraday_status = probe(
+              "DELAYED_INTRADAY_API",
+              "one-minute/strikes/chain",
+          )
+          live_strikes_status = probe(
+              "LIVE_OPRA_STRIKES_API",
+              "live/strikes",
+              extra={"dte": "45,75"},
+          )
+          live_derived_status = probe(
+              "LIVE_DERIVED_STRIKES_API",
+              "live/derived/strikes",
+              extra={"dte": "45,75"},
+          )
+          live_intraday_status = probe(
+              "LIVE_ONE_MINUTE_OPRA_API",
+              "live/one-minute/strikes/chain",
+          )
 
           print("--- DIAGNOSIS ---")
-          base_ok = core_status is not None and 200 <= core_status < 300
-          strikes_ok = strikes_status is not None and 200 <= strikes_status < 300
-          intraday_ok = intraday_status is not None and 200 <= intraday_status < 300
+          def ok(status):
+              return status is not None and 200 <= status < 300
 
-          if base_ok and strikes_ok and intraday_ok:
-              print("ORATS_ACCESS=STANDARD_AND_INTRADAY_OK")
-          elif base_ok and strikes_ok and intraday_status == 403:
-              print("ORATS_ACCESS=STANDARD_STRIKES_OK_INTRADAY_FORBIDDEN")
-              print("NEXT_ACTION=USE_STANDARD_STRIKES_FOR_DAILY_ALPHA")
-          elif base_ok and not strikes_ok:
-              print("ORATS_ACCESS=BASE_OK_STANDARD_STRIKES_BLOCKED")
-              print("NEXT_ACTION=CHECK_ORATS_DATA_API_ENTITLEMENT")
+          base_ok = ok(core_status)
+          delayed_ok = ok(delayed_strikes_status)
+          live_opra_ok = ok(live_strikes_status)
+          live_derived_ok = ok(live_derived_status)
+          live_intraday_ok = ok(live_intraday_status)
+
+          print(f"BASE_API_OK={str(base_ok).lower()}")
+          print(f"DELAYED_STRIKES_OK={str(delayed_ok).lower()}")
+          print(f"LIVE_OPRA_STRIKES_OK={str(live_opra_ok).lower()}")
+          print(f"LIVE_DERIVED_STRIKES_OK={str(live_derived_ok).lower()}")
+          print(f"LIVE_ONE_MINUTE_OPRA_OK={str(live_intraday_ok).lower()}")
+
+          if live_opra_ok:
+              print("ORATS_LIVE_ENTITLEMENT=FULL_LIVE_OPRA_STRIKES")
+              if live_intraday_ok:
+                  print("ORATS_LIVE_INTRADAY_ENTITLEMENT=LIVE_ONE_MINUTE_OPRA")
+              else:
+                  print("ORATS_LIVE_INTRADAY_ENTITLEMENT=NOT_CONFIRMED")
+              print("NEXT_ACTION=VALIDATE_FRESH_TIMESTAMP_DURING_MARKET_HOURS")
+          elif live_derived_ok:
+              print("ORATS_LIVE_ENTITLEMENT=LIVE_DERIVED_ONLY")
+              print("NEXT_ACTION=FULL_OPRA_QUOTES_VOLUME_REQUIRE_LIVE_OPRA_ENTITLEMENT")
+          elif live_strikes_status == 403:
+              print("ORATS_LIVE_ENTITLEMENT=FULL_LIVE_OPRA_FORBIDDEN")
+              print("NEXT_ACTION=VERIFY_ORATS_LIVE_SUBSCRIPTION_AND_OPRA_AGREEMENT")
+          elif base_ok and delayed_ok:
+              print("ORATS_LIVE_ENTITLEMENT=NOT_CONFIRMED_STANDARD_DATA_ONLY")
+              print("NEXT_ACTION=VERIFY_ORATS_LIVE_SUBSCRIPTION_AND_OPRA_AGREEMENT")
           elif core_status == 403:
               print("ORATS_ACCESS=BASE_API_FORBIDDEN")
               print("NEXT_ACTION=VERIFY_TOKEN_OR_ACCOUNT_API_ACCESS")
@@ -83,6 +151,11 @@ jobs:
               print("NEXT_ACTION=VERIFY_TOKEN")
           else:
               print("ORATS_ACCESS=INCONCLUSIVE")
+
+          if delayed_intraday_status == 403:
+              print("DELAYED_INTRADAY_ENTITLEMENT=FORBIDDEN")
+          elif ok(delayed_intraday_status):
+              print("DELAYED_INTRADAY_ENTITLEMENT=AVAILABLE")
 
           # Diagnostic classification only: a blocked endpoint must not fail the
           # workflow or authorize any trading decision.
