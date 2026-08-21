@@ -68,7 +68,7 @@ def _candidate(symbol: str = "NFLX") -> CandidateAssessment:
     )
 
 
-def test_snapshot_maps_observed_candidate_evidence_without_authorizing_trades() -> None:
+def test_snapshot_maps_model_evidence_without_option_expression_contamination() -> None:
     snapshot = build_candidate_factor_snapshot(
         as_of="2026-08-18T20:00:00Z",
         source=_source(),
@@ -81,7 +81,7 @@ def test_snapshot_maps_observed_candidate_evidence_without_authorizing_trades() 
     assert factors["trendability"] == 1.0
     assert factors["liquidity_capacity"] == 1.0
     assert factors["sector_industry_leadership"] == 0.5
-    assert factors["options_confirmation"] == pytest.approx(0.85)
+    assert factors["options_confirmation"] == 0.0
 
     assert snapshot.schema_version == CANDIDATE_FACTOR_SNAPSHOT_SCHEMA
     assert len(snapshot.snapshot_id) == 64
@@ -91,12 +91,18 @@ def test_snapshot_maps_observed_candidate_evidence_without_authorizing_trades() 
     assert snapshot.availability["trendability"] is True
     assert snapshot.availability["liquidity_capacity"] is True
     assert snapshot.availability["sector_industry_leadership"] is True
-    assert snapshot.availability["options_confirmation"] is True
+    assert snapshot.availability["options_confirmation"] is False
+    assert "options_confirmation" in snapshot.unavailable_factors
     assert snapshot.availability["relative_strength"] is False
     assert snapshot.availability["volatility_quality"] is False
     assert snapshot.availability["catalyst_state"] is False
     assert snapshot.availability["breadth_regime"] is False
-    assert snapshot.weighted_coverage == pytest.approx(0.8)
+    assert snapshot.weighted_coverage == pytest.approx(0.777778)
+    option_contribution = next(
+        row for row in snapshot.factor_score.contributions if row.factor == "options_confirmation"
+    )
+    assert option_contribution.weight == 0.0
+    assert option_contribution.contribution == 0.0
     assert snapshot.research_only is True
     assert snapshot.trading_authorized is False
     assert snapshot.live_trading_enabled is False
@@ -203,7 +209,7 @@ def test_snapshot_artifact_preserves_research_only_boundary(tmp_path) -> None:
     assert payload["live_trading_enabled"] is False
     assert payload["snapshots"][0]["symbol"] == "NFLX"
     assert payload["snapshots"][0]["snapshot_id"] == snapshot.snapshot_id
-    assert payload["snapshots"][0]["weighted_coverage"] == pytest.approx(0.8)
+    assert payload["snapshots"][0]["weighted_coverage"] == pytest.approx(0.777778)
 
 
 def test_snapshot_set_identity_is_order_independent(tmp_path) -> None:
