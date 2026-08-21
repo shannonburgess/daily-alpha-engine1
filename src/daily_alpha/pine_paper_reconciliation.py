@@ -1,9 +1,8 @@
-"""Reconcile Pine signal state before paper-only execution.
+"""Reconcile Pine signal state before stock-only PAPER execution.
 
 This wrapper preserves valid signals that arrive outside the regular execution
-window and makes TradingView/paper-ledger state disagreements explicit. It never
-authorizes live trading and delegates all actual paper fills to the existing
-AwsPinePaperExecutor after the reconciliation gates pass.
+window and makes TradingView/PAPER-ledger state disagreements explicit. It has no
+option-chain dependency and never authorizes live trading.
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .lifecycle_sizing import resolve_lifecycle_sizing
-from .orats import OratsError
 from .pine_paper_orchestrator import (
     AwsPinePaperExecutor,
     PinePaperExecutionError,
@@ -29,7 +27,7 @@ MAX_ARMED_AGE_DAYS = 7
 
 @dataclass(frozen=True)
 class ArmedReplayDecision:
-    """Pure revalidation result before any paper-ledger mutation."""
+    """Pure revalidation result before any PAPER-ledger mutation."""
 
     status: str
     reason: str
@@ -44,7 +42,7 @@ class ArmedReplayDecision:
 
 
 class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
-    """Add durable signal-state semantics ahead of the existing paper executor."""
+    """Add durable signal-state semantics ahead of stock-only PAPER execution."""
 
     def execute(
         self,
@@ -58,10 +56,6 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
             raise PinePaperExecutionError("PINE_ACTION_UNSUPPORTED")
         symbol = _required_text(ingress.get("symbol"), "symbol").upper()
 
-        # Runner-management events are meaningful only when the paper ledger has
-        # the corresponding position. A TradingView strategy can carry a
-        # historically simulated position that the realtime paper ledger never
-        # opened, so never manufacture an ADD/PARTIAL/EXIT in that condition.
         if action in {"ADD", "PARTIAL", "EXIT"}:
             open_trades = self.ledger.find_open(symbol)
             if not open_trades:
@@ -79,10 +73,6 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
                     },
                 )
 
-        # Preserve an otherwise eligible entry outside market hours rather than
-        # silently converting it to NO_TRADE. Safety/eligibility gates are checked
-        # before arming; all market data, risk, no-chase and instrument context must
-        # be refreshed again before a later fill.
         if action == "ENTRY_LONG" and not _regular_execution_window(timestamp):
             lifecycle = resolve_lifecycle_sizing(ingress.get("lifecycle"))
             if lifecycle is not None and not lifecycle.entry_allowed:
@@ -110,9 +100,10 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
                     "armed_at": timestamp.isoformat(),
                     "signal_id": str(ingress.get("signal_id", "")),
                     "revalidation_required": True,
-                    "refresh_orats": True,
+                    "refresh_stock_price": True,
                     "refresh_portfolio_risk": True,
                     "refresh_no_chase": True,
+                    "options_mode": "USER_DIRECTED_BROKER_CHAIN",
                 },
             )
 
@@ -130,7 +121,7 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
                     "signal_id": str(ingress.get("signal_id", "")),
                     "runner_stage": ingress.get("runner_stage"),
                     "revalidation_required": True,
-                    "refresh_instrument_quote": True,
+                    "refresh_stock_price": True,
                 },
             )
 
@@ -142,7 +133,7 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
         *,
         now: datetime | None = None,
     ) -> dict[str, Any]:
-        """Refresh price/context and replay one durably armed signal fail-closed."""
+        """Replay one durably armed stock signal using explicit current-price evidence."""
         timestamp = _aware(now or datetime.now(UTC))
         action = str(ingress.get("action", "")).upper()
         symbol = _required_text(ingress.get("symbol"), "symbol").upper()
@@ -155,7 +146,6 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
                 symbol=symbol,
                 context={"replay_attempted": False},
             )
-
         if action in {"ADD", "PARTIAL", "EXIT"} and not self.ledger.find_open(symbol):
             return _result(
                 disposition="STATE_MISMATCH",
@@ -170,34 +160,25 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
                 },
             )
 
-        try:
-            chain = self._orats().fetch_chain(symbol, as_of=timestamp)
-        except OratsError as exc:
+        raw_price = ingress.get("replay_market_price")
+        if raw_price in (None, ""):
             return _result(
                 disposition="ARMED_FOR_NEXT_TRADABLE_WINDOW",
-                reason="REPLAY_DATA_ERROR_RETRY_REQUIRED",
-                action=action,
-                symbol=symbol,
-                context={
-                    "replay_attempted": True,
-                    "data_error": str(exc),
-                    "retry_allowed": True,
-                },
-            )
-
-        price = chain.stock_price
-        if price is None or price <= 0:
-            return _result(
-                disposition="ARMED_FOR_NEXT_TRADABLE_WINDOW",
-                reason="REPLAY_UNDERLYING_PRICE_UNAVAILABLE",
+                reason="REPLAY_CURRENT_STOCK_PRICE_REQUIRED",
                 action=action,
                 symbol=symbol,
                 context={"replay_attempted": True, "retry_allowed": True},
             )
+        try:
+            price = float(raw_price)
+        except (TypeError, ValueError) as exc:
+            raise PinePaperExecutionError("REPLAY_MARKET_PRICE_INVALID") from exc
+        if price <= 0:
+            raise PinePaperExecutionError("REPLAY_MARKET_PRICE_INVALID")
 
         decision = prepare_armed_replay(
             ingress,
-            market_price=float(price),
+            market_price=price,
             now=timestamp,
         )
         if not decision.should_execute:
@@ -213,7 +194,7 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
                 symbol=symbol,
                 context={
                     "replay_attempted": True,
-                    "market_price": float(price),
+                    "market_price": price,
                     "decision": decision.to_dict(),
                 },
             )
@@ -226,7 +207,7 @@ class ReconciledAwsPinePaperExecutor(AwsPinePaperExecutor):
                 "replayed_from_armed_signal": True,
                 "origin_signal_id": str(ingress.get("signal_id", "")),
                 "origin_signal_price": ingress.get("price"),
-                "replay_market_price": float(price),
+                "replay_market_price": price,
             }
         )
         result["context"] = context
@@ -239,12 +220,7 @@ def prepare_armed_replay(
     market_price: float,
     now: datetime,
 ) -> ArmedReplayDecision:
-    """Create a fresh execution-time signal without silently weakening no-chase.
-
-    ENTRY replay requires an explicit ``replay_max_price`` produced by the signal
-    source. Legacy alerts without that execution ceiling remain armed and visible;
-    they are never filled using a guessed chase threshold.
-    """
+    """Create a fresh stock execution-time signal without weakening no-chase."""
     timestamp = _aware(now)
     if not _regular_execution_window(timestamp):
         return ArmedReplayDecision(
@@ -308,8 +284,7 @@ def prepare_armed_replay(
     fresh.update(
         {
             "signal_id": (
-                f"{origin_signal_id}-REPLAY-"
-                f"{timestamp.strftime('%Y%m%dT%H%M%S')}"
+                f"{origin_signal_id}-REPLAY-{timestamp.strftime('%Y%m%dT%H%M%S')}"
             ),
             "price": float(market_price),
             "bar_time": timestamp.isoformat(),
