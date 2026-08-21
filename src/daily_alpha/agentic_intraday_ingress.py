@@ -97,7 +97,14 @@ _EVENT_CONTRACT: dict[str, tuple[str, str]] = {
     "FLATTEN_5M_BAR": ("5M", "FLATTEN_ONLY"),
 }
 _REGULAR_PHASES = {"OPENING_2M", "STANDARD_5M", "MANAGEMENT_ONLY", "FLATTEN_ONLY"}
-_TIMEFRAME_NORMALIZATION = {"2": "2M", "2M": "2M", "5": "5M", "5M": "5M", "15": "15M", "15M": "15M"}
+_TIMEFRAME_NORMALIZATION = {
+    "2": "2M",
+    "2M": "2M",
+    "5": "5M",
+    "5M": "5M",
+    "15": "15M",
+    "15M": "15M",
+}
 
 
 def build_agentic_sensor_record(
@@ -458,7 +465,7 @@ def _required_bool(payload: dict[str, Any], field: str) -> bool:
 
 def _parse_time(value: str, *, field: str) -> datetime:
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise AgenticIntradayIngressError(f"INTRADAY_SENSOR_{field.upper()}_INVALID") from exc
     if parsed.tzinfo is None:
