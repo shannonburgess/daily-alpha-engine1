@@ -71,6 +71,23 @@ def test_agent_moves_valid_opening_setup_to_paper_entry_ready():
     assert result.snapshot.live_trading_enabled is False
 
 
+def test_final_two_minute_bar_closing_at_ten_et_remains_opening_entry():
+    result = evaluate_agent_observation(
+        IntradayAgentSnapshot(),
+        opening_observation(
+            observation_id="MU-AGENT-OPEN-1000",
+            observed_at=FIVE_MINUTE_TIME,
+        ),
+        portfolio(),
+    )
+
+    assert result.operation == IntradayAgentOperation.PAPER_ENTRY_READY
+    assert result.snapshot.state == IntradayState.RISK_APPROVED
+    assert result.snapshot.manager_timeframe == "2M"
+    assert result.entry_event is not None
+    assert result.entry_event.timeframe == "2M"
+
+
 def test_duplicate_observation_is_idempotent():
     first = evaluate_agent_observation(
         IntradayAgentSnapshot(),
