@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from daily_alpha import actionable_sector, equity_liquidity, ovtlyr, pine_ingress
+from daily_alpha import actionable_sector, agentic, equity_liquidity, ovtlyr, pine_ingress
 from daily_alpha.agentic import adapters
 from daily_alpha.agentic.contracts import EvidenceStatus
 
@@ -195,8 +195,6 @@ def test_adapter_outputs_feed_existing_foundation_supervisor_without_execution()
         adapters.sector_to_evidence(sector, observed_at=OBSERVED, received_at=NOW),
         adapters.liquidity_to_evidence(liquidity, observed_at=OBSERVED, received_at=NOW),
     )
-
-    from daily_alpha import agentic
 
     store = agentic.InMemoryEvidenceStore()
     store.put_many(records)
