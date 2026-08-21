@@ -123,9 +123,9 @@ class NewsletterRenderer:
 
     @staticmethod
     def _smart_money_section(snapshot: SmartMoneySnapshot) -> str:
-        congress = "".join(
+        congress_cards = "".join(
             NewsletterRenderer._smart_money_card(
-                eyebrow=f"Congressional Rank #{item.rank}",
+                eyebrow=f"Rank #{item.rank}",
                 symbol=item.symbol,
                 score=item.score,
                 primary=f"{item.unique_politicians} politicians · {item.purchase_count} purchases",
@@ -133,9 +133,9 @@ class NewsletterRenderer:
             )
             for item in snapshot.congressional
         )
-        institutions = "".join(
+        institution_cards = "".join(
             NewsletterRenderer._smart_money_card(
-                eyebrow=f"Institutional Rank #{item.rank}",
+                eyebrow=f"Rank #{item.rank}",
                 symbol=item.symbol or item.cusip,
                 score=item.score,
                 primary=(
@@ -146,6 +146,18 @@ class NewsletterRenderer:
             )
             for item in snapshot.institutional
         )
+        congress = (
+            '<div class="smart-money-lane"><h3>Congressional accumulation — Top 5</h3>'
+            f'<div class="card-grid">{congress_cards}</div></div>'
+            if congress_cards
+            else ""
+        )
+        institutions = (
+            '<div class="smart-money-lane"><h3>Institutional accumulation — Top 5</h3>'
+            f'<div class="card-grid">{institution_cards}</div></div>'
+            if institution_cards
+            else ""
+        )
         return (
             '<section class="report-section smart-money">'
             '<div class="section-kicker">CAPITAL POSITIONING</div>'
@@ -153,9 +165,7 @@ class NewsletterRenderer:
             '<p class="section-note">Confirmation and rotation intelligence only. '
             "Congressional disclosures may lag transaction dates; 13F holdings are "
             "quarter-end snapshots and are not trade-timing signals.</p>"
-            '<div class="card-grid">'
-            f"{congress}{institutions}"
-            "</div></section>"
+            f"{congress}{institutions}</section>"
         )
 
     @staticmethod
@@ -440,6 +450,7 @@ main {{ padding: 0 6px; }}
 .report-section {{ margin: 0 0 28px; padding: 22px; background: #ffffff; border: 1px solid #dfe4eb; box-shadow: 0 5px 16px rgba(10, 29, 58, 0.05); break-inside: auto; page-break-inside: auto; }}
 .section-note {{ margin: 0 0 14px; font-size: 10pt; color: #5d6a7c; overflow-wrap: break-word; word-break: normal; }}
 .card-grid {{ display: flex; flex-wrap: wrap; gap: 12px; }}
+.smart-money-lane + .smart-money-lane {{ margin-top: 22px; }}
 .mini-card, .flow-card {{ flex: 1 1 260px; min-width: 0; padding: 15px; background: #f8f9fb; border: 1px solid #dfe4eb; border-top: 3px solid #caa85e; break-inside: avoid-page; page-break-inside: avoid; }}
 .mini-eyebrow {{ font-size: 9pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #7a6740; }}
 .mini-title {{ margin-top: 4px; font: 700 17pt/1.1 Georgia, 'Times New Roman', serif; color: #13294b; }}
