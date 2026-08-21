@@ -15,7 +15,7 @@ from daily_alpha.smart_money import (
 from daily_alpha.staging_reporting import AwsStagingReportPublisher
 
 
-def candidate(symbol, disposition, instrument=InstrumentSelected.NONE):
+def candidate(symbol, disposition, instrument=InstrumentSelected.STOCK):
     return ResearchCandidate(
         symbol=symbol,
         disposition=disposition,
@@ -31,6 +31,7 @@ def candidate(symbol, disposition, instrument=InstrumentSelected.NONE):
         option_contract="AAPL 2026-10-16 250C"
         if instrument == InstrumentSelected.OPTION
         else None,
+        user_directed_option=instrument == InstrumentSelected.OPTION,
     )
 
 
@@ -77,9 +78,7 @@ def packet(*, include_smart_money=False):
         "2026-08-17T12:35:00+00:00",
         "RISK_ON",
         (
-            candidate(
-                "AAPL", ResearchDisposition.PAPER_CANDIDATE, InstrumentSelected.OPTION
-            ),
+            candidate("AAPL", ResearchDisposition.PAPER_CANDIDATE),
             candidate("MSFT", ResearchDisposition.WATCHLIST),
             candidate("TSLA", ResearchDisposition.NO_TRADE),
         ),
@@ -87,23 +86,23 @@ def packet(*, include_smart_money=False):
     )
 
 
-def test_renderer_includes_all_candidates_sections_and_disclosures():
+def test_renderer_includes_all_candidate_sections_and_disclosures():
     result = NewsletterRenderer().render(packet())
     assert result.candidate_count == 3
     assert result.sections == (
-        "UNUSUAL_OPTIONS_ACTIVITY",
         "PAPER_CANDIDATE",
         "WATCHLIST",
         "NO_TRADE",
     )
     assert all(symbol in result.html for symbol in ("AAPL", "MSFT", "TSLA"))
     assert "No live order execution is authorized." in result.html
+    assert "Options are user-directed" in result.html
     assert result.quality_passed is True
 
 
 def test_renderer_includes_smart_money_confirmation_section():
     result = NewsletterRenderer().render(packet(include_smart_money=True))
-    assert result.sections[:2] == ("SMART_MONEY", "UNUSUAL_OPTIONS_ACTIVITY")
+    assert result.sections[0] == "SMART_MONEY"
     assert "Smart Money Accumulation" in result.html
     assert "Congressional accumulation" in result.html
     assert "Institutional accumulation" in result.html
@@ -113,24 +112,11 @@ def test_renderer_includes_smart_money_confirmation_section():
     assert result.quality_passed is True
 
 
-def test_renderer_reports_unusual_options_and_flow_evidence():
-    unusual = ResearchCandidate(
-        symbol="AAPL",
-        disposition=ResearchDisposition.WATCHLIST,
-        instrument=InstrumentSelected.OPTION,
-        signal_label="ENTRY_WATCH",
-        thesis="Research confirmation only.",
-        reasons=("ORATS_FLOW",),
-        risk_status="WATCH",
-        data_status="PASS",
-        sector="Information Technology",
-        option_contract="2026-10-16 CALL 250",
-        flow_classification="UNUSUAL_CONFIRMATION",
-        option_volume=1200,
-        option_open_interest=600,
-        option_volume_oi_ratio=2.0,
-        option_bid=4.8,
-        option_ask=5.0,
+def test_renderer_only_shows_options_for_explicit_user_directed_contract():
+    explicit = candidate(
+        "AAPL",
+        ResearchDisposition.WATCHLIST,
+        InstrumentSelected.OPTION,
     )
     base = packet()
     result = NewsletterRenderer().render(
@@ -140,18 +126,14 @@ def test_renderer_reports_unusual_options_and_flow_evidence():
             base.methodology_version,
             base.generated_at,
             base.market_regime,
-            (unusual,),
+            (explicit,),
         )
     )
-    assert "Unusual Options Activity" in result.html
-    assert "1,200" in result.html
-    assert "2.00x" in result.html
-    assert "4.80 / 5.00" in result.html
-
-
-def test_renderer_explicitly_reports_unavailable_flow_data():
-    result = NewsletterRenderer().render(packet())
-    assert "ORATS flow data unavailable" in result.html
+    assert result.sections[0] == "USER_DIRECTED_OPTIONS"
+    assert "Explicitly Authorized Option Orders" in result.html
+    assert "broker-chain" in result.html.lower()
+    assert "AAPL 2026-10-16 250C" in result.html
+    assert "unusual options" not in result.html.lower()
 
 
 def test_renderer_escapes_untrusted_candidate_text():
@@ -212,20 +194,20 @@ class _FakeDynamo:
         return {
             "Items": [
                 {
-                    "pk": {"S": "ACCOUNT#paper-unit#POSITION#OPTION#AAPL"},
+                    "pk": {"S": "ACCOUNT#paper-unit#POSITION#STOCK#AAPL"},
                     "sk": {"S": "OPEN"},
                     "signal_id": {"S": "sig-entry"},
                     "symbol": {"S": "AAPL"},
-                    "instrument": {"S": "OPTION"},
+                    "instrument": {"S": "STOCK"},
                     "state": {"S": "OPEN"},
-                    "trade_json": {"S": '{"quantity":2,"entry_price":2.2}'},
+                    "trade_json": {"S": '{"quantity":20,"entry_price":220.0}'},
                 },
                 {
                     "pk": {"S": "ACCOUNT#paper-unit#PINE_EVENT#sig-entry"},
                     "sk": {"S": "RECEIVED"},
                     "action": {"S": "ENTRY_LONG"},
                     "disposition": {"S": "EXECUTED_PAPER"},
-                    "reason": {"S": "PAPER_POSITION_OPENED"},
+                    "reason": {"S": "PAPER_STOCK_POSITION_OPENED"},
                 },
             ]
         }
@@ -241,11 +223,7 @@ def _seed_staging_s3(client):
         "classification_reason": "Leadership and momentum remain strong.",
         "score": 92.5,
         "sector": "Technology",
-        "orats_status": "ENRICHED",
-        "orats_reason": "QUALIFIED_OPTION_FOUND",
-        "selected_expiration": "2026-10-16",
-        "selected_strike": 250.0,
-        "selected_option_type": "CALL",
+        "options_mode": "USER_DIRECTED_BROKER_CHAIN",
         "smart_money_bonus": 5.0,
         "trump_policy_bonus": 0.0
       },
@@ -254,19 +232,15 @@ def _seed_staging_s3(client):
         "symbol": "XYZ",
         "ovtlyr_status": "ENTRY_WATCH",
         "display_label": "ENTRY WATCH",
-        "classification_reason": "Required ORATS data did not pass validation.",
+        "classification_reason": "Stock setup remains under observation.",
         "score": 70.0,
         "sector": "Industrials",
-        "orats_status": "DATA_ERROR",
-        "orats_reason": "ORATS_DATA_STALE",
-        "selected_expiration": "",
-        "selected_strike": 0.0,
-        "selected_option_type": "",
+        "options_mode": "USER_DIRECTED_BROKER_CHAIN",
         "smart_money_bonus": 0.0,
         "trump_policy_bonus": 0.0
       }
     ]'''
-    client.objects["ovtlyr/shortlist/latest/summary.json"] = b'{"qualified_option_count":1}'
+    client.objects["ovtlyr/shortlist/latest/summary.json"] = b'{"options_mode":"USER_DIRECTED_BROKER_CHAIN"}'
     client.objects["ovtlyr/shortlist/latest/sector_rotation.json"] = b'''[
       {"sector":"Technology","new_buys":3,"leaders":5,"net_score":8},
       {"sector":"Industrials","new_buys":1,"leaders":2,"net_score":3}
@@ -305,6 +279,7 @@ def test_staging_publisher_writes_newsletter_csvs_and_manifest():
     assert result["manifest"]["research_candidate_count"] == 2
     assert result["manifest"]["open_paper_position_count"] == 1
     assert result["manifest"]["newsletter_quality_passed"] is True
+    assert result["manifest"]["options_mode"] == "USER_DIRECTED_BROKER_CHAIN"
     assert result["live_trading_enabled"] is False
 
     latest = "daily-alpha/outputs/latest/"
@@ -324,13 +299,7 @@ def test_staging_publisher_writes_newsletter_csvs_and_manifest():
     assert "Re-entry (1)" in html
     assert "Deteriorating (1)" in html
     assert "Removed (1)" in html
-    assert "META" in html
-    assert "NVDA" in html
-    assert "MSFT" in html
-    assert "AMZN" in html
-    assert "TSLA" in html
-    assert "Data Error" in html
-    assert "ACCOUNT#paper-unit#POSITION#OPTION#AAPL" in ledger_csv
+    assert "ACCOUNT#paper-unit#POSITION#STOCK#AAPL" in ledger_csv
     assert "Technology" in sector_csv
     assert '"session": "MORNING"' in manifest
     assert '"live_trading_enabled": false' in manifest
