@@ -425,30 +425,30 @@ h2 {{ margin: 2px 0 10px; font: 700 18pt/1.15 Georgia, 'Times New Roman', serif;
 h3 {{ margin: 18px 0 9px; font-size: 12.5pt; color: #13294b; }}
 p {{ margin-top: 0; }}
 main {{ padding: 0 6px; }}
-.brand-kicker {{ font-size: 8.8pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #d8bd7a; }}
+.brand-kicker {{ font-size: 9pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #d8bd7a; }}
 .brand-line {{ margin-top: 8px; font-size: 10.5pt; color: #dce3ef; }}
 .company-line {{ margin-top: 2px; font-size: 9.5pt; color: #aebbd0; }}
 .meta {{ margin-top: 11px; font-size: 9.7pt; color: #c5cfdd; overflow-wrap: break-word; word-break: normal; }}
 .executive-dashboard {{ margin-top: 22px; padding: 18px; background: #ffffff; color: #172033; border: 1px solid #d8dde6; border-top: 4px solid #caa85e; box-shadow: 0 8px 22px rgba(3, 15, 39, 0.10); }}
-.dashboard-eyebrow, .section-kicker {{ font-size: 8.5pt; font-weight: 800; letter-spacing: 0.13em; color: #967326; text-transform: uppercase; }}
+.dashboard-eyebrow, .section-kicker {{ font-size: 9pt; font-weight: 800; letter-spacing: 0.13em; color: #967326; text-transform: uppercase; }}
 .dashboard-headline {{ margin-top: 3px; font: 700 18pt/1.15 Georgia, 'Times New Roman', serif; color: #0b1733; }}
 .dashboard-focus {{ margin: 7px 0 13px; font-size: 10.5pt; color: #4a586c; overflow-wrap: break-word; word-break: normal; }}
 .metric-table, .candidate-metrics {{ width: 100%; border-collapse: separate; border-spacing: 8px; table-layout: fixed; }}
 .metric-table td {{ width: 50%; padding: 11px 12px; background: #f3f5f8; border: 1px solid #e0e5ec; vertical-align: top; }}
-.metric-label {{ display: block; margin-bottom: 3px; font-size: 8.3pt; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #69778a; }}
+.metric-label {{ display: block; margin-bottom: 3px; font-size: 9pt; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #69778a; }}
 .metric-value {{ display: block; font-size: 12pt; font-weight: 800; color: #13294b; overflow-wrap: break-word; word-break: normal; }}
 .report-section {{ margin: 0 0 28px; padding: 22px; background: #ffffff; border: 1px solid #dfe4eb; box-shadow: 0 5px 16px rgba(10, 29, 58, 0.05); break-inside: auto; page-break-inside: auto; }}
 .section-note {{ margin: 0 0 14px; font-size: 10pt; color: #5d6a7c; overflow-wrap: break-word; word-break: normal; }}
 .card-grid {{ display: flex; flex-wrap: wrap; gap: 12px; }}
 .mini-card, .flow-card {{ flex: 1 1 260px; min-width: 0; padding: 15px; background: #f8f9fb; border: 1px solid #dfe4eb; border-top: 3px solid #caa85e; break-inside: avoid-page; page-break-inside: avoid; }}
-.mini-eyebrow {{ font-size: 8.2pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #7a6740; }}
+.mini-eyebrow {{ font-size: 9pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #7a6740; }}
 .mini-title {{ margin-top: 4px; font: 700 17pt/1.1 Georgia, 'Times New Roman', serif; color: #13294b; }}
 .mini-score {{ margin-top: 4px; font-size: 9.5pt; font-weight: 700; color: #967326; }}
 .mini-primary {{ margin-top: 10px; font-size: 10pt; color: #27364b; overflow-wrap: break-word; word-break: normal; }}
 .mini-secondary {{ margin-top: 4px; font-size: 9pt; color: #6a7686; overflow-wrap: break-word; word-break: normal; }}
 .flow-group + .flow-group {{ margin-top: 22px; }}
 .flow-card-top, .candidate-topline {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; }}
-.symbol-chip, .signal-chip, .side-chip, .risk-chip {{ display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 8.5pt; font-weight: 800; letter-spacing: 0.03em; vertical-align: middle; overflow-wrap: normal; word-break: normal; }}
+.symbol-chip, .signal-chip, .side-chip, .risk-chip {{ display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 9pt; font-weight: 800; letter-spacing: 0.03em; vertical-align: middle; overflow-wrap: normal; word-break: normal; }}
 .symbol-chip {{ background: #13294b; color: #ffffff; }}
 .signal-chip {{ margin-left: 5px; background: #eee6d4; color: #765b1e; }}
 .side-chip {{ background: #e8edf5; color: #273b5c; }}
@@ -458,8 +458,8 @@ main {{ padding: 0 6px; }}
 .flow-stats span {{ flex: 1 1 105px; min-width: 0; padding: 8px; background: #ffffff; border: 1px solid #e4e8ee; }}
 .flow-stats b, .flow-stats small {{ display: block; }}
 .flow-stats b {{ font-size: 10pt; color: #13294b; overflow-wrap: break-word; word-break: normal; }}
-.flow-stats small {{ margin-top: 2px; font-size: 8pt; color: #748093; }}
-.flow-classification {{ margin-top: 9px; font-size: 8.5pt; font-weight: 700; color: #765b1e; overflow-wrap: break-word; word-break: normal; }}
+.flow-stats small {{ margin-top: 2px; font-size: 9pt; color: #748093; }}
+.flow-classification {{ margin-top: 9px; font-size: 9pt; font-weight: 700; color: #765b1e; overflow-wrap: break-word; word-break: normal; }}
 .data-warning {{ padding: 13px 15px; background: #fff8e8; border: 1px solid #ecdcae; font-size: 10pt; color: #66501d; overflow-wrap: break-word; word-break: normal; }}
 .candidate-stack {{ display: block; }}
 .candidate-card {{ margin: 0 0 14px; padding: 17px 18px; background: #fbfcfd; border: 1px solid #dce2ea; border-left: 4px solid #13294b; break-inside: avoid-page; page-break-inside: avoid; }}
@@ -473,7 +473,7 @@ main {{ padding: 0 6px; }}
 .candidate-metrics td {{ width: 50%; padding: 8px 10px; background: #f2f4f7; border-right: 6px solid #fbfcfd; vertical-align: top; }}
 .candidate-metrics td:last-child {{ border-right: 0; }}
 .candidate-metrics span, .candidate-metrics strong {{ display: block; }}
-.candidate-metrics span {{ font-size: 8pt; text-transform: uppercase; letter-spacing: 0.06em; color: #788496; }}
+.candidate-metrics span {{ font-size: 9pt; text-transform: uppercase; letter-spacing: 0.06em; color: #788496; }}
 .candidate-metrics strong {{ margin-top: 2px; font-size: 9.2pt; color: #26374e; overflow-wrap: break-word; word-break: normal; }}
 .classification-overview {{ border-top: 4px solid #caa85e; }}
 .classification-group {{ margin-top: 18px; break-inside: auto; page-break-inside: auto; }}
@@ -484,9 +484,9 @@ tr {{ break-inside: avoid; page-break-inside: avoid; }}
 th, td {{ padding: 8px 9px; text-align: left; vertical-align: top; overflow-wrap: break-word; word-break: normal; hyphens: auto; }}
 th {{ background: #13294b; color: #ffffff; border: 1px solid #13294b; font-size: 9pt; letter-spacing: 0.02em; }}
 td {{ background: #ffffff; border: 1px solid #dce2ea; font-size: 10.5pt; color: #26374e; }}
-th:first-child, td:first-child {{ width: 15%; }}
-th:nth-child(2), td:nth-child(2) {{ width: 23%; }}
-th:nth-child(3), td:nth-child(3) {{ width: 62%; }}
+.classification-overview th:first-child, .classification-overview td:first-child {{ width: 15%; }}
+.classification-overview th:nth-child(2), .classification-overview td:nth-child(2) {{ width: 23%; }}
+.classification-overview th:nth-child(3), .classification-overview td:nth-child(3) {{ width: 62%; }}
 small {{ font-size: 9pt; color: #607084; }}
 .empty-state {{ text-align: center; padding: 32px; }}
 footer {{ margin: 28px 6px 0; padding: 16px 4px 4px; border-top: 1px solid #cfd6df; font-size: 9pt; color: #667488; }}
@@ -525,10 +525,8 @@ footer li {{ margin-bottom: 4px; overflow-wrap: break-word; word-break: normal; 
         warnings: list[str] = []
         if "height:" in html or "max-height:" in html:
             warnings.append("FIXED_HEIGHT_LAYOUT_DETECTED")
-        if "font-size: 8" in html or "font-size: 7" in html:
-            # 8.x point micro-labels are permitted; literal 8pt/7pt body declarations are not.
-            if "font-size: 8pt" in html or "font-size: 7pt" in html:
-                warnings.append("TEXT_TOO_SMALL")
+        if any(token in html for token in ("font-size: 7pt", "font-size: 7.5pt", "font-size: 8pt")):
+            warnings.append("TEXT_TOO_SMALL")
         if "overflow-wrap: anywhere" in html or "word-break: break-all" in html:
             warnings.append("AGGRESSIVE_WORD_BREAKING_DETECTED")
         if "table-layout: auto" in html:
