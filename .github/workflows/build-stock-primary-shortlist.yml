@@ -54,7 +54,6 @@ jobs:
     timeout-minutes: 25
     env:
       OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
-      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
       STOCKDATA_API_KEY: ${{ secrets.STOCKDATA_API_KEY }}
       STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
       REPORT_SESSION: ${{ needs.gate.outputs.session }}
@@ -70,12 +69,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$ORATS_TOKEN" ]]; then
-            echo "ORATS unavailable: continuing with the stock shortlist; option research will be marked unavailable."
-          fi
           if [[ -z "$STOCKDATA_API_KEY" ]]; then
             echo "StockData unavailable: continuing with the stock shortlist; smart-money research will be omitted."
           fi
+          echo "Options are user-directed and broker-chain sourced; no automated option-chain vendor is required."
 
       - name: Install shortlist tools
         run: python -m pip install --disable-pip-version-check . gdown==5.2.0
@@ -98,7 +95,6 @@ jobs:
               CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
               prepare_actionable_liquidity_inputs,
           )
-          from daily_alpha.orats import OratsClient
           from daily_alpha.research_shortlist import (
               discover_daily_pair,
               write_research_shortlist_outputs,
@@ -107,7 +103,6 @@ jobs:
               rank_congressional_acquisitions,
               rank_institutional_acquisitions,
           )
-          from daily_alpha.sources import OratsBatchSource
           from daily_alpha.stock_primary_shortlist import build_stock_primary_shortlist
           from daily_alpha.stockdata_smart_money import StockDataSmartMoneyClient
           from daily_alpha.trump_policy import rank_trump_policy_companies
@@ -186,28 +181,10 @@ jobs:
                   + white_house_status
               )
 
-          token = os.environ.get("ORATS_TOKEN", "").strip()
-          orats_source = None
-          if token:
-              try:
-                  # Research may legitimately use Friday's close on Monday premarket.
-                  # The builder guarantees this enrichment cannot change stock
-                  # eligibility or stock score.
-                  orats_source = OratsBatchSource(
-                      OratsClient(mode="delayed", max_age_minutes=72 * 60)
-                  )
-              except Exception as exc:
-                  print(
-                      "ORATS research client unavailable; continuing stock shortlist: "
-                      f"DATA_ERROR:{type(exc).__name__}"
-                  )
-
           result = build_stock_primary_shortlist(
               previous,
               current,
               as_of=now,
-              orats_source=orats_source,
-              request_limit=20,
               congressional=congressional,
               institutional=institutional,
               trump_policy=policy_watch,
@@ -223,8 +200,7 @@ jobs:
                   "etf_separate_liquidity_count": liquidity.etf_count,
                   "liquidity_evidence_file": "company_liquidity_eligibility.json",
                   "new_paper_entries": "STOCK_ONLY",
-                  "orats_research_only": True,
-                  "orats_can_block_stock_entry": False,
+                  "options_mode": "USER_DIRECTED_BROKER_CHAIN",
                   "stockdata_research_status": stockdata_status,
                   "white_house_research_status": white_house_status,
               }
@@ -244,16 +220,8 @@ jobs:
               f"preserved {summary['etf_separate_liquidity_count']} ETFs on separate rules."
           )
           print(
-              "ORATS research only: "
-              f"requests={summary['orats_requests']}, "
-              f"non-optionable retained={summary['research_non_optionable_count']}, "
-              f"no-45-75-DTE retained={summary['research_orats_no_45_75_dte_count']}, "
-              f"data_errors retained={summary['orats_data_error_count']}, "
-              f"qualified research options={summary['qualified_option_count']}."
-          )
-          print(
               f"External research: StockData={stockdata_status}; "
-              f"WhiteHouse={white_house_status}."
+              f"WhiteHouse={white_house_status}; options=USER_DIRECTED_BROKER_CHAIN."
           )
           print("Top stock-primary candidates:")
           for rank, item in enumerate(result.items[:10], start=1):
@@ -266,14 +234,13 @@ jobs:
               print(
                   f"{rank:02d} {item.symbol} {item.display_label} "
                   f"stock_score={item.score:.2f}{confirmation} "
-                  f"avg_vol={item.average_volume:.0f} ORATS={item.orats_reason}"
+                  f"avg_vol={item.average_volume:.0f}"
               )
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"previous_file={result.previous_file}\n")
               handle.write(f"current_file={result.current_file}\n")
               handle.write(f"ranked_count={summary['actionable_ranked_count']}\n")
-              handle.write(f"qualified_count={summary['qualified_option_count']}\n")
               handle.write(
                   f"liquidity_filtered_count={summary['excluded_liquidity_filtered']}\n"
               )
@@ -285,12 +252,6 @@ jobs:
               )
               handle.write(
                   f"etf_separate_count={summary['etf_separate_liquidity_count']}\n"
-              )
-              handle.write(
-                  f"orats_no_dte_research_count={summary['research_orats_no_45_75_dte_count']}\n"
-              )
-              handle.write(
-                  f"orats_error_research_count={summary['orats_data_error_count']}\n"
               )
               handle.write(
                   f"smart_money_matches={summary['smart_money_matched_candidates']}\n"
@@ -384,10 +345,7 @@ jobs:
             echo "- Missing company-volume evidence: ${{ steps.shortlist.outputs.liquidity_missing_count }}"
             echo "- Sub-$10 companies filtered: ${{ steps.shortlist.outputs.price_filtered_count }}"
             echo "- ETFs preserved on separate liquidity/capacity rules: ${{ steps.shortlist.outputs.etf_separate_count }}"
-            echo "- ORATS no-45-75-DTE names retained for stock: ${{ steps.shortlist.outputs.orats_no_dte_research_count }}"
-            echo "- ORATS data-error names retained for stock: ${{ steps.shortlist.outputs.orats_error_research_count }}"
-            echo "- Qualified option setups: ${{ steps.shortlist.outputs.qualified_count }} (research only)"
-            echo "- ORATS/options cannot change stock eligibility or stock score."
+            echo "- Options: user-directed only; contract data comes from the broker chain when explicitly requested."
             echo "- StockData research: ${{ steps.shortlist.outputs.stockdata_status }}"
             echo "- White House policy research: ${{ steps.shortlist.outputs.white_house_status }}"
             echo "- External research-source failure cannot remove an otherwise eligible stock."
