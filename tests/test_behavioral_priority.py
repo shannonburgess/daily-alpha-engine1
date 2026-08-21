@@ -33,6 +33,17 @@ def _gates(**overrides):
     return tuple(CoreGateEvidence(gate=gate, state=states[gate]) for gate in CoreExecutionGate)
 
 
+def test_stock_primary_core_gate_contract_excludes_orats():
+    assert "ORATS" not in {gate.value for gate in CoreExecutionGate}
+    assert {gate.value for gate in CoreExecutionGate} == {
+        "PINE",
+        "EARNINGS",
+        "LIQUIDITY",
+        "CONCENTRATION",
+        "PORTFOLIO_RISK",
+    }
+
+
 def test_priority_overlay_is_bounded_and_research_only():
     result = apply_behavioral_research_priority(
         ticker="nvda",
@@ -65,22 +76,17 @@ def test_priority_overlay_cannot_turn_failed_core_gates_into_execution_permissio
         requested_adjustment=4.0,
         max_abs_adjustment=5.0,
         factors=_factors(),
-        core_gates=_gates(
-            LIQUIDITY=CoreGateState.BLOCKED,
-            ORATS=CoreGateState.SOURCE_UNAVAILABLE,
-        ),
+        core_gates=_gates(LIQUIDITY=CoreGateState.BLOCKED),
     )
 
     assert result.research_priority == 64.0
-    assert result.blocking_core_gates == ("ORATS", "LIQUIDITY")
+    assert result.blocking_core_gates == ("LIQUIDITY",)
     assert result.core_execution_gates_all_pass is False
     assert result.execution_gate_override is False
     assert result.trading_authorized is False
     assert result.live_trading_enabled is False
     liquidity = next(row for row in result.core_gates if row.gate == CoreExecutionGate.LIQUIDITY)
-    orats = next(row for row in result.core_gates if row.gate == CoreExecutionGate.ORATS)
     assert liquidity.state == CoreGateState.BLOCKED
-    assert orats.state == CoreGateState.SOURCE_UNAVAILABLE
 
 
 def test_unavailable_composite_score_cannot_adjust_research_priority():
