@@ -154,7 +154,7 @@ def test_parser_fails_closed_on_identity_live_and_phase_mismatches():
         parse_intraday_sensor_payload(sensor_payload(instrument="OPTION"))
     with pytest.raises(IntradaySensorError, match="INTRADAY_SENSOR_LIVE_TRADING_FORBIDDEN"):
         parse_intraday_sensor_payload(sensor_payload(live_trading_enabled=True))
-    with pytest.raises(IntradaySensorError, match="INTRADAY_SENSOR_EVENT_PHASE_MISMATCH"):
+    with pytest.raises(IntradaySensorError, match="INTRADAY_SENSOR_PHASE_TIMESTAMP_MISMATCH"):
         parse_intraday_sensor_payload(sensor_payload(phase="STANDARD_5M"))
 
 
