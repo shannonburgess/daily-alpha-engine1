@@ -152,7 +152,7 @@ _ALLOWED_TRANSITIONS: dict[IntradayState, frozenset[IntradayState]] = {
 
 
 def intraday_phase(value: datetime) -> IntradayPhase:
-    """Return the authoritative U.S. regular-session phase for an aware timestamp."""
+    """Return the authoritative wall-clock phase for an aware timestamp."""
     if value.tzinfo is None:
         raise ValueError("INTRADAY_TIMESTAMP_MUST_BE_TIMEZONE_AWARE")
     local = value.astimezone(NEW_YORK)
@@ -168,6 +168,33 @@ def intraday_phase(value: datetime) -> IntradayPhase:
     if time(15, 50) <= clock < time(16, 0):
         return IntradayPhase.FLATTEN_ONLY
     return IntradayPhase.CLOSED
+
+
+def intraday_bar_phase(value: datetime, timeframe: str) -> IntradayPhase:
+    """Return the phase owned by a confirmed bar that closes at ``value``.
+
+    The wall clock switches managers exactly at 10:00 ET, but the 09:58-10:00
+    two-minute bar still belongs to OPENING_2M. The same close-boundary rule applies
+    to the 5-minute bars ending at 15:30, 15:50 and 16:00 ET. This keeps confirmed
+    bar ownership deterministic without delaying the controller clock handoff.
+    """
+    phase = intraday_phase(value)
+    if value.tzinfo is None:
+        raise ValueError("INTRADAY_TIMESTAMP_MUST_BE_TIMEZONE_AWARE")
+    local = value.astimezone(NEW_YORK)
+    if local.weekday() >= 5:
+        return IntradayPhase.CLOSED
+    clock = local.time().replace(tzinfo=None)
+    normalized = timeframe.strip().upper()
+    if normalized == "2M" and clock == time(10, 0):
+        return IntradayPhase.OPENING_2M
+    if normalized == "5M" and clock == time(15, 30):
+        return IntradayPhase.STANDARD_5M
+    if normalized == "5M" and clock == time(15, 50):
+        return IntradayPhase.MANAGEMENT_ONLY
+    if normalized == "5M" and clock == time(16, 0):
+        return IntradayPhase.FLATTEN_ONLY
+    return phase
 
 
 def required_entry_timeframe(phase: IntradayPhase) -> str | None:
@@ -241,7 +268,7 @@ def evaluate_intraday_entry(
         raise ValueError("INTRADAY_ENTRY_DECISION_REQUIRES_ENTRY_LONG")
 
     rules = policy or IntradayRiskPolicy()
-    phase = intraday_phase(event.observed_at)
+    phase = intraday_bar_phase(event.observed_at, event.timeframe)
     required = required_entry_timeframe(phase)
     reasons: list[str] = []
 
