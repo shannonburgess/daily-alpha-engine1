@@ -8,6 +8,7 @@ from daily_alpha.reconciled_receipt_executor import (
 
 NOW = datetime(2026, 8, 20, 19, 55, tzinfo=UTC)
 AFTER_CLOSE = datetime(2026, 8, 20, 20, 5, tzinfo=UTC)
+REPLAY_TIME = datetime(2026, 8, 21, 14, 5, tzinfo=UTC)
 
 
 class ExplodingSecrets:
@@ -39,6 +40,7 @@ def ingress(action="ENTRY_LONG", **overrides):
         "runner_stage": None,
         "stock_stop_price": 100.0,
         "average_daily_dollar_volume": 75_000_000.0,
+        "replay_max_price": 115.0,
         "trading_authorized": False,
         "paper_execution_triggered": False,
         "live_trading_enabled": False,
@@ -106,19 +108,30 @@ def test_stock_entry_requires_valid_long_stop(tmp_path):
     assert service.ledger.find_open("AAPL") == []
 
 
-def test_confirmed_close_signal_after_regular_session_uses_model_fill(tmp_path):
+def test_after_hours_signal_stays_armed_then_replays_as_stock_without_orats(tmp_path):
     service = executor(tmp_path)
+    signal = ingress()
 
-    result = service.execute(ingress(), now=AFTER_CLOSE)
+    armed = service.execute(signal, now=AFTER_CLOSE)
 
-    assert result["disposition"] == "EXECUTED_PAPER"
+    assert armed["disposition"] == "ARMED_FOR_NEXT_TRADABLE_WINDOW"
+    assert armed["paper_execution_triggered"] is False
+    assert armed["context"]["orats_required_for_new_entry"] is False
+    assert armed["context"]["model_validation_fill_price"] == 110.0
+    assert service.ledger.find_open("AAPL") == []
+
+    replayed = service.replay_armed(signal, now=REPLAY_TIME)
+
+    assert replayed["disposition"] == "EXECUTED_PAPER"
     trade = service.ledger.find_open("AAPL")[0]
     assert trade.instrument.value == "STOCK"
     assert trade.entry_price == 110.0
-    assert result["context"]["signal_fill_price"] == 110.0
-    assert result["context"]["fill_model"] == (
+    assert replayed["context"]["model_validation_fill_price"] == 110.0
+    assert replayed["context"]["fill_model"] == (
         "CONFIRMED_SIGNAL_PRICE_PROCESS_ORDERS_ON_CLOSE"
     )
+    assert replayed["execution_receipt"]["instrument"] == "STOCK"
+    assert replayed["execution_receipt"]["fill_price"] == 110.0
 
 
 def test_stock_runner_add_and_exit_do_not_require_orats(tmp_path):
