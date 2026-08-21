@@ -1,3 +1,5 @@
+# ruff: noqa: I001
+
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
