@@ -1,55 +1,64 @@
 # Daily Alpha Agentic Intraday V1 — MU TradingView Sensor
 
-This directory contains the **separate MU-only TradingView sensor layer** for issue #257. It is isolated from the frozen SH24/SH25 swing scripts and must never be substituted into those alerts.
+The canonical Stage-5 TradingView source is:
 
-## Files
+- `tradingview/da_agentic_intraday_mu_v1_sensor.pine`
 
-- `mu_agentic_15m_context_v1.pine` — 15-minute context sensor during the U.S. regular session.
-- `mu_agentic_2m_opening_v1.pine` — 2-minute opening sensor. Builds the 09:30-09:36 ET opening range and emits confirmed bars from 09:36-10:00 ET.
-- `mu_agentic_5m_continuation_v1.pine` — 5-minute continuation sensor from 10:00-15:30 ET.
+It is a **single MU-only indicator** that runs on separate 15M, 2M and 5M MU charts and emits raw point-in-time telemetry to the future Agentic Intraday ingress. It is isolated from the frozen SH24/SH25 swing scripts and must never be substituted into those alerts.
 
-All three scripts are indicators, not strategies. They contain no `strategy.entry`, `strategy.close`, broker route, options route, SH24/SH25 mutation, or live-trading authorization.
+## Why one sensor source
 
-## V1 sensor contract
+One raw sensor source avoids competing Pine implementations while preserving timeframe-specific behavior:
 
-The Pine layer emits **point-in-time market observations only**. The server remains authoritative for:
+- **15M** — regular-session context telemetry only;
+- **2M** — telemetry only during 09:30-10:00 ET;
+- **5M** — takes over at 10:00 ET, continues through 15:30 ET entries, 15:30-15:50 management-only telemetry, and 15:50-16:00 flatten telemetry.
 
-- Daily Alpha daily-context approval;
-- persistence of the most recent valid 15M context state;
-- sector-context reconciliation;
+The Pine source intentionally does **not** freeze an opening-range or continuation-breakout definition. Instead it emits the raw prior-high/low/session evidence needed by the backend so Stage 2 remains the sole deterministic signal authority.
+
+## Raw telemetry
+
+Confirmed-bar payloads include:
+
+- OHLCV;
+- VWAP;
+- EMA9 / EMA20;
+- same-timeframe relative volume;
+- prior-completed-day 30D average daily share volume;
+- MU relative strength versus QQQ and SMH;
+- prior session high/low context;
+- session bar count;
+- prior 3/5/10-bar highs and prior 3/5-bar lows;
+- authoritative session phase and timeframe;
+- stable event identity.
+
+Every payload is hard-bound to `MU`, `STOCK`, and `PAPER_AGENTIC_INTRADAY_V1`, with `sensor_only=true`, `paper_only=true`, `trading_authorized=false`, and `live_trading_enabled=false`.
+
+## Server authority
+
+The sensor never decides whether a trade is allowed. The backend remains authoritative for:
+
+- Daily Alpha / OVTLYR daily context;
+- latest valid 15M context persistence;
+- sector-context admission;
 - scheduled macro blackout state;
 - earnings/event-risk state;
-- canonical company liquidity verification;
-- portfolio/account state and risk sizing;
-- deterministic 2M/5M signal evaluation;
+- canonical company liquidity and freshness;
+- deterministic 2M/5M signal rules;
+- portfolio state and risk sizing;
 - PAPER model-validation fills and receipts;
-- mandatory flattening;
-- all `trading_authorized=false` / `live_trading_enabled=false` controls.
+- mandatory flattening and forensics.
 
-Every Pine payload contains `requires_server_enrichment=true`. A sensor message alone can never authorize a PAPER entry.
-
-## Forward-test candidate configuration
-
-The branch currently uses these explicit V1 research choices:
-
-- symbol: `MU` only;
-- sector proxy: `AMEX:SOXX` by default;
-- 15M context: MU above VWAP, EMA9 > EMA20, positive MU-vs-SOXX one-bar relative strength; sector context requires SOXX close > EMA9 > EMA20;
-- 2M opening range: 09:30-09:36 ET;
-- 2M emission window: 09:36-10:00 ET;
-- 5M emission window: 10:00-15:30 ET;
-- 5M continuation reference: prior 3-bar high by default;
-- relative volume: current bar volume / prior 20-bar average;
-- 30D average daily share volume: prior completed daily-bar 30-day average.
-
-These are **candidate sensor definitions**, not optimized claims. Freeze them before the first forward test and do not retune them from a small sample.
+A sensor message alone can never authorize a PAPER entry.
 
 ## Alert setup boundary
 
-Do not create TradingView alerts until the Stage-6 intraday ingress/aggregation contract is merged and its staging endpoint is verified. When that backend is ready, each script should use a TradingView alert configured as **Any alert() function call**, with the script's `Enable sensor alert() messages` input enabled and the dedicated intraday webhook secret entered locally in TradingView.
+Do **not** create TradingView alerts yet. Stage 6 must first merge the isolated intraday ingress/enrichment path and verify its staging endpoint end-to-end.
+
+After that backend is ready, use the same Pine source on three MU charts (15M, 2M and 5M), enable `Enable PAPER Sensor Alerts`, enter the dedicated intraday webhook secret locally in TradingView, and create each alert using **Any alert() function call**.
 
 No secret belongs in GitHub.
 
 ## Safety
 
-PAPER/research only. No live capital, broker integration, options, overnight position, averaging down, AWS production deployment, or SH24/SH25 TradingView mutation. The dedicated account remains `PAPER_AGENTIC_INTRADAY_V1`.
+PAPER/research only. No live capital, broker integration, options, overnight positions, AWS production deployment, SH24/SH25 source/alert mutation, or live-trading authorization.
