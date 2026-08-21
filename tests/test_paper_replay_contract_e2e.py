@@ -2,13 +2,11 @@ import json
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 
-from daily_alpha.armed_replay import replay_armed_events
 from daily_alpha.ledger import PaperLedger
 from daily_alpha.pine_processor import DynamoPineEventStore, process_sqs_batch
 from daily_alpha.reconciled_receipt_executor import ReceiptReconciledAwsPinePaperExecutor
 
 AFTER_CLOSE = datetime(2026, 8, 19, 21, 5, tzinfo=UTC)
-REPLAY_TIME = datetime(2026, 8, 20, 14, 5, tzinfo=UTC)
 
 
 class InMemoryDynamo:
@@ -104,7 +102,9 @@ def _ingress():
     }
 
 
-def test_local_contract_receive_arm_replay_and_persist_exact_stock_receipt(tmp_path):
+def test_local_contract_receive_executes_stock_model_fill_and_persists_exact_receipt(
+    tmp_path,
+):
     client = InMemoryDynamo()
     store = DynamoPineEventStore(
         table_name="paper-test",
@@ -127,22 +127,8 @@ def test_local_contract_receive_arm_replay_and_persist_exact_stock_receipt(tmp_p
     assert first == {"batchItemFailures": []}
     key = ("ACCOUNT#paper-shadow-v24#PINE_EVENT#AMD-E2E-1", "RECEIVED")
     persisted = client.items[key]
-    assert persisted["disposition"]["S"] == "ARMED_FOR_NEXT_TRADABLE_WINDOW"
-    armed_execution = json.loads(persisted["execution_json"]["S"])
-    assert armed_execution["paper_execution_triggered"] is False
-    assert armed_execution["context"]["options_execution_enabled"] is False
-    assert armed_execution["context"]["orats_required_for_new_entry"] is False
-    assert armed_execution["trading_authorized"] is False
-    assert armed_execution["live_trading_enabled"] is False
-
-    replay = replay_armed_events(store, executor, now=REPLAY_TIME, limit=5)
-
-    assert replay["armed_found"] == 1
-    assert replay["armed_claimed"] == 1
-    assert replay["outcome_counts"] == {"EXECUTED_PAPER": 1}
-    persisted_after = client.items[key]
-    assert persisted_after["disposition"]["S"] == "EXECUTED_PAPER"
-    execution = json.loads(persisted_after["execution_json"]["S"])
+    assert persisted["disposition"]["S"] == "EXECUTED_PAPER"
+    execution = json.loads(persisted["execution_json"]["S"])
     receipt = execution["execution_receipt"]
     trade = executor.ledger.find_open("AMD")[0]
 
@@ -152,10 +138,12 @@ def test_local_contract_receive_arm_replay_and_persist_exact_stock_receipt(tmp_p
     )
     assert execution["context"]["options_execution_enabled"] is False
     assert execution["context"]["orats_required_for_new_entry"] is False
-    assert execution["context"]["model_validation_fill_price"] == 100.0
+    assert execution["context"]["fill_model"] == (
+        "CONFIRMED_SIGNAL_PRICE_PROCESS_ORDERS_ON_CLOSE"
+    )
     assert trade.instrument.value == "STOCK"
     assert trade.entry_price == 100.0
-    assert receipt["signal_id"] == "AMD-E2E-1-REPLAY-20260820T140500"
+    assert receipt["signal_id"] == "AMD-E2E-1"
     assert receipt["instrument"] == "STOCK"
     assert receipt["fill_price"] == 100.0
     assert receipt["fill_quantity"] == trade.quantity

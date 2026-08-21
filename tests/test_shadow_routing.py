@@ -127,9 +127,7 @@ def test_shadow_event_store_uses_model_specific_account(monkeypatch):
     assert stores[PAPER_SHADOW_V25].executions[0][0] == result.signal_id
 
 
-def test_v25_executor_preserves_shadow_account_and_arms_after_hours(
-    monkeypatch, tmp_path
-):
+def test_v25_executor_returns_shadow_account_and_stock_model_fill(monkeypatch, tmp_path):
     monkeypatch.setenv("DAILY_ALPHA_SHADOW_FORWARD_START", SHADOW_START)
     ledgers = {}
 
@@ -149,17 +147,19 @@ def test_v25_executor_preserves_shadow_account_and_arms_after_hours(
         now=datetime(2026, 8, 19, 20, 5, tzinfo=UTC),
     )
 
-    assert result["disposition"] == "ARMED_FOR_NEXT_TRADABLE_WINDOW"
-    assert result["reason"] == "MARKET_CLOSED_REVALIDATION_REQUIRED"
+    trade = ledgers[PAPER_SHADOW_V25].find_open("AMD")[0]
+    assert result["disposition"] == "EXECUTED_PAPER"
+    assert result["reason"] == "PAPER_STOCK_POSITION_OPENED"
     assert result["paper_account_id"] == PAPER_SHADOW_V25
     assert result["model_id"] == PAPER_SHADOW_V25
     assert result["forward_test_start"] == SHADOW_START
-    assert result["paper_execution_triggered"] is False
+    assert result["paper_execution_triggered"] is True
     assert result["context"]["execution_policy"] == (
         "STOCK_PRIMARY_MODEL_VALIDATION_V1"
     )
     assert result["context"]["options_execution_enabled"] is False
-    assert result["context"]["orats_required_for_new_entry"] is False
-    assert ledgers[PAPER_SHADOW_V25].find_open("AMD") == []
+    assert trade.instrument.value == "STOCK"
+    assert trade.entry_price == 250.0
+    assert result["execution_receipt"]["instrument"] == "STOCK"
     assert result["trading_authorized"] is False
     assert result["live_trading_enabled"] is False
