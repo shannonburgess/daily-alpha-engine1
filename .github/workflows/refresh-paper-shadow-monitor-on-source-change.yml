@@ -1,0 +1,42 @@
+name: Refresh Daily Alpha shadow monitor on source change
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/monitor-paper-shadows.yml"
+      - ".github/workflows/refresh-paper-shadow-monitor-on-source-change.yml"
+      - ".github/workflows/replay-paper-armed-signals.yml"
+      - "scripts/shadow_monitor.py"
+      - "scripts/shadow_contract_monitor.py"
+      - "scripts/shadow_replay_scheduler_monitor.py"
+      - "scripts/shadow_transport_monitor.py"
+      - "scripts/shadow_universe_monitor.py"
+      - "scripts/shadow_liquidity_monitor.py"
+      - "scripts/shadow_source_diagnostic_monitor.py"
+      - "scripts/nyse_session_calendar.py"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: daily-alpha-paper-shadow-source-refresh
+  cancel-in-progress: true
+
+jobs:
+  dispatch-current-monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Dispatch canonical PAPER-shadow monitor on trusted main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run monitor-paper-shadows.yml \
+            --repo "${REPO}" \
+            --ref main
