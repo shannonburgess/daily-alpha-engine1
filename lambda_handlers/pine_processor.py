@@ -38,12 +38,18 @@ def _liquidity_store() -> S3ActionableLiquidityStore:
 
 
 def _replay_all_paper_accounts(*, now: datetime, limit: int) -> dict:
-    accounts = [default_paper_account_id(), PAPER_SHADOW_V24, PAPER_SHADOW_V25]
+    # Shadow forward-test books are operationally primary for issue #213. Scan
+    # them before the legacy/default paper account so a large default backlog
+    # cannot consume the global replay budget and starve SH24/SH25.
+    accounts = [PAPER_SHADOW_V24, PAPER_SHADOW_V25, default_paper_account_id()]
     remaining = limit
     total_found = 0
+    total_claimed = 0
+    total_lease_conflicts = 0
     combined_counts: dict[str, int] = {}
     combined_outcomes: list[dict] = []
     scanned: list[str] = []
+    account_results: list[dict] = []
 
     for account_id in accounts:
         if remaining <= 0:
@@ -52,24 +58,64 @@ def _replay_all_paper_accounts(*, now: datetime, limit: int) -> dict:
         executor = ShadowRoutedPinePaperExecutor(liquidity_store=_liquidity_store())
         result = replay_armed_events(store, executor, now=now, limit=remaining)
         scanned.append(account_id)
-        found = int(result.get("armed_found", 0))
+
+        if result.get("ok") is not True:
+            raise RuntimeError("ARMED_REPLAY_CHILD_RESULT_NOT_OK")
+        if result.get("trading_authorized") is not False:
+            raise RuntimeError("ARMED_REPLAY_CHILD_TRADING_AUTH_DRIFT")
+        if result.get("live_trading_enabled") is not False:
+            raise RuntimeError("ARMED_REPLAY_CHILD_LIVE_AUTH_DRIFT")
+
+        found = int(result.get("armed_found", -1))
+        claimed = int(result.get("armed_claimed", -1))
+        lease_conflicts = int(result.get("lease_conflicts", -1))
+        child_counts = {
+            str(disposition): int(count)
+            for disposition, count in dict(result.get("outcome_counts") or {}).items()
+        }
+        child_outcomes = [dict(outcome) for outcome in list(result.get("outcomes") or [])]
+
+        if found < 0 or claimed < 0 or lease_conflicts < 0 or found > remaining:
+            raise RuntimeError("ARMED_REPLAY_CHILD_COUNT_INVALID")
+        if found != claimed + lease_conflicts:
+            raise RuntimeError("ARMED_REPLAY_CHILD_CLAIM_RECONCILIATION_FAILED")
+        if sum(child_counts.values()) != claimed or len(child_outcomes) != claimed:
+            raise RuntimeError("ARMED_REPLAY_CHILD_OUTCOME_RECONCILIATION_FAILED")
+
         total_found += found
+        total_claimed += claimed
+        total_lease_conflicts += lease_conflicts
         remaining -= found
-        for disposition, count in dict(result.get("outcome_counts") or {}).items():
-            combined_counts[str(disposition)] = (
-                combined_counts.get(str(disposition), 0) + int(count)
-            )
-        for outcome in list(result.get("outcomes") or []):
+        for disposition, count in child_counts.items():
+            combined_counts[disposition] = combined_counts.get(disposition, 0) + count
+        for outcome in child_outcomes:
             item = dict(outcome)
             item["paper_account_id"] = account_id
             combined_outcomes.append(item)
+        account_results.append(
+            {
+                "paper_account_id": account_id,
+                "armed_found": found,
+                "armed_claimed": claimed,
+                "lease_conflicts": lease_conflicts,
+                "outcome_counts": child_counts,
+            }
+        )
+
+    if total_found != total_claimed + total_lease_conflicts:
+        raise RuntimeError("ARMED_REPLAY_TOTAL_CLAIM_RECONCILIATION_FAILED")
+    if sum(combined_counts.values()) != total_claimed:
+        raise RuntimeError("ARMED_REPLAY_TOTAL_OUTCOME_RECONCILIATION_FAILED")
 
     return {
         "ok": True,
         "operation": "REPLAY_ARMED_SIGNALS",
         "processed_at": now.isoformat(),
         "accounts_scanned": scanned,
+        "account_results": account_results,
         "armed_found": total_found,
+        "armed_claimed": total_claimed,
+        "lease_conflicts": total_lease_conflicts,
         "outcome_counts": combined_counts,
         "outcomes": combined_outcomes,
         "trading_authorized": False,

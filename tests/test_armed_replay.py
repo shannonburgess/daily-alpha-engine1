@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from daily_alpha.armed_replay import (
     list_armed_ingress,
+    list_recent_pine_event_state,
     replay_armed_events,
 )
 from daily_alpha.pine_paper_reconciliation import (
@@ -71,10 +72,16 @@ def test_armed_entry_revalidation_creates_fresh_execution_time_signal():
     assert decision.ingress["signal_id"].startswith("AMD-ENTRY-1-REPLAY-")
 
 
+class _ConditionalFailure(Exception):
+    response = {"Error": {"Code": "ConditionalCheckFailedException"}}  # noqa: RUF012
+
+
 class FakeClient:
-    def __init__(self, ingress):
+    def __init__(self, ingress, *, claim_conflict=False):
         self.ingress = ingress
+        self.claim_conflict = claim_conflict
         self.scans = []
+        self.updates = []
 
     def scan(self, **kwargs):
         self.scans.append(kwargs)
@@ -89,13 +96,19 @@ class FakeClient:
             ]
         }
 
+    def update_item(self, **kwargs):
+        self.updates.append(kwargs)
+        if self.claim_conflict:
+            raise _ConditionalFailure()
+        return {}
+
 
 class FakeStore:
     table_name = "paper-test"
     account_id = "paper-shadow"
 
-    def __init__(self, ingress):
-        self.client = FakeClient(ingress)
+    def __init__(self, ingress, *, claim_conflict=False):
+        self.client = FakeClient(ingress, claim_conflict=claim_conflict)
         self.marked = []
 
     def mark_execution(self, signal_id, execution):
@@ -125,22 +138,100 @@ def test_durable_worker_scans_only_armed_event_contract_and_persists_outcome():
     store = FakeStore(ingress)
     executor = FakeExecutor()
 
-    armed = list_armed_ingress(store, limit=5)
+    armed = list_armed_ingress(
+        store,
+        limit=5,
+        now=NOW,
+        claimable_only=True,
+    )
     assert len(armed) == 1
     assert armed[0]["_persisted_signal_id"] == "AMD-ENTRY-1"
     scan = store.client.scans[0]
     assert scan["ExpressionAttributeValues"][":armed"]["S"] == (
         "ARMED_FOR_NEXT_TRADABLE_WINDOW"
     )
+    assert scan["ExpressionAttributeValues"][":now_epoch"]["N"] == str(
+        int(NOW.timestamp())
+    )
 
     result = replay_armed_events(store, executor, now=NOW, limit=5)
 
     assert result["armed_found"] == 1
+    assert result["armed_claimed"] == 1
+    assert result["lease_conflicts"] == 0
     assert result["outcome_counts"] == {"CANCELLED_REPLAY": 1}
     assert result["trading_authorized"] is False
     assert result["live_trading_enabled"] is False
+    claim = store.client.updates[0]
+    assert "replay_lease_until_epoch" in claim["UpdateExpression"]
+    assert "disposition = :armed" in claim["ConditionExpression"]
     assert store.marked[0][0] == "AMD-ENTRY-1"
     assert store.marked[0][1]["paper_execution_triggered"] is False
+
+
+def test_concurrent_replay_claim_conflict_skips_execution_and_persistence():
+    ingress = _entry(replay_max_price=255.0)
+    store = FakeStore(ingress, claim_conflict=True)
+    executor = FakeExecutor()
+
+    result = replay_armed_events(store, executor, now=NOW, limit=5)
+
+    assert result["armed_found"] == 1
+    assert result["armed_claimed"] == 0
+    assert result["lease_conflicts"] == 1
+    assert result["outcome_counts"] == {}
+    assert result["outcomes"] == []
+    assert executor.calls == []
+    assert store.marked == []
+
+
+class _HistoryClient:
+    def scan(self, **kwargs):
+        older = _entry(
+            signal_id="OLD",
+            received_at="2026-08-18T20:05:00+00:00",
+        )
+        newer = _entry(
+            signal_id="NEW",
+            received_at="2026-08-19T13:55:00+00:00",
+        )
+        return {
+            "ScannedCount": 2,
+            "Items": [
+                {
+                    "signal_id": {"S": "OLD"},
+                    "symbol": {"S": "AMD"},
+                    "action": {"S": "ENTRY_LONG"},
+                    "disposition": {"S": "NO_TRADE"},
+                    "reason": {"S": "OLD"},
+                    "ingress_json": {"S": json.dumps(older)},
+                },
+                {
+                    "signal_id": {"S": "NEW"},
+                    "symbol": {"S": "AMD"},
+                    "action": {"S": "ENTRY_LONG"},
+                    "disposition": {"S": "NO_TRADE"},
+                    "reason": {"S": "NEW"},
+                    "ingress_json": {"S": json.dumps(newer)},
+                },
+            ],
+        }
+
+
+class _HistoryStore:
+    table_name = "paper-test"
+    account_id = "paper-shadow"
+    client = _HistoryClient()
+
+
+def test_monitor_response_limit_omits_old_history_without_claiming_scan_truncation():
+    state = list_recent_pine_event_state(_HistoryStore(), limit=1)
+
+    assert state["scan_truncated"] is False
+    assert state["event_count_scanned"] == 2
+    assert state["event_count_visible"] == 1
+    assert state["event_history_omitted"] == 1
+    assert state["events"][0]["signal_id"] == "NEW"
 
 
 class _Trade:
@@ -227,6 +318,7 @@ def test_durable_worker_persists_replay_receipt_with_risk_basis(monkeypatch):
     result = replay_armed_events(store, executor, now=NOW, limit=5)
 
     assert result["outcome_counts"] == {"EXECUTED_PAPER": 1}
+    assert result["armed_claimed"] == 1
     persisted_signal_id, persisted_execution = store.marked[0]
     assert persisted_signal_id == "CAT-ADD-ORIGIN"
     receipt = persisted_execution["execution_receipt"]

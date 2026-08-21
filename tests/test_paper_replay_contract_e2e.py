@@ -33,6 +33,19 @@ class InMemoryDynamo:
             raise RuntimeError("missing audit event")
         values = kwargs["ExpressionAttributeValues"]
         item = self.items[key]
+        if ":lease_until" in values:
+            armed = values[":armed"]["S"]
+            now_epoch = int(values[":now_epoch"]["N"])
+            current_lease = int(item.get("replay_lease_until_epoch", {}).get("N", "0"))
+            if item.get("disposition", {}).get("S") != armed or current_lease >= now_epoch:
+                error = RuntimeError("lease conflict")
+                error.response = {
+                    "Error": {"Code": "ConditionalCheckFailedException"}
+                }
+                raise error
+            item["replay_lease_until_epoch"] = deepcopy(values[":lease_until"])
+            item["replay_lease_token"] = deepcopy(values[":lease_token"])
+            return {}
         item["disposition"] = deepcopy(values[":disposition"])
         item["reason"] = deepcopy(values[":reason"])
         item["execution_json"] = deepcopy(values[":execution"])
@@ -40,12 +53,20 @@ class InMemoryDynamo:
 
     def scan(self, **kwargs):
         armed = kwargs["ExpressionAttributeValues"][":armed"]["S"]
+        now_raw = kwargs["ExpressionAttributeValues"].get(":now_epoch")
+        now_epoch = int(now_raw["N"]) if now_raw else None
         limit = kwargs.get("Limit", 25)
-        matches = [
-            deepcopy(item)
-            for item in self.items.values()
-            if item.get("disposition", {}).get("S") == armed
-        ]
+        matches = []
+        for item in self.items.values():
+            if item.get("disposition", {}).get("S") != armed:
+                continue
+            if now_epoch is not None:
+                lease_until = int(
+                    item.get("replay_lease_until_epoch", {}).get("N", "0")
+                )
+                if lease_until >= now_epoch:
+                    continue
+            matches.append(deepcopy(item))
         return {"Items": matches[:limit]}
 
 
@@ -170,6 +191,7 @@ def test_local_contract_receive_arm_replay_and_persist_exact_receipt(monkeypatch
     replay = replay_armed_events(store, executor, now=REPLAY_TIME, limit=5)
 
     assert replay["armed_found"] == 1
+    assert replay["armed_claimed"] == 1
     assert replay["outcome_counts"] == {"EXECUTED_PAPER": 1}
     persisted_after = client.items[key]
     assert persisted_after["disposition"]["S"] == "EXECUTED_PAPER"
