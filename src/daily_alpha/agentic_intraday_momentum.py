@@ -16,7 +16,7 @@ from .agentic_intraday import (
     IntradayAction,
     IntradayPhase,
     IntradaySignalEvent,
-    intraday_phase,
+    intraday_bar_phase,
     required_entry_timeframe,
 )
 
@@ -82,8 +82,8 @@ def evaluate_mu_momentum_signal(
     """Evaluate the frozen-candidate MU opening/continuation signal deterministically."""
     rules = policy or IntradayMomentumPolicy()
     _validate_observation(observation)
-    phase = intraday_phase(observation.observed_at)
     timeframe = observation.timeframe.upper()
+    phase = intraday_bar_phase(observation.observed_at, timeframe)
     reasons: list[str] = []
 
     required = required_entry_timeframe(phase)
