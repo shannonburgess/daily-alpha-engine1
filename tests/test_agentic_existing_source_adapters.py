@@ -1,3 +1,5 @@
+# ruff: noqa: I001
+
 from datetime import UTC, datetime, timedelta
 
 from daily_alpha import actionable_sector, agentic, equity_liquidity, ovtlyr, pine_ingress
