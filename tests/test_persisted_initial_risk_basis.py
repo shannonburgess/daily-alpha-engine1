@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 
 from daily_alpha.ledger import PaperLedger
 from daily_alpha.models import Decision, DecisionStatus, InstrumentSelected, OptionCandidate
-from daily_alpha.pine_paper_reconciliation import ReconciledAwsPinePaperExecutor
 from daily_alpha.pipeline import EntryPricing, PaperTradingPipeline
 from daily_alpha.reconciled_receipt_executor import ReceiptReconciledAwsPinePaperExecutor
 from daily_alpha.signals import SignalAction, parse_pine_signal
@@ -147,7 +146,11 @@ def test_exit_receipt_uses_persisted_trade_risk_when_result_has_no_risk_context(
             "live_trading_enabled": False,
         }
 
-    monkeypatch.setattr(ReconciledAwsPinePaperExecutor, "execute", fake_execute)
+    monkeypatch.setattr(
+        ReceiptReconciledAwsPinePaperExecutor,
+        "_execute_stock_primary",
+        fake_execute,
+    )
     result = executor.execute(
         {"signal_id": "exit-1", "symbol": "RDW", "action": "EXIT", "price": 110.0},
         now=NOW,
