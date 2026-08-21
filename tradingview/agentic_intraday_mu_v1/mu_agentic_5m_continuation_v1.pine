@@ -1,0 +1,44 @@
+//@version=6
+indicator("Daily Alpha Agentic MU 5M Continuation Sensor V1", shorttitle="DA-MU-5M-CONT-V1", overlay=true)
+
+// Separate PAPER-only raw sensor for issue #257. The backend remains authoritative
+// for Daily Alpha context, macro/event risk, portfolio risk and PAPER execution.
+
+groupSensor = "Agentic Intraday V1 Sensor"
+enableAlerts = input.bool(false, "Enable sensor alert() messages", group=groupSensor)
+webhookSecret = input.string("", "Intraday webhook secret", group=groupSensor)
+sectorProxy = input.symbol("AMEX:SOXX", "MU sector proxy", group=groupSensor)
+continuationLookback = input.int(3, "Continuation high lookback bars", minval=2, maxval=12, group=groupSensor)
+
+isMu = syminfo.ticker == "MU"
+is5m = timeframe.isminutes and timeframe.multiplier == 5
+executionWindow = not na(time(timeframe.period, "1000-1530", "America/New_York"))
+
+vwapValue = ta.vwap(hlc3)
+ema9 = ta.ema(close, 9)
+ema20 = ta.ema(close, 20)
+continuationHigh = ta.highest(high, continuationLookback)[1]
+priorVolumeMean20 = ta.sma(volume, 20)[1]
+relativeVolume = priorVolumeMean20 > 0 ? volume / priorVolumeMean20 : 0.0
+averageDailyShareVolume = request.security(syminfo.tickerid, "D", ta.sma(volume, 30)[1], lookahead=barmerge.lookahead_off)
+
+sectorClose = request.security(sectorProxy, timeframe.period, close, lookahead=barmerge.lookahead_off)
+sectorPrev = request.security(sectorProxy, timeframe.period, close[1], lookahead=barmerge.lookahead_off)
+muReturn = close[1] > 0 ? close / close[1] - 1.0 : 0.0
+sectorReturn = sectorPrev > 0 ? sectorClose / sectorPrev - 1.0 : 0.0
+relativeStrengthPct = (muReturn - sectorReturn) * 100.0
+
+barTimeIso = str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+observationId = syminfo.ticker + "-5M-" + str.tostring(time_close)
+
+payload = "{\"webhook_secret\":\"" + webhookSecret + "\",\"sensor_schema\":\"2026-08-21-agentic-intraday-sensor-v1\",\"account_id\":\"PAPER_AGENTIC_INTRADAY_V1\",\"symbol\":\"" + syminfo.ticker + "\",\"sensor_type\":\"STANDARD_5M\",\"timeframe\":\"5M\",\"observation_id\":\"" + observationId + "\",\"observed_at\":\"" + barTimeIso + "\",\"close\":" + str.tostring(close) + ",\"high\":" + str.tostring(high) + ",\"low\":" + str.tostring(low) + ",\"vwap\":" + str.tostring(vwapValue) + ",\"relative_volume\":" + str.tostring(relativeVolume) + ",\"relative_strength_pct\":" + str.tostring(relativeStrengthPct) + ",\"average_daily_share_volume\":" + str.tostring(averageDailyShareVolume) + ",\"continuation_high\":" + str.tostring(continuationHigh) + ",\"ema9\":" + str.tostring(ema9) + ",\"ema20\":" + str.tostring(ema20) + ",\"requires_server_enrichment\":true,\"trading_authorized\":false,\"live_trading_enabled\":false}"
+
+emit = barstate.isconfirmed and isMu and is5m and executionWindow and not na(continuationHigh)
+if enableAlerts and emit
+    alert(payload, alert.freq_once_per_bar_close)
+
+plot(vwapValue, "VWAP", color=color.new(color.blue, 0), linewidth=2)
+plot(ema9, "EMA 9", color=color.new(color.teal, 0), linewidth=1)
+plot(ema20, "EMA 20", color=color.new(color.orange, 0), linewidth=1)
+plot(continuationHigh, "Continuation High", color=color.new(color.green, 0), linewidth=2, style=plot.style_linebr)
+bgcolor(not isMu or not is5m ? color.new(color.red, 88) : executionWindow ? color.new(color.green, 94) : color.new(color.gray, 96))
