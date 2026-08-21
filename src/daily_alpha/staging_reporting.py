@@ -1,4 +1,9 @@
-"""Publish readable Daily Alpha staging outputs from current research and paper data."""
+"""Publish readable Daily Alpha staging outputs from current stock research and PAPER data.
+
+Automatic options-chain enrichment is not part of staging publication. Explicitly
+user-directed option tickets may be represented elsewhere with broker-chain data,
+but the stock-primary shortlist remains independent of derivatives vendors.
+"""
 
 from __future__ import annotations
 
@@ -8,17 +13,13 @@ import json
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from html import escape
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from .models import InstrumentSelected
 from .newsletter import NewsletterRenderer
-from .research_report import (
-    DailyResearchPacket,
-    OptionFlowEvidence,
-    ResearchCandidate,
-    ResearchDisposition,
-)
+from .research_report import DailyResearchPacket, ResearchCandidate, ResearchDisposition
 from .sectors import resolve_sector
 
 
@@ -27,7 +28,7 @@ class StagingReportError(RuntimeError):
 
 
 class AwsStagingReportPublisher:
-    """Read the latest staging research + paper ledger and publish daily outputs."""
+    """Read the latest stock research + PAPER ledger and publish daily outputs."""
 
     DEFAULT_BUCKET = "daily-alpha-staging-490809405132-us-east-2"
     DEFAULT_TABLE = "daily-alpha-paper-ledger-staging"
@@ -63,7 +64,7 @@ class AwsStagingReportPublisher:
         if s3_client is None or dynamodb_client is None:
             try:
                 import boto3  # type: ignore[import-not-found]
-            except ImportError as exc:  # pragma: no cover - Lambda includes boto3
+            except ImportError as exc:  # pragma: no cover
                 raise StagingReportError("BOTO3_UNAVAILABLE") from exc
             if s3_client is None:
                 s3_client = boto3.client("s3")
@@ -150,7 +151,10 @@ class AwsStagingReportPublisher:
         latest_prefix = f"{self.OUTPUT_PREFIX}/latest"
 
         outputs: dict[str, tuple[bytes, str]] = {
-            "newsletter.html": (newsletter_html.encode("utf-8"), "text/html; charset=utf-8"),
+            "newsletter.html": (
+                newsletter_html.encode("utf-8"),
+                "text/html; charset=utf-8",
+            ),
             "research_shortlist.csv": (shortlist_csv, "text/csv; charset=utf-8"),
             "paper_ledger.csv": (ledger_csv, "text/csv; charset=utf-8"),
             "sector_rotation.csv": (sector_csv, "text/csv; charset=utf-8"),
@@ -164,7 +168,6 @@ class AwsStagingReportPublisher:
             "research_candidate_count": len(shortlist),
             "classification_count": len(classifications),
             "classification_counts": _classification_counts(classifications),
-            "qualified_option_count": int(summary.get("qualified_option_count", 0) or 0),
             "paper_ledger_row_count": len(ledger_rows),
             "open_paper_position_count": sum(
                 "#POSITION#" in str(row.get("pk", "")) and row.get("sk") == "OPEN"
@@ -172,6 +175,11 @@ class AwsStagingReportPublisher:
             ),
             "newsletter_quality_passed": rendered.quality_passed,
             "newsletter_sections": list(rendered.sections),
+            "stock_primary_execution": True,
+            "options_mode": str(
+                summary.get("options_mode") or "USER_DIRECTED_BROKER_CHAIN"
+            ),
+            "trading_authorized": False,
             "live_trading_enabled": False,
             "publication": "STAGING_RESEARCH_AND_PAPER_ONLY",
         }
@@ -197,6 +205,7 @@ class AwsStagingReportPublisher:
             "history_prefix": history_prefix,
             "outputs": published,
             "manifest": manifest,
+            "trading_authorized": False,
             "live_trading_enabled": False,
         }
 
@@ -231,7 +240,9 @@ class AwsStagingReportPublisher:
                 raise StagingReportError("DYNAMODB_SCAN_FAILED") from exc
             for item in response.get("Items", []):
                 if isinstance(item, Mapping):
-                    rows.append({str(key): _ddb_value(value) for key, value in item.items()})
+                    rows.append(
+                        {str(key): _ddb_value(value) for key, value in item.items()}
+                    )
             last_key = response.get("LastEvaluatedKey")
             if not last_key:
                 break
@@ -287,16 +298,13 @@ def _classification_overview_section(rows: list[Any]) -> str:
 
     sections: list[str] = []
     for status, label in _CLASSIFICATION_ORDER:
-        records = sorted(
-            grouped[status],
-            key=lambda item: str(item.get("symbol") or ""),
-        )
+        records = sorted(grouped[status], key=lambda item: str(item.get("symbol") or ""))
         if records:
             body = "".join(
                 "<tr>"
-                f"<td><strong>{_html(raw.get('symbol'))}</strong></td>"
-                f"<td>{_html(raw.get('display_label') or label)}</td>"
-                f"<td>{_html(raw.get('reason') or raw.get('classification_reason') or '')}</td>"
+                f"<td><strong>{escape(str(raw.get('symbol') or ''))}</strong></td>"
+                f"<td>{escape(str(raw.get('display_label') or label))}</td>"
+                f"<td>{escape(str(raw.get('reason') or raw.get('classification_reason') or ''))}</td>"
                 "</tr>"
                 for raw in records
             )
@@ -316,17 +324,11 @@ def _classification_overview_section(rows: list[Any]) -> str:
         '<section class="report-section classification-overview">'
         "<h2>Complete OVTLYR Classification Universe</h2>"
         '<p class="section-note">Full day-over-day classification coverage. '
-        "The ranked actionable shortlist appears separately below after eligibility, "
-        "liquidity, optionability, and data-quality filters.</p>"
+        "The ranked actionable stock shortlist appears separately below after "
+        "eligibility, liquidity, price and data-quality controls.</p>"
         + "".join(sections)
         + "</section>"
     )
-
-
-def _html(value: Any) -> str:
-    from html import escape
-
-    return escape(str(value or ""))
 
 
 def _packet_from_shortlist(
@@ -345,24 +347,10 @@ def _packet_from_shortlist(
         if not symbol or symbol in seen:
             continue
         seen.add(symbol)
-        orats_status = str(raw.get("orats_status", "")).upper()
-        orats_reason = str(raw.get("orats_reason", "") or "RESEARCH_ONLY")
-        has_option = bool(str(raw.get("selected_expiration", "")).strip())
-        if orats_status == "DATA_ERROR":
-            disposition = ResearchDisposition.DATA_ERROR
-            instrument = InstrumentSelected.NONE
-            risk_status = "NOT_EVALUATED"
-            data_status = "DATA_ERROR"
-        else:
-            disposition = ResearchDisposition.WATCHLIST
-            instrument = InstrumentSelected.OPTION if has_option else InstrumentSelected.NONE
-            risk_status = "NOT_EVALUATED"
-            data_status = "PASS"
-
         reasons = [
             f"OVTLYR={raw.get('ovtlyr_status', 'UNKNOWN')!s}",
-            f"ORATS={orats_reason}",
             f"RANK_SCORE={raw.get('score', 0)}",
+            "OPTIONS=USER_DIRECTED_BROKER_CHAIN",
         ]
         smart_bonus = float(raw.get("smart_money_bonus", 0) or 0)
         policy_bonus = float(raw.get("trump_policy_bonus", 0) or 0)
@@ -371,95 +359,33 @@ def _packet_from_shortlist(
         if policy_bonus > 0:
             reasons.append(f"POLICY_WATCH_BONUS=+{policy_bonus:.1f}")
 
-        contract = None
-        if has_option:
-            contract = (
-                f"{raw.get('selected_expiration')} "
-                f"{raw.get('selected_option_type')} "
-                f"{raw.get('selected_strike')}"
-            )
-        selected_volume = int(raw.get("selected_volume", 0) or 0)
-        selected_open_interest = int(raw.get("selected_open_interest", 0) or 0)
-        selected_ratio = (
-            round(selected_volume / selected_open_interest, 4)
-            if selected_open_interest > 0
-            else None
-        )
-        flow_evidence = _flow_evidence_from_raw(raw)
         candidates.append(
             ResearchCandidate(
                 symbol=symbol,
-                disposition=disposition,
-                instrument=instrument,
+                disposition=ResearchDisposition.WATCHLIST,
+                instrument=InstrumentSelected.STOCK,
                 signal_label=str(
                     raw.get("display_label") or raw.get("ovtlyr_status") or "WATCH"
                 ),
                 thesis=str(
                     raw.get("classification_reason")
-                    or "Ranked Daily Alpha research candidate."
+                    or "Ranked Daily Alpha stock research candidate."
                 ),
                 reasons=tuple(reasons),
-                risk_status=risk_status,
-                data_status=data_status,
+                risk_status="NOT_EVALUATED",
+                data_status="PASS",
                 sector=resolve_sector(symbol, str(raw.get("sector") or "")),
-                option_contract=contract,
-                flow_classification=(
-                    "UNUSUAL_CONFIRMATION"
-                    if selected_ratio is not None and selected_ratio >= 1.0
-                    else ("NORMAL" if orats_status == "ENRICHED" else None)
-                ),
-                option_volume=selected_volume,
-                option_open_interest=selected_open_interest,
-                option_volume_oi_ratio=selected_ratio,
-                option_bid=(
-                    float(raw.get("selected_bid", 0) or 0) if has_option else None
-                ),
-                option_ask=(
-                    float(raw.get("selected_ask", 0) or 0) if has_option else None
-                ),
-                option_flow_evidence=flow_evidence,
             )
         )
 
     return DailyResearchPacket(
         report_date=report_date,
         run_id=run_id,
-        methodology_version="DAILY_ALPHA_V1_9_STAGING",
+        methodology_version="DAILY_ALPHA_STOCK_PRIMARY_V1",
         generated_at=generated_at,
         market_regime="RESEARCH_ONLY",
         candidates=tuple(candidates),
     )
-
-
-def _flow_evidence_from_raw(raw: Mapping[str, Any]) -> tuple[OptionFlowEvidence, ...]:
-    evidence: list[OptionFlowEvidence] = []
-    for side, prefix in (("CALL", "unusual_call"), ("PUT", "unusual_put")):
-        contract = str(raw.get(f"{prefix}_contract", "") or "").strip()
-        ratio_value = raw.get(f"{prefix}_volume_oi_ratio")
-        if not contract or ratio_value is None:
-            continue
-        try:
-            ratio = float(ratio_value)
-            volume = int(raw.get(f"{prefix}_volume", 0) or 0)
-            open_interest = int(raw.get(f"{prefix}_open_interest", 0) or 0)
-            bid = float(raw.get(f"{prefix}_bid", 0) or 0)
-            ask = float(raw.get(f"{prefix}_ask", 0) or 0)
-        except (TypeError, ValueError):
-            continue
-        if ratio < 1.0:
-            continue
-        evidence.append(
-            OptionFlowEvidence(
-                option_type=side,
-                contract=contract,
-                volume=volume,
-                open_interest=open_interest,
-                volume_oi_ratio=ratio,
-                bid=bid,
-                ask=ask,
-            )
-        )
-    return tuple(evidence)
 
 
 def _rows_to_csv(
@@ -469,7 +395,9 @@ def _rows_to_csv(
 ) -> str:
     normalized = [dict(row) for row in rows if isinstance(row, Mapping)]
     fields: list[str] = list(preferred)
-    extras = sorted({str(key) for row in normalized for key in row if str(key) not in fields})
+    extras = sorted(
+        {str(key) for row in normalized for key in row if str(key) not in fields}
+    )
     fields.extend(extras)
     if not fields:
         fields = ["status"]
@@ -496,7 +424,9 @@ def _ddb_value(value: Any) -> Any:
     if "N" in value:
         text = str(value["N"])
         try:
-            is_integer = text.isdigit() or (text.startswith("-") and text[1:].isdigit())
+            is_integer = text.isdigit() or (
+                text.startswith("-") and text[1:].isdigit()
+            )
             return int(text) if is_integer else float(text)
         except ValueError:
             return text
