@@ -1,0 +1,161 @@
+//@version=6
+indicator("Daily Alpha Agentic Intraday MU V1 Sensor", shorttitle="DA-AI-MU-V1", overlay=true, max_labels_count=100)
+
+// PAPER SENSOR ONLY.
+// This indicator does not place orders, size positions, approve portfolio risk,
+// or make Daily Alpha / OVTLYR context decisions. It emits confirmed bar data
+// for the isolated PAPER_AGENTIC_INTRADAY_V1 backend only.
+
+string PILOT_SYMBOL = "MU"
+string PAPER_ACCOUNT = "PAPER_AGENTIC_INTRADAY_V1"
+string SENSOR_SCHEMA = "2026-08-21-agentic-intraday-sensor-v1"
+string SENSOR_SOURCE = "TRADINGVIEW_AGENTIC_INTRADAY"
+string NEW_YORK = "America/New_York"
+
+// ===== WEBHOOK =====
+groupWebhook = "01 - Agentic Intraday Webhook"
+webhookSecret = input.string("", "Webhook Secret", group=groupWebhook)
+enableSensorAlerts = input.bool(false, "Enable PAPER Sensor Alerts", group=groupWebhook)
+
+// ===== DISPLAY =====
+groupDisplay = "02 - Display"
+showVWAP = input.bool(true, "Show VWAP", group=groupDisplay)
+showEMAs = input.bool(true, "Show EMA 9 / EMA 20", group=groupDisplay)
+showPriorSessionRange = input.bool(true, "Show Prior Intraday Session High / Low", group=groupDisplay)
+showStatusPanel = input.bool(true, "Show Sensor Status Panel", group=groupDisplay)
+
+// JSON must remain standards-compliant even while indicators are warming up.
+jsonFloat(float value) => na(value) ? "null" : str.tostring(value)
+jsonInt(int value) => na(value) ? "null" : str.tostring(value)
+
+// ===== HARD PILOT / TIMEFRAME BOUNDARY =====
+pilotSymbolOK = syminfo.ticker == PILOT_SYMBOL
+is2m = timeframe.isminutes and timeframe.multiplier == 2
+is5m = timeframe.isminutes and timeframe.multiplier == 5
+is15m = timeframe.isminutes and timeframe.multiplier == 15
+supportedTimeframe = is2m or is5m or is15m
+
+// ===== AUTHORITATIVE U.S. REGULAR-SESSION PHASES =====
+inOpening2m = not na(time(timeframe.period, "0930-1000", NEW_YORK))
+inStandard5m = not na(time(timeframe.period, "1000-1530", NEW_YORK))
+inManagementOnly = not na(time(timeframe.period, "1530-1550", NEW_YORK))
+inFlattenOnly = not na(time(timeframe.period, "1550-1600", NEW_YORK))
+inRegularSession = inOpening2m or inStandard5m or inManagementOnly or inFlattenOnly
+
+phase = inOpening2m ? "OPENING_2M" : inStandard5m ? "STANDARD_5M" : inManagementOnly ? "MANAGEMENT_ONLY" : inFlattenOnly ? "FLATTEN_ONLY" : "CLOSED"
+
+// 2M emits only during the first 30 minutes. 5M takes over at 10:00 ET and
+// continues through management/flatten windows. 15M is context telemetry only.
+timeframeSessionAllowed = is15m ? inRegularSession : is2m ? inOpening2m : is5m ? (inStandard5m or inManagementOnly or inFlattenOnly) : false
+
+// ===== RAW SENSOR FEATURES =====
+vwapValue = ta.vwap(hlc3)
+ema9 = ta.ema(close, 9)
+ema20 = ta.ema(close, 20)
+barVolumeAverage20Prior = ta.sma(volume, 20)[1]
+relativeVolume = barVolumeAverage20Prior > 0 ? volume / barVolumeAverage20Prior : na
+
+// Prior completed daily 30-session average share volume. The backend remains
+// authoritative for the canonical >1.5M company-liquidity gate and staleness checks.
+averageDailyShares30 = request.security(
+    syminfo.tickerid,
+    "D",
+    ta.sma(volume, 30)[1],
+    gaps=barmerge.gaps_off,
+    lookahead=barmerge.lookahead_off
+)
+
+// Relative-strength telemetry only. The backend decides which benchmark/context
+// is admissible for a model decision.
+qqqClose = request.security(
+    "NASDAQ:QQQ",
+    timeframe.period,
+    close,
+    gaps=barmerge.gaps_off,
+    lookahead=barmerge.lookahead_off,
+    ignore_invalid_symbol=true
+)
+smhClose = request.security(
+    "NASDAQ:SMH",
+    timeframe.period,
+    close,
+    gaps=barmerge.gaps_off,
+    lookahead=barmerge.lookahead_off,
+    ignore_invalid_symbol=true
+)
+stockReturnPct = close[1] > 0 ? (close / close[1] - 1.0) * 100.0 : na
+qqqReturnPct = qqqClose[1] > 0 ? (qqqClose / qqqClose[1] - 1.0) * 100.0 : na
+smhReturnPct = smhClose[1] > 0 ? (smhClose / smhClose[1] - 1.0) * 100.0 : na
+relativeStrengthQqqPct = not na(stockReturnPct) and not na(qqqReturnPct) ? stockReturnPct - qqqReturnPct : na
+relativeStrengthSmhPct = not na(stockReturnPct) and not na(smhReturnPct) ? stockReturnPct - smhReturnPct : na
+
+// ===== SESSION RANGE TELEMETRY =====
+newRegularSession = inRegularSession and not inRegularSession[1]
+var int sessionBarCount = na
+var float sessionHigh = na
+var float sessionLow = na
+
+sessionHighPrior = newRegularSession ? na : sessionHigh[1]
+sessionLowPrior = newRegularSession ? na : sessionLow[1]
+
+if newRegularSession
+    sessionBarCount := 0
+    sessionHigh := high
+    sessionLow := low
+else if inRegularSession
+    sessionBarCount := nz(sessionBarCount[1], -1) + 1
+    sessionHigh := math.max(nz(sessionHigh[1], high), high)
+    sessionLow := math.min(nz(sessionLow[1], low), low)
+else
+    sessionBarCount := na
+    sessionHigh := na
+    sessionLow := na
+
+// Raw prior-bar lookbacks allow the backend to freeze continuation/opening-range
+// definitions without requiring the TradingView source to be rewritten.
+high3Prior = ta.highest(high, 3)[1]
+high5Prior = ta.highest(high, 5)[1]
+high10Prior = ta.highest(high, 10)[1]
+low3Prior = ta.lowest(low, 3)[1]
+low5Prior = ta.lowest(low, 5)[1]
+
+// ===== SENSOR EVENT TYPE =====
+eventType = is15m ? "CONTEXT_15M_BAR" : is2m ? "EXECUTION_2M_BAR" : inStandard5m ? "EXECUTION_5M_BAR" : inManagementOnly ? "MANAGEMENT_5M_BAR" : inFlattenOnly ? "FLATTEN_5M_BAR" : "IGNORED_BAR"
+barTimeIso = str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+eventId = PILOT_SYMBOL + "-AGENTIC-" + eventType + "-" + str.tostring(time_close)
+
+// Confirmed bar sensor payload. Daily Alpha/OVTLYR context approval, earnings
+// policy, portfolio concentration and PAPER sizing are intentionally absent here;
+// those remain backend responsibilities.
+sensorMessage = "{\"webhook_secret\":\"" + webhookSecret + "\",\"schema_version\":\"" + SENSOR_SCHEMA + "\",\"source\":\"" + SENSOR_SOURCE + "\",\"event_id\":\"" + eventId + "\",\"event_type\":\"" + eventType + "\",\"account_id\":\"" + PAPER_ACCOUNT + "\",\"symbol\":\"" + PILOT_SYMBOL + "\",\"instrument\":\"STOCK\",\"timeframe\":\"" + timeframe.period + "\",\"phase\":\"" + phase + "\",\"bar_time\":\"" + barTimeIso + "\",\"open\":" + jsonFloat(open) + ",\"high\":" + jsonFloat(high) + ",\"low\":" + jsonFloat(low) + ",\"close\":" + jsonFloat(close) + ",\"volume\":" + jsonFloat(volume) + ",\"vwap\":" + jsonFloat(vwapValue) + ",\"ema9\":" + jsonFloat(ema9) + ",\"ema20\":" + jsonFloat(ema20) + ",\"relative_volume\":" + jsonFloat(relativeVolume) + ",\"average_daily_share_volume_30\":" + jsonFloat(averageDailyShares30) + ",\"relative_strength_qqq_pct\":" + jsonFloat(relativeStrengthQqqPct) + ",\"relative_strength_smh_pct\":" + jsonFloat(relativeStrengthSmhPct) + ",\"session_bar_count\":" + jsonInt(sessionBarCount) + ",\"session_high_prior\":" + jsonFloat(sessionHighPrior) + ",\"session_low_prior\":" + jsonFloat(sessionLowPrior) + ",\"high_3_prior\":" + jsonFloat(high3Prior) + ",\"high_5_prior\":" + jsonFloat(high5Prior) + ",\"high_10_prior\":" + jsonFloat(high10Prior) + ",\"low_3_prior\":" + jsonFloat(low3Prior) + ",\"low_5_prior\":" + jsonFloat(low5Prior) + ",\"sensor_only\":true,\"paper_only\":true,\"trading_authorized\":false,\"live_trading_enabled\":false}"
+
+emitSensor = enableSensorAlerts and barstate.isconfirmed and pilotSymbolOK and supportedTimeframe and timeframeSessionAllowed
+if emitSensor
+    alert(sensorMessage, alert.freq_once_per_bar_close)
+
+// ===== DISPLAY =====
+plot(showVWAP and (is2m or is5m or is15m) ? vwapValue : na, "VWAP", color=color.new(color.blue, 0), linewidth=2)
+plot(showEMAs and (is2m or is5m or is15m) ? ema9 : na, "EMA 9", color=color.new(color.teal, 0), linewidth=1)
+plot(showEMAs and (is2m or is5m or is15m) ? ema20 : na, "EMA 20", color=color.new(color.orange, 0), linewidth=1)
+plot(showPriorSessionRange and inRegularSession ? sessionHighPrior : na, "Prior Session High", color=color.new(color.green, 55), linewidth=1, style=plot.style_linebr)
+plot(showPriorSessionRange and inRegularSession ? sessionLowPrior : na, "Prior Session Low", color=color.new(color.red, 55), linewidth=1, style=plot.style_linebr)
+
+phaseColor = phase == "OPENING_2M" ? color.new(color.aqua, 92) : phase == "STANDARD_5M" ? color.new(color.blue, 94) : phase == "MANAGEMENT_ONLY" ? color.new(color.yellow, 92) : phase == "FLATTEN_ONLY" ? color.new(color.red, 90) : na
+bgcolor(phaseColor, title="Agentic Intraday Phase")
+
+plotshape(barstate.isconfirmed and pilotSymbolOK and is2m and inOpening2m, title="2M SENSOR", text="2M", style=shape.circle, location=location.bottom, size=size.tiny, color=color.aqua, textcolor=color.black)
+plotshape(barstate.isconfirmed and pilotSymbolOK and is5m and inStandard5m, title="5M SENSOR", text="5M", style=shape.circle, location=location.bottom, size=size.tiny, color=color.blue, textcolor=color.white)
+plotshape(barstate.isconfirmed and pilotSymbolOK and is15m and inRegularSession, title="15M CONTEXT SENSOR", text="15M", style=shape.circle, location=location.bottom, size=size.tiny, color=color.gray, textcolor=color.white)
+
+var table statusTable = table.new(position.top_right, 2, 5, border_width=1)
+if barstate.islast and showStatusPanel
+    table.cell(statusTable, 0, 0, "DA Agentic MU V1", text_color=color.white, bgcolor=color.navy)
+    table.cell(statusTable, 1, 0, "PAPER SENSOR", text_color=color.white, bgcolor=color.navy)
+    table.cell(statusTable, 0, 1, "Symbol")
+    table.cell(statusTable, 1, 1, syminfo.ticker, text_color=pilotSymbolOK ? color.green : color.red)
+    table.cell(statusTable, 0, 2, "Timeframe")
+    table.cell(statusTable, 1, 2, timeframe.period, text_color=supportedTimeframe ? color.green : color.red)
+    table.cell(statusTable, 0, 3, "Phase")
+    table.cell(statusTable, 1, 3, phase)
+    table.cell(statusTable, 0, 4, "Alerts")
+    table.cell(statusTable, 1, 4, enableSensorAlerts ? "ENABLED" : "OFF", text_color=enableSensorAlerts ? color.green : color.orange)
