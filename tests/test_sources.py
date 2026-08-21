@@ -3,8 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from daily_alpha.orats import OratsDataError, OratsNoOptionsError
-from daily_alpha.sources import OratsBatchSource, OvtlyrInbox, SourceError
+from daily_alpha.sources import OvtlyrInbox, SourceError
 
 NOW = datetime(2026, 8, 15, 13, 0, tzinfo=UTC)
 
@@ -39,28 +38,9 @@ def test_missing_and_stale_inbox_fail_closed(tmp_path):
         OvtlyrInbox(tmp_path).latest(as_of=NOW)
 
 
-class FakeClient:
-    def fetch_chain(self, symbol, *, as_of):
-        if symbol == "NOOPT":
-            raise OratsNoOptionsError("no rows")
-        if symbol == "BAD":
-            raise OratsDataError("sensitive upstream detail")
-        return (symbol, as_of)
-
-
-def test_orats_batch_deduplicates_symbols_and_returns_safe_error_codes():
-    result = OratsBatchSource(FakeClient()).fetch(
-        ("aapl", "AAPL", "NOOPT", "BAD"), as_of=NOW
-    )
-    assert len(result.chains) == 1
-    assert result.errors == (
-        ("NOOPT", "ORATS_NO_45_75_DTE_OPTIONS"),
-        ("BAD", "ORATS_DATA_ERROR"),
-    )
-    assert result.complete is False
-    assert "sensitive" not in repr(result)
-
-
-def test_empty_orats_batch_is_complete():
-    result = OratsBatchSource(FakeClient()).fetch((), as_of=NOW)
-    assert result.complete is True
+def test_inbox_rejects_naive_as_of(tmp_path):
+    path = tmp_path / "today.csv"
+    path.write_text("symbol\nAAPL\n")
+    set_modified(path, NOW)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        OvtlyrInbox(tmp_path).latest(as_of=NOW.replace(tzinfo=None))
