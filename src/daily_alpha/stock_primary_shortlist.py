@@ -10,7 +10,7 @@ This module preserves the Daily Alpha stock model-validation contract:
 * emitted artifacts never authorize live trading.
 
 The older :mod:`daily_alpha.research_shortlist` remains available for historical
-research reproducibility.  New actionable publication should use this module.
+research reproducibility. New actionable publication should use this module.
 """
 
 from __future__ import annotations
@@ -73,14 +73,14 @@ def build_stock_primary_shortlist(
     """Build the stock-primary Daily Alpha shortlist.
 
     ``company_symbols`` should come from the same canonical liquidity evidence
-    used to pre-filter the CSVs.  When supplied, the $10 broad server-side price
+    used to pre-filter the CSVs. When supplied, the $10 broad server-side price
     floor applies only to individual companies; ETF rows retain their separate
     liquidity/capacity treatment.
 
-    ORATS is deliberately optional.  A missing provider, a provider error,
-    missing 45-75 DTE contracts, poor option quality, or OVTLYR
-    ``optionable=False`` changes only research metadata.  It cannot remove a
-    stock candidate and it cannot change the stock score.
+    ORATS is deliberately optional. A missing provider, provider exception,
+    per-symbol error, missing 45-75 DTE contracts, poor option quality, or OVTLYR
+    ``optionable=False`` changes only research metadata. It cannot remove a stock
+    candidate and it cannot change the stock score.
     """
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
@@ -173,7 +173,7 @@ def build_stock_primary_shortlist(
             )
         )
 
-    # ORATS requests are research-only and quota-bounded.  Known non-optionable
+    # ORATS requests are research-only and quota-bounded. Known non-optionable
     # names remain in the stock shortlist but do not consume option-chain quota.
     staged.sort(key=lambda row: (-row[2], row[1].symbol))
     research_request_candidates = [
@@ -185,9 +185,14 @@ def build_stock_primary_shortlist(
     chains: dict[str, Any] = {}
     errors: dict[str, str] = {}
     if orats_source is not None and requested:
-        batch = orats_source.fetch(requested, as_of=as_of)
-        chains = {chain.ticker: chain for chain in batch.chains}
-        errors = dict(batch.errors)
+        try:
+            batch = orats_source.fetch(requested, as_of=as_of)
+        except Exception as exc:  # noqa: BLE001 - optional research boundary
+            provider_reason = f"ORATS_PROVIDER_{type(exc).__name__.upper()}"
+            errors = {symbol: provider_reason for symbol in requested}
+        else:
+            chains = {chain.ticker: chain for chain in batch.chains}
+            errors = dict(batch.errors)
 
     rules = option_rules or OptionQualityRules()
     items: list[ResearchShortlistItem] = []
