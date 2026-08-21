@@ -101,6 +101,7 @@ def liquidity_to_evidence(
     even though the security is ineligible. Source-integrity failures are mapped to
     STALE/DATA_ERROR so the supervisor cannot confuse bad evidence with a valid rejection.
     """
+    status = _liquidity_status(decision)
     return EvidenceRecord(
         symbol=decision.symbol,
         evidence_type="LIQUIDITY",
@@ -109,9 +110,9 @@ def liquidity_to_evidence(
         observed_at=observed_at,
         received_at=received_at,
         source_version=source_version,
-        status=_liquidity_status(decision),
-        confidence=1.0 if _liquidity_status(decision) is EvidenceStatus.COMPLETE else 0.0,
-        reason_code=None if _liquidity_status(decision) is EvidenceStatus.COMPLETE else decision.detail,
+        status=status,
+        confidence=1.0 if status is EvidenceStatus.COMPLETE else 0.0,
+        reason_code=None if status is EvidenceStatus.COMPLETE else decision.detail,
         provenance={
             "source_date": decision.source_date or "UNKNOWN",
             "authority": "daily_alpha.equity_liquidity",
@@ -180,7 +181,7 @@ def _parse_aware_iso(value: str, field_name: str) -> datetime:
     if not text:
         raise EvidenceContractError(f"{field_name}_REQUIRED")
     try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text)
     except ValueError as exc:
         raise EvidenceContractError(f"{field_name}_INVALID") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
