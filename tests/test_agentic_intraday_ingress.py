@@ -70,7 +70,7 @@ def event(payload):
 
 
 def record(payload, *, received_at=None):
-    bar_time = datetime.fromisoformat(payload["bar_time"].replace("Z", "+00:00"))
+    bar_time = datetime.fromisoformat(payload["bar_time"])
     return build_agentic_sensor_record(
         event(payload),
         expected_secret=SECRET,
@@ -147,7 +147,7 @@ def test_sensor_ingress_rejects_wrong_symbol_or_phase_contract():
 
 def test_sensor_ingress_rejects_stale_or_future_bar_time():
     payload = sensor_payload()
-    bar_time = datetime.fromisoformat(payload["bar_time"].replace("Z", "+00:00"))
+    bar_time = datetime.fromisoformat(payload["bar_time"])
     with pytest.raises(AgenticIntradayIngressError, match="INTRADAY_SENSOR_EVENT_STALE"):
         record(payload, received_at=bar_time + timedelta(minutes=16))
     with pytest.raises(AgenticIntradayIngressError, match="INTRADAY_SENSOR_BAR_TIME_IN_FUTURE"):
