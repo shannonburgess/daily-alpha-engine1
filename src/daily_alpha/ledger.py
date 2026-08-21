@@ -41,6 +41,7 @@ class PaperTrade:
     add2_signal_id: str | None = None
     harvest_signal_id: str | None = None
     sector: str = "Unknown"
+    initial_risk_basis: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -72,11 +73,14 @@ class PaperLedger:
         target_quantity: int | None = None,
         runner_stage: str = "STARTER",
         sector: str = "Unknown",
+        initial_risk_basis: float | None = None,
     ) -> PaperTrade:
         if instrument not in {InstrumentSelected.OPTION, InstrumentSelected.STOCK}:
             raise ValueError("Paper trade instrument must be OPTION or STOCK")
         if quantity <= 0 or entry_price <= 0:
             raise ValueError("Paper trade quantity and entry price must be positive")
+        if initial_risk_basis is not None and initial_risk_basis <= 0:
+            raise ValueError("Paper trade initial risk basis must be positive")
         target = target_quantity or quantity
         if target < quantity:
             raise ValueError("Paper trade target quantity cannot be below current quantity")
@@ -98,6 +102,7 @@ class PaperLedger:
             target_quantity=target,
             runner_stage=runner_stage,
             sector=sector,
+            initial_risk_basis=initial_risk_basis,
         )
         self._append(
             instrument,

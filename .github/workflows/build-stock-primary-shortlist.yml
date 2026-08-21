@@ -1,0 +1,396 @@
+name: Build Daily Alpha stock-primary shortlist
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Covers PST/PDT. Gate job permits 06:00 and 15:00 America/Los_Angeles.
+    - cron: "0 13,14,22,23 * * 1-5"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-alpha-stock-primary-shortlist
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.schedule.outputs.run }}
+      session: ${{ steps.schedule.outputs.session }}
+    steps:
+      - name: Resolve Pacific publishing session
+        id: schedule
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "session=MANUAL" >> "$GITHUB_OUTPUT"
+          else
+            python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from datetime import UTC, datetime
+          from zoneinfo import ZoneInfo
+
+          local = datetime.now(UTC).astimezone(ZoneInfo("America/Los_Angeles"))
+          if local.hour == 6:
+              print("run=true")
+              print("session=MORNING")
+          elif local.hour == 15:
+              print("run=true")
+              print("session=POST_MARKET")
+          else:
+              print("run=false")
+              print("session=SKIP")
+          PY
+          fi
+
+  shortlist:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OVTLYR_FOLDER_URL: https://drive.google.com/drive/folders/1bt6x1-wszD4DqgvoZWd7UG9nyCWPc8Bj
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+      STOCKDATA_API_KEY: ${{ secrets.STOCKDATA_API_KEY }}
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
+      REPORT_SESSION: ${{ needs.gate.outputs.session }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Record optional research-source availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$ORATS_TOKEN" ]]; then
+            echo "ORATS unavailable: continuing with the stock shortlist; option research will be marked unavailable."
+          fi
+          if [[ -z "$STOCKDATA_API_KEY" ]]; then
+            echo "StockData unavailable: continuing with the stock shortlist; smart-money research will be omitted."
+          fi
+
+      - name: Install shortlist tools
+        run: python -m pip install --disable-pip-version-check . gdown==5.2.0
+
+      - name: Download OVTLYR history
+        run: |
+          mkdir -p data/incoming
+          gdown --folder --remaining-ok "$OVTLYR_FOLDER_URL" -O data/incoming
+
+      - name: Build stock-primary actionable research shortlist
+        id: shortlist
+        shell: python
+        run: |
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          from daily_alpha.equity_liquidity import (
+              CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
+              prepare_actionable_liquidity_inputs,
+          )
+          from daily_alpha.orats import OratsClient
+          from daily_alpha.research_shortlist import (
+              discover_daily_pair,
+              write_research_shortlist_outputs,
+          )
+          from daily_alpha.smart_money import (
+              rank_congressional_acquisitions,
+              rank_institutional_acquisitions,
+          )
+          from daily_alpha.sources import OratsBatchSource
+          from daily_alpha.stock_primary_shortlist import build_stock_primary_shortlist
+          from daily_alpha.stockdata_smart_money import StockDataSmartMoneyClient
+          from daily_alpha.trump_policy import rank_trump_policy_companies
+          from daily_alpha.white_house_policy import fetch_white_house_investments
+
+          previous_raw, current_raw = discover_daily_pair("data/incoming")
+          now = datetime.now(UTC)
+          liquidity = prepare_actionable_liquidity_inputs(
+              previous_raw,
+              current_raw,
+              output_dir="data/liquidity-filtered",
+              as_of=now,
+              threshold=CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
+          )
+          previous, current = liquidity.previous_path, liquidity.current_path
+
+          liquidity_snapshot = json.loads(liquidity.snapshot_path.read_text())
+          company_symbols = frozenset(
+              str(row.get("symbol", "")).upper()
+              for row in liquidity_snapshot.get("rows", [])
+              if row.get("security_type") == "COMPANY_EQUITY"
+          )
+
+          congressional = ()
+          institutional = ()
+          current_13f_period = "SOURCE_UNAVAILABLE"
+          previous_13f_period = "SOURCE_UNAVAILABLE"
+          stockdata_status = "SOURCE_UNAVAILABLE"
+          if os.environ.get("STOCKDATA_API_KEY", "").strip():
+              try:
+                  smart_client = StockDataSmartMoneyClient()
+                  congress_trades = smart_client.fetch_congressional_purchases(
+                      days=90,
+                      limit=500,
+                  )
+                  congressional = rank_congressional_acquisitions(
+                      congress_trades,
+                      as_of=now.date(),
+                      lookback_days=90,
+                      limit=5,
+                  )
+                  current_13f, previous_13f, institutional_coverage = (
+                      smart_client.fetch_institutional_holdings_pair(
+                          as_of=now.date(),
+                          institution_limit=25,
+                          portfolio_limit=500,
+                      )
+                  )
+                  institutional = rank_institutional_acquisitions(
+                      current_13f,
+                      previous_13f,
+                      limit=5,
+                  )
+                  current_13f_period = institutional_coverage.current_period
+                  previous_13f_period = institutional_coverage.previous_period
+                  stockdata_status = "COMPLETE"
+              except Exception as exc:
+                  stockdata_status = f"DATA_ERROR:{type(exc).__name__}"
+                  print(
+                      "StockData research unavailable; continuing stock shortlist: "
+                      + stockdata_status
+                  )
+
+          policy_watch = ()
+          white_house_status = "SOURCE_UNAVAILABLE"
+          try:
+              policy_watch = rank_trump_policy_companies(
+                  fetch_white_house_investments(limit=50),
+                  limit=10,
+              )
+              white_house_status = "COMPLETE"
+          except Exception as exc:
+              white_house_status = f"DATA_ERROR:{type(exc).__name__}"
+              print(
+                  "White House policy research unavailable; continuing stock shortlist: "
+                  + white_house_status
+              )
+
+          token = os.environ.get("ORATS_TOKEN", "").strip()
+          orats_source = None
+          if token:
+              try:
+                  # Research may legitimately use Friday's close on Monday premarket.
+                  # The builder guarantees this enrichment cannot change stock
+                  # eligibility or stock score.
+                  orats_source = OratsBatchSource(
+                      OratsClient(mode="delayed", max_age_minutes=72 * 60)
+                  )
+              except Exception as exc:
+                  print(
+                      "ORATS research client unavailable; continuing stock shortlist: "
+                      f"DATA_ERROR:{type(exc).__name__}"
+                  )
+
+          result = build_stock_primary_shortlist(
+              previous,
+              current,
+              as_of=now,
+              orats_source=orats_source,
+              request_limit=20,
+              congressional=congressional,
+              institutional=institutional,
+              trump_policy=policy_watch,
+              company_symbols=company_symbols,
+          )
+          summary = result.summary
+          summary.update(
+              {
+                  "company_average_volume_gate_enabled": True,
+                  "company_min_average_volume": CANONICAL_COMPANY_MIN_AVERAGE_VOLUME,
+                  "excluded_liquidity_filtered": liquidity.company_filtered_count,
+                  "excluded_liquidity_missing": liquidity.company_missing_volume_count,
+                  "etf_separate_liquidity_count": liquidity.etf_count,
+                  "liquidity_evidence_file": "company_liquidity_eligibility.json",
+                  "new_paper_entries": "STOCK_ONLY",
+                  "orats_research_only": True,
+                  "orats_can_block_stock_entry": False,
+                  "stockdata_research_status": stockdata_status,
+                  "white_house_research_status": white_house_status,
+              }
+          )
+          outputs = write_research_shortlist_outputs("data/shortlist", result)
+          liquidity_destination = Path("data/shortlist/company_liquidity_eligibility.json")
+          liquidity_destination.write_bytes(liquidity.snapshot_path.read_bytes())
+          outputs["company_liquidity_eligibility_json"] = liquidity_destination
+
+          print(
+              f"Compared {result.previous_file} -> {result.current_file}; "
+              f"ranked {summary['actionable_ranked_count']} stock-primary candidates, "
+              f"liquidity-filtered {summary['excluded_liquidity_filtered']} companies "
+              f"at/below {summary['company_min_average_volume']:.0f} average shares and "
+              f"{summary['excluded_liquidity_missing']} with missing volume; "
+              f"company-price-filtered {summary['excluded_company_price_floor']} below $10; "
+              f"preserved {summary['etf_separate_liquidity_count']} ETFs on separate rules."
+          )
+          print(
+              "ORATS research only: "
+              f"requests={summary['orats_requests']}, "
+              f"non-optionable retained={summary['research_non_optionable_count']}, "
+              f"no-45-75-DTE retained={summary['research_orats_no_45_75_dte_count']}, "
+              f"data_errors retained={summary['orats_data_error_count']}, "
+              f"qualified research options={summary['qualified_option_count']}."
+          )
+          print(
+              f"External research: StockData={stockdata_status}; "
+              f"WhiteHouse={white_house_status}."
+          )
+          print("Top stock-primary candidates:")
+          for rank, item in enumerate(result.items[:10], start=1):
+              extras = []
+              if item.smart_money_bonus > 0:
+                  extras.append(f"smart_money=+{item.smart_money_bonus:.1f}")
+              if item.trump_policy_bonus > 0:
+                  extras.append(f"policy=+{item.trump_policy_bonus:.1f}")
+              confirmation = " " + " ".join(extras) if extras else ""
+              print(
+                  f"{rank:02d} {item.symbol} {item.display_label} "
+                  f"stock_score={item.score:.2f}{confirmation} "
+                  f"avg_vol={item.average_volume:.0f} ORATS={item.orats_reason}"
+              )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"previous_file={result.previous_file}\n")
+              handle.write(f"current_file={result.current_file}\n")
+              handle.write(f"ranked_count={summary['actionable_ranked_count']}\n")
+              handle.write(f"qualified_count={summary['qualified_option_count']}\n")
+              handle.write(
+                  f"liquidity_filtered_count={summary['excluded_liquidity_filtered']}\n"
+              )
+              handle.write(
+                  f"liquidity_missing_count={summary['excluded_liquidity_missing']}\n"
+              )
+              handle.write(
+                  f"price_filtered_count={summary['excluded_company_price_floor']}\n"
+              )
+              handle.write(
+                  f"etf_separate_count={summary['etf_separate_liquidity_count']}\n"
+              )
+              handle.write(
+                  f"orats_no_dte_research_count={summary['research_orats_no_45_75_dte_count']}\n"
+              )
+              handle.write(
+                  f"orats_error_research_count={summary['orats_data_error_count']}\n"
+              )
+              handle.write(
+                  f"smart_money_matches={summary['smart_money_matched_candidates']}\n"
+              )
+              handle.write(
+                  f"trump_policy_matches={summary['trump_policy_matched_candidates']}\n"
+              )
+              handle.write(
+                  "congress_top=" + ", ".join(item.symbol for item in congressional) + "\n"
+              )
+              handle.write(
+                  "institution_top="
+                  + ", ".join(item.symbol or item.cusip for item in institutional)
+                  + "\n"
+              )
+              handle.write(
+                  "trump_policy_top="
+                  + ", ".join(item.symbol for item in policy_watch[:5])
+                  + "\n"
+              )
+              handle.write(f"current_13f_period={current_13f_period}\n")
+              handle.write(f"previous_13f_period={previous_13f_period}\n")
+              handle.write(f"stockdata_status={stockdata_status}\n")
+              handle.write(f"white_house_status={white_house_status}\n")
+          assert all(path.exists() for path in outputs.values())
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-stock-primary-shortlist
+          aws-region: us-east-2
+
+      - name: Publish stock-primary shortlist to AWS staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="s3://${STAGING_BUCKET}/ovtlyr/shortlist"
+          HISTORY="${PREFIX}/history/${GITHUB_RUN_ID}"
+          for FILE in data/shortlist/*; do
+            NAME="$(basename "$FILE")"
+            aws s3 cp "$FILE" "${PREFIX}/latest/${NAME}" --only-show-errors
+            aws s3 cp "$FILE" "${HISTORY}/${NAME}" --only-show-errors
+          done
+          echo "Published stock-primary shortlist to ${PREFIX}/latest/"
+
+      - name: Publish newsletter and CSV bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws lambda invoke \
+            --function-name daily-alpha-report \
+            --cli-binary-format raw-in-base64-out \
+            --payload "{\"operation\":\"PUBLISH_STAGING_REPORT\",\"session\":\"${REPORT_SESSION}\",\"run_id\":\"${GITHUB_RUN_ID}\"}" \
+            /tmp/daily-alpha-report.json >/tmp/daily-alpha-report-meta.json
+          cat /tmp/daily-alpha-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("/tmp/daily-alpha-report.json").read_text())
+          if result.get("ok") is not True or result.get("status") != "PUBLISHED":
+              raise SystemExit(f"Daily Alpha report publish failed: {result}")
+          print(
+              "Published Daily Alpha output bundle: "
+              + ", ".join(sorted(result.get("outputs", {}).values()))
+          )
+          PY
+
+      - name: Upload validated output artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-stock-primary-shortlist-${{ github.run_id }}
+          path: |
+            data/shortlist/*
+            /tmp/daily-alpha-report.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize stock-primary shortlist build
+        shell: bash
+        run: |
+          {
+            echo "## Daily Alpha stock-primary shortlist + staging publication"
+            echo "- Session: ${REPORT_SESSION}"
+            echo "- Previous OVTLYR: ${{ steps.shortlist.outputs.previous_file }}"
+            echo "- Current OVTLYR: ${{ steps.shortlist.outputs.current_file }}"
+            echo "- Actionable stock-primary candidates: ${{ steps.shortlist.outputs.ranked_count }}"
+            echo "- Company liquidity: strictly >1,500,000 30D average daily shares"
+            echo "- Liquidity-filtered companies: ${{ steps.shortlist.outputs.liquidity_filtered_count }}"
+            echo "- Missing company-volume evidence: ${{ steps.shortlist.outputs.liquidity_missing_count }}"
+            echo "- Sub-$10 companies filtered: ${{ steps.shortlist.outputs.price_filtered_count }}"
+            echo "- ETFs preserved on separate liquidity/capacity rules: ${{ steps.shortlist.outputs.etf_separate_count }}"
+            echo "- ORATS no-45-75-DTE names retained for stock: ${{ steps.shortlist.outputs.orats_no_dte_research_count }}"
+            echo "- ORATS data-error names retained for stock: ${{ steps.shortlist.outputs.orats_error_research_count }}"
+            echo "- Qualified option setups: ${{ steps.shortlist.outputs.qualified_count }} (research only)"
+            echo "- ORATS/options cannot change stock eligibility or stock score."
+            echo "- StockData research: ${{ steps.shortlist.outputs.stockdata_status }}"
+            echo "- White House policy research: ${{ steps.shortlist.outputs.white_house_status }}"
+            echo "- External research-source failure cannot remove an otherwise eligible stock."
+            echo "- New PAPER entries remain STOCK ONLY; this workflow does not execute trades."
+            echo "- trading_authorized=false; live_trading_enabled=false"
+          } >> "$GITHUB_STEP_SUMMARY"

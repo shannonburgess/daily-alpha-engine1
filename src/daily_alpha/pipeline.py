@@ -47,6 +47,9 @@ class PaperTradingPipeline:
             size = size_long_option(premium=pricing.option_premium, limits=self.limits)
             runner = allocate_runner(size.quantity)
             contract = decision.selected_contract
+            initial_risk_basis = (
+                runner.target_quantity * pricing.option_premium * 100
+            )
             return self.ledger.open_trade(
                 signal_id=signal.signal_id,
                 symbol=signal.symbol,
@@ -61,6 +64,7 @@ class PaperTradingPipeline:
                 option_type=contract.option_type,
                 runner_stage="STARTER",
                 sector=sector,
+                initial_risk_basis=initial_risk_basis,
             )
 
         if decision.instrument_selected == InstrumentSelected.STOCK:
@@ -72,6 +76,9 @@ class PaperTradingPipeline:
                 limits=self.limits,
             )
             runner = allocate_runner(size.quantity)
+            initial_risk_basis = runner.target_quantity * (
+                pricing.stock_price - pricing.stock_stop_price
+            )
             return self.ledger.open_trade(
                 signal_id=signal.signal_id,
                 symbol=signal.symbol,
@@ -83,6 +90,7 @@ class PaperTradingPipeline:
                 fallback_reason=decision.fallback_reason,
                 runner_stage="STARTER",
                 sector=sector,
+                initial_risk_basis=initial_risk_basis,
             )
 
         raise ValueError("Unsupported instrument decision")

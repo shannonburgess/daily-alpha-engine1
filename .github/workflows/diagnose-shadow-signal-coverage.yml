@@ -1,0 +1,290 @@
+name: Diagnose SH24 source-side signal coverage
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/diagnose-shadow-signal-coverage.yml"
+      - "scripts/shadow_signal_diagnostics.py"
+      - "tests/test_shadow_signal_diagnostics.py"
+      - "tradingview/da_turtle_20_10_v2_4.pine"
+  workflow_dispatch:
+  schedule:
+    # Two bounded post-close attempts per completed U.S. trading day. In ET these
+    # resolve to roughly 22:25-23:25 and 01:25-02:25 depending on DST. A finalized
+    # session is skipped on the second attempt, avoiding duplicate ORATS usage.
+    - cron: "25 3 * * 2-6"
+    - cron: "25 6 * * 2-6"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-alpha-sh24-source-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Independent SH24 daily-bar expectation
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      AWS_REGION: us-east-2
+      STAGING_BUCKET: daily-alpha-staging-490809405132-us-east-2
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+      DIAGNOSTIC_PREFIX: daily-alpha/shadow-diagnostics/sh24-source
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require ORATS secret
+        run: test -n "$ORATS_TOKEN"
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-sh24-source-diagnostic
+          aws-region: us-east-2
+
+      - name: Capture canonical actionable universe and shadow evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p shadow-signal-diagnostic
+          aws s3 cp \
+            "s3://${STAGING_BUCKET}/ovtlyr/shortlist/latest/shortlist.json" \
+            shadow-signal-diagnostic/shortlist.json \
+            --only-show-errors
+          aws lambda invoke \
+            --function-name daily-alpha-pine-processor \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"operation":"GET_SHADOW_MONITOR_STATE","armed_limit":25,"event_limit":100}' \
+            shadow-signal-diagnostic/shadow-monitor-state.json >/dev/null
+
+      - name: Resolve latest completed NYSE session and target shadow status
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src:. python - <<'PY'
+          import json
+          from datetime import UTC, datetime, time, timedelta
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          from scripts.nyse_session_calendar import core_session_for
+          from scripts.shadow_monitor import summarize
+
+          now = datetime.now(UTC)
+          current = core_session_for(now)
+          target = None
+          if current.calendar_status == "VERIFIED" and current.is_trading_day and current.session_phase == "POST_SESSION":
+              target = datetime.fromisoformat(current.session_date_et).date()
+          else:
+              local_date = now.astimezone(ZoneInfo("America/New_York")).date()
+              for offset in range(1, 8):
+                  candidate = local_date - timedelta(days=offset)
+                  after_close = datetime.combine(
+                      candidate,
+                      time(17, 0),
+                      tzinfo=ZoneInfo("America/New_York"),
+                  )
+                  session = core_session_for(after_close)
+                  if session.calendar_status == "VERIFIED" and session.is_trading_day:
+                      target = candidate
+                      break
+          if target is None:
+              raise SystemExit("No verified completed NYSE session found")
+
+          state_path = Path("shadow-signal-diagnostic/shadow-monitor-state.json")
+          state = json.loads(state_path.read_text())
+          evaluation_time = datetime.combine(
+              target,
+              time(17, 0),
+              tzinfo=ZoneInfo("America/New_York"),
+          )
+          status = summarize(state, now=evaluation_time)
+          Path("shadow-signal-diagnostic/target-date.txt").write_text(target.isoformat() + "\n")
+          Path("shadow-signal-diagnostic/target-shadow-status.json").write_text(
+              json.dumps(status, indent=2, sort_keys=True) + "\n"
+          )
+          print("target_date=" + target.isoformat())
+          print("target_strategy_events=" + str(status["total_strategy_events"]))
+          PY
+
+      - name: Skip duplicate finalized scheduled session
+        id: finalized
+        if: github.event_name == 'schedule'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET_DATE="$(cat shadow-signal-diagnostic/target-date.txt)"
+          LATEST="s3://${STAGING_BUCKET}/${DIAGNOSTIC_PREFIX}/latest/publication.json"
+          if ! aws s3 cp "$LATEST" shadow-signal-diagnostic/latest-publication.json --only-show-errors 2>/dev/null; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TARGET_DATE="$TARGET_DATE" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path("shadow-signal-diagnostic/latest-publication.json").read_text())
+          target = os.environ["TARGET_DATE"]
+          finalized = (
+              payload.get("target_date") == target
+              and payload.get("source_diagnostic_complete") is True
+              and payload.get("source_data_status") == "COMPLETE"
+              and payload.get("trading_authorized") is False
+              and payload.get("live_trading_enabled") is False
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
+              handle.write(f"skip={'true' if finalized else 'false'}\n")
+          print(f"existing_finalized_session={finalized}")
+          PY
+
+      - name: Run independent SH24 source diagnostic
+        id: diagnostic
+        if: steps.finalized.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set +e
+          TARGET_DATE="$(cat shadow-signal-diagnostic/target-date.txt)"
+          PYTHONPATH=src:. python scripts/shadow_signal_diagnostics.py \
+            --symbols shadow-signal-diagnostic/shortlist.json \
+            --target-date "$TARGET_DATE" \
+            --shadow-status shadow-signal-diagnostic/target-shadow-status.json \
+            --output-json shadow-signal-diagnostic/sh24-source-diagnostic.json \
+            --output-md shadow-signal-diagnostic/sh24-source-diagnostic.md
+          CODE=$?
+          cat shadow-signal-diagnostic/sh24-source-diagnostic.md >> "$GITHUB_STEP_SUMMARY"
+          cat shadow-signal-diagnostic/sh24-source-diagnostic.json
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized publication manifest
+        if: steps.finalized.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          diagnostic_path = Path("shadow-signal-diagnostic/sh24-source-diagnostic.json")
+          diagnostic_bytes = diagnostic_path.read_bytes()
+          diagnostic = json.loads(diagnostic_bytes)
+          if diagnostic.get("trading_authorized") is not False:
+              raise SystemExit("diagnostic trading_authorized safety invariant failed")
+          if diagnostic.get("live_trading_enabled") is not False:
+              raise SystemExit("diagnostic live_trading_enabled safety invariant failed")
+          if diagnostic.get("promotion_authorized") is not False:
+              raise SystemExit("diagnostic promotion_authorized safety invariant failed")
+
+          manifest = {
+              "schema_version": "SH24_SOURCE_DIAGNOSTIC_PUBLICATION_V1",
+              "workflow": "diagnose-shadow-signal-coverage.yml",
+              "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "head_sha": os.environ["GITHUB_SHA"],
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "published_at_utc": datetime.now(UTC).isoformat(),
+              "target_date": diagnostic.get("target_date"),
+              "source_data_status": diagnostic.get("source_data_status"),
+              "source_diagnostic_complete": diagnostic.get("source_diagnostic_complete") is True,
+              "interpretation": diagnostic.get("interpretation"),
+              "requested_symbol_count": diagnostic.get("requested_symbol_count"),
+              "symbols_evaluated": diagnostic.get("symbols_evaluated"),
+              "expected_entry_count": diagnostic.get("expected_entry_count"),
+              "diagnostic_sha256": hashlib.sha256(diagnostic_bytes).hexdigest(),
+              "research_only": True,
+              "promotion_authorized": False,
+              "trading_authorized": False,
+              "live_trading_enabled": False,
+          }
+          Path("shadow-signal-diagnostic/publication.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
+      - name: Refresh AWS credentials before sanitized publication
+        if: steps.finalized.outputs.skip != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-sh24-source-publication
+          aws-region: us-east-2
+          unset-current-credentials: true
+
+      - name: Publish bounded sanitized evidence to staging
+        if: steps.finalized.outputs.skip != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET_DATE="$(cat shadow-signal-diagnostic/target-date.txt)"
+          PREFIX="s3://${STAGING_BUCKET}/${DIAGNOSTIC_PREFIX}"
+          HISTORY="${PREFIX}/history/${TARGET_DATE}/${GITHUB_RUN_ID}"
+          for FILE in \
+            target-date.txt \
+            target-shadow-status.json \
+            sh24-source-diagnostic.json \
+            sh24-source-diagnostic.md \
+            publication.json; do
+            aws s3 cp \
+              "shadow-signal-diagnostic/${FILE}" \
+              "${HISTORY}/${FILE}" \
+              --only-show-errors
+          done
+          for FILE in \
+            target-date.txt \
+            target-shadow-status.json \
+            sh24-source-diagnostic.json \
+            sh24-source-diagnostic.md \
+            publication.json; do
+            aws s3 cp \
+              "shadow-signal-diagnostic/${FILE}" \
+              "${PREFIX}/latest/${FILE}" \
+              --only-show-errors
+          done
+          echo "Published SH24 source evidence for ${TARGET_DATE}; history is immutable per run and latest is sanitized."
+
+      - name: Summarize skipped duplicate session
+        if: steps.finalized.outputs.skip == 'true'
+        shell: bash
+        run: |
+          {
+            echo "### SH24 independent source-side signal diagnostic"
+            echo "Status: **SKIPPED — SESSION ALREADY FINALIZED**"
+            echo "Target date: \`$(cat shadow-signal-diagnostic/target-date.txt)\`"
+            echo "No ORATS diagnostic calls were made on this scheduled attempt."
+            echo "Safety: \`promotion_authorized=false\`, \`trading_authorized=false\`, \`live_trading_enabled=false\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sanitized source diagnostic
+        if: always() && steps.finalized.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sh24-source-signal-diagnostic-${{ github.run_id }}
+          path: |
+            shadow-signal-diagnostic/target-date.txt
+            shadow-signal-diagnostic/target-shadow-status.json
+            shadow-signal-diagnostic/sh24-source-diagnostic.json
+            shadow-signal-diagnostic/sh24-source-diagnostic.md
+            shadow-signal-diagnostic/publication.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Enforce fail-closed diagnostic completeness
+        if: steps.finalized.outputs.skip != 'true' && steps.diagnostic.outputs.exit_code != '0'
+        run: |
+          echo "SH24 source-side diagnostic is incomplete or detected source-contract drift."
+          exit 1
