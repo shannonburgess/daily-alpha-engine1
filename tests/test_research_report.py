@@ -14,16 +14,16 @@ def option_candidate(symbol="AAPL"):
         symbol=symbol,
         disposition=ResearchDisposition.PAPER_CANDIDATE,
         instrument=InstrumentSelected.OPTION,
-        signal_label="ENTRY_WATCH",
-        thesis="Trend and momentum align with the approved research rules.",
-        reasons=("PINE_ENTRY", "RISK_APPROVED", "ORATS_QUALITY_PASS"),
+        signal_label="USER_DIRECTED_OPTION",
+        thesis="User explicitly directed this option order using broker-chain data.",
+        reasons=("USER_AUTHORIZED", "BROKER_CHAIN_CONTRACT", "RISK_APPROVED"),
         risk_status="APPROVED",
         data_status="PASS",
         sector="TECHNOLOGY",
         option_contract="AAPL 2026-10-16 250C",
         planned_loss_nav=0.004,
         expected_move_pct=0.06,
-        flow_classification="UNUSUAL_CONFIRMATION",
+        user_directed_option=True,
     )
 
 
@@ -39,27 +39,32 @@ def test_packet_is_versioned_reproducible_and_newsletter_ready():
     payload = packet.to_dict()
     assert payload["counts"]["PAPER_CANDIDATE"] == 1
     assert payload["candidates"][0]["instrument"] == "OPTION"
-    assert len(payload["disclosures"]) == 2
+    assert payload["candidates"][0]["user_directed_option"] is True
+    assert len(payload["disclosures"]) == 3
 
 
-def test_stale_orats_is_data_error_with_no_stock_fallback():
-    candidate = data_error_candidate("MSFT", reason="ORATS_STALE", signal_label="LEADER")
+def test_missing_required_market_data_is_fail_closed():
+    candidate = data_error_candidate(
+        "MSFT",
+        reason="CURRENT_MARKET_DATA_STALE",
+        signal_label="LEADER",
+    )
     assert candidate.disposition == ResearchDisposition.DATA_ERROR
     assert candidate.instrument == InstrumentSelected.NONE
 
 
-def test_flow_cannot_be_standalone_signal():
-    with pytest.raises(ValueError, match="standalone"):
+def test_option_candidate_requires_explicit_user_direction():
+    with pytest.raises(ValueError, match="explicit user-directed"):
         ResearchCandidate(
             "SPY",
             ResearchDisposition.WATCHLIST,
-            InstrumentSelected.NONE,
-            "FLOW",
-            "Flow only.",
-            ("UNUSUAL_FLOW",),
-            "NOT_EVALUATED",
+            InstrumentSelected.OPTION,
+            "OPTION_WATCH",
+            "Option contract supplied without user authorization.",
+            ("BROKER_CHAIN_CONTRACT",),
+            "WATCH",
             "PASS",
-            standalone_flow_signal=True,
+            option_contract="SPY 2026-10-16 700C",
         )
 
 
