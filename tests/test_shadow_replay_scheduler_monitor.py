@@ -59,10 +59,39 @@ def test_regular_session_recent_scheduled_success_passes() -> None:
     assert "frozen" in render_markdown(result)
 
 
-def test_manual_dispatch_cannot_mask_missing_schedule() -> None:
-    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)
+def test_monitor_triggered_fallback_passes_when_due_cron_is_missing() -> None:
+    now = datetime(2026, 8, 20, 15, 17, tzinfo=UTC)  # 11:17 ET
     result = evaluate_replay_scheduler(
-        [_run(datetime(2026, 8, 20, 14, 0, tzinfo=UTC), event="workflow_dispatch")],
+        [
+            _run(
+                datetime(2026, 8, 20, 14, 18, tzinfo=UTC),
+                event="workflow_run",
+                run_id=456,
+            )
+        ],
+        now=now,
+        workflow_state="active",
+    )
+
+    assert result.ok is True
+    assert result.status == "PASS"
+    assert result.diagnosis == "REPLAY_MONITOR_FALLBACK_HEALTHY"
+    assert result.latest_run_id == "456"
+
+
+def test_first_monitor_fallback_has_bounded_grace() -> None:
+    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)  # 10:17 ET
+    result = evaluate_replay_scheduler([], now=now, workflow_state="active")
+
+    assert result.ok is True
+    assert result.status == "PENDING"
+    assert result.diagnosis == "REPLAY_MONITOR_FALLBACK_FIRST_TICK_PENDING"
+
+
+def test_manual_dispatch_cannot_mask_missing_automation() -> None:
+    now = datetime(2026, 8, 20, 15, 17, tzinfo=UTC)
+    result = evaluate_replay_scheduler(
+        [_run(datetime(2026, 8, 20, 15, 0, tzinfo=UTC), event="workflow_dispatch")],
         now=now,
     )
 
@@ -70,14 +99,14 @@ def test_manual_dispatch_cannot_mask_missing_schedule() -> None:
     assert result.diagnosis == "REPLAY_SCHEDULER_TICK_MISSING"
 
 
-def test_malformed_created_timestamp_cannot_mask_missing_schedule() -> None:
-    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)
+def test_malformed_created_timestamp_cannot_mask_missing_automation() -> None:
+    now = datetime(2026, 8, 20, 15, 17, tzinfo=UTC)
     malformed = {
         "databaseId": 999,
         "status": "completed",
         "conclusion": "success",
         "createdAt": "not-a-timestamp",
-        "updatedAt": datetime(2026, 8, 20, 14, 10, tzinfo=UTC).isoformat(),
+        "updatedAt": datetime(2026, 8, 20, 15, 10, tzinfo=UTC).isoformat(),
         "event": "schedule",
     }
 
@@ -99,12 +128,28 @@ def test_previous_tick_cannot_mask_missing_current_tick() -> None:
     assert result.diagnosis == "REPLAY_SCHEDULER_TICK_MISSING"
 
 
+def test_stale_monitor_fallback_cannot_mask_missing_current_cadence() -> None:
+    now = datetime(2026, 8, 20, 16, 17, tzinfo=UTC)  # 12:17 ET
+    result = evaluate_replay_scheduler(
+        [
+            _run(
+                datetime(2026, 8, 20, 14, 18, tzinfo=UTC),
+                event="workflow_run",
+            )
+        ],
+        now=now,
+    )
+
+    assert result.ok is False
+    assert result.diagnosis == "REPLAY_MONITOR_FALLBACK_STALE"
+
+
 def test_in_session_activation_after_due_tick_is_pending() -> None:
-    now = datetime(2026, 8, 20, 14, 17, tzinfo=UTC)
+    now = datetime(2026, 8, 20, 15, 17, tzinfo=UTC)
     result = evaluate_replay_scheduler(
         [],
         now=now,
-        workflow_created_at=datetime(2026, 8, 20, 14, 0, tzinfo=UTC),
+        workflow_created_at=datetime(2026, 8, 20, 15, 0, tzinfo=UTC),
         workflow_state="active",
     )
 
@@ -156,6 +201,23 @@ def test_completed_failure_fails_closed() -> None:
     assert result.diagnosis == "REPLAY_SCHEDULER_COMPLETED_NON_SUCCESS"
 
 
+def test_failed_monitor_fallback_fails_closed() -> None:
+    now = datetime(2026, 8, 20, 15, 17, tzinfo=UTC)
+    result = evaluate_replay_scheduler(
+        [
+            _run(
+                datetime(2026, 8, 20, 14, 18, tzinfo=UTC),
+                event="workflow_run",
+                conclusion="failure",
+            )
+        ],
+        now=now,
+    )
+
+    assert result.ok is False
+    assert result.diagnosis == "REPLAY_MONITOR_FALLBACK_NON_SUCCESS"
+
+
 def test_post_session_requires_final_tick_near_close() -> None:
     now = datetime(2026, 8, 20, 20, 17, tzinfo=UTC)  # 16:17 ET
     healthy = evaluate_replay_scheduler(
@@ -171,6 +233,22 @@ def test_post_session_requires_final_tick_near_close() -> None:
     assert healthy.diagnosis == "REPLAY_FINAL_TICK_HEALTHY"
     assert missed.ok is False
     assert missed.diagnosis == "REPLAY_FINAL_TICK_MISSING"
+
+
+def test_post_session_accepts_monitor_triggered_final_fail_safe() -> None:
+    now = datetime(2026, 8, 20, 20, 17, tzinfo=UTC)  # 16:17 ET
+    result = evaluate_replay_scheduler(
+        [
+            _run(
+                datetime(2026, 8, 20, 19, 18, tzinfo=UTC),
+                event="workflow_run",
+            )
+        ],
+        now=now,
+    )
+
+    assert result.ok is True
+    assert result.diagnosis == "REPLAY_MONITOR_FALLBACK_FINAL_HEALTHY"
 
 
 def test_post_session_activation_after_final_tick_is_pending() -> None:
@@ -242,8 +320,6 @@ def test_exact_direct_cli_invocation_works(tmp_path: Path) -> None:
         text=True,
     )
 
-    # Runtime date determines PASS/NOT_DUE/FAIL, but direct execution/import must work
-    # and always emit a structured safety-bounded result.
     assert completed.returncode in {0, 2}, completed.stderr
     payload = json.loads(output_json.read_text())
     assert payload["trading_authorized"] is False
