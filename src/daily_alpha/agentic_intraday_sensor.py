@@ -11,10 +11,11 @@ No broker/live route or ledger mutation is present here.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import Any
 
 from .agentic_intraday import (
     AGENTIC_INTRADAY_ACCOUNT,
@@ -368,7 +369,7 @@ def _text(payload: Mapping[str, Any], key: str) -> str:
 def _timestamp(payload: Mapping[str, Any], key: str) -> datetime:
     value = _text(payload, key)
     try:
-        result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        result = datetime.fromisoformat(value)
     except ValueError as exc:
         raise IntradaySensorError("INTRADAY_SENSOR_TIMESTAMP_INVALID") from exc
     if result.tzinfo is None:
