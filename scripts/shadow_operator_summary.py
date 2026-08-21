@@ -110,11 +110,15 @@ def build_operator_summary(evidence: Mapping[str, Mapping[str, Any]]) -> dict[st
     ci_blocking_failures: list[str] = []
     ci_nonblocking_findings: list[str] = []
     for failure in hard_failures:
-        if failure in {"core", "safety_flags", "safety_evidence"}:
-            ci_blocking_failures.append(failure)
-        elif failure in CI_CRITICAL_CONTROLS:
-            ci_blocking_failures.append(failure)
-        elif failure == "replay_scheduler" and (armed_count is None or armed_count > 0):
+        active_path_failure = failure in {
+            "core",
+            "safety_flags",
+            "safety_evidence",
+        } or failure in CI_CRITICAL_CONTROLS
+        armed_replay_failure = failure == "replay_scheduler" and (
+            armed_count is None or armed_count > 0
+        )
+        if active_path_failure or armed_replay_failure:
             ci_blocking_failures.append(failure)
         else:
             ci_nonblocking_findings.append(failure)
