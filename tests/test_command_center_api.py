@@ -88,6 +88,14 @@ def _snapshot(order_reversed: bool = False):
             status=ReadinessStatus.BLOCKED,
             blockers=("DRAWDOWN_THROTTLE_BLOCKS_NEW_RISK",),
         ),
+        _component(
+            kind=CommandCenterComponentKind.INCIDENT,
+            entity_kind=CommandCenterEntityKind.PROVIDER,
+            entity_id="DATABENTO:INCIDENT:OPEN",
+            source_record_id="6" * 64,
+            status=ReadinessStatus.WARNING,
+            warnings=("ACTIVE_PROVIDER_INCIDENT",),
+        ),
     )
     if order_reversed:
         components = tuple(reversed(components))
@@ -129,6 +137,35 @@ def test_api_view_exposes_portfolio_security_and_platform_drilldowns() -> None:
     assert payload["live_trading_enabled"] is False
 
 
+def test_scope_tiles_expose_governed_status_counts_without_reinterpreting_truth() -> None:
+    view = InstitutionalCommandCenterAPIBuilder.build(_snapshot())
+
+    risk = view.platform_scope.tile(CommandCenterComponentKind.RISK_GOVERNOR)
+    incident = view.platform_scope.tile(CommandCenterComponentKind.INCIDENT)
+    cio = view.security("MU").tile(CommandCenterComponentKind.CIO_DECISION)
+
+    assert risk is not None
+    assert risk.status is ReadinessStatus.BLOCKED
+    assert risk.total_count == 1
+    assert risk.blocked_count == 1
+    assert risk.unresolved_issue_count == 1
+
+    assert incident is not None
+    assert incident.status is ReadinessStatus.WARNING
+    assert incident.warning_count == 1
+    assert incident.unresolved_issue_count == 1
+
+    assert cio is not None
+    assert cio.status is ReadinessStatus.WARNING
+    assert cio.warning_count == 1
+
+    payload = view.platform_scope.to_dict()
+    tiles = {item["kind"]: item for item in payload["tiles"]}
+    assert tiles["RISK_GOVERNOR"]["status"] == "BLOCKED"
+    assert tiles["INCIDENT"]["status"] == "WARNING"
+    assert tiles["INCIDENT"]["component_ids"] == list(incident.component_ids)
+
+
 def test_api_view_identity_is_input_order_stable_and_preserves_severity() -> None:
     first = InstitutionalCommandCenterAPIBuilder.build(_snapshot())
     second = InstitutionalCommandCenterAPIBuilder.build(_snapshot(order_reversed=True))
@@ -137,6 +174,7 @@ def test_api_view_identity_is_input_order_stable_and_preserves_severity() -> Non
     assert first.api_view_id == second.api_view_id
     assert first.to_dict() == second.to_dict()
     assert first.platform_scope.blocked_count == 1
-    assert first.platform_scope.warning_count == 2
+    assert first.platform_scope.warning_count == 3
     assert first.platform_scope.pass_count == 2
-    assert first.platform_scope.unresolved_issue_count == 3
+    assert first.platform_scope.unresolved_issue_count == 4
+    assert first.platform_scope.tile_summaries == second.platform_scope.tile_summaries
