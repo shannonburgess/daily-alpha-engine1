@@ -100,7 +100,7 @@ class ObservationEligibilityAssessment:
         independence_group = self.independence_group.strip().upper()
         if not observation_id or not provider_id or not independence_group:
             raise DataPlaneReconciliationError("OBSERVATION_ELIGIBILITY_IDENTITY_REQUIRED")
-        reasons = tuple(sorted(set(reason.strip().upper() for reason in self.reasons if reason)))
+        reasons = tuple(sorted({reason.strip().upper() for reason in self.reasons if reason}))
         if self.eligible:
             if self.runtime_status is not ProviderRuntimeStatus.HEALTHY:
                 raise DataPlaneReconciliationError("ELIGIBLE_OBSERVATION_REQUIRES_HEALTHY_RUNTIME")
@@ -178,8 +178,8 @@ class CanonicalReconciliationResult:
                 raise DataPlaneReconciliationError("CANONICAL_STATE_DOMAIN_MISMATCH")
             if self.canonical_state.as_of != boundary:
                 raise DataPlaneReconciliationError("CANONICAL_STATE_AS_OF_MISMATCH")
-        blockers = tuple(sorted(set(item.strip().upper() for item in self.blockers if item)))
-        warnings = tuple(sorted(set(item.strip().upper() for item in self.warnings if item)))
+        blockers = tuple(sorted({item.strip().upper() for item in self.blockers if item}))
+        warnings = tuple(sorted({item.strip().upper() for item in self.warnings if item}))
         if self.status is ReadinessStatus.PASS and (blockers or warnings):
             raise DataPlaneReconciliationError("PASS_RECONCILIATION_CANNOT_HAVE_ISSUES")
         if self.status is ReadinessStatus.WARNING and blockers:
@@ -395,11 +395,7 @@ class InstitutionalReconciliationGateway:
 
         blockers = tuple(canonical_state.blockers)
         warnings = tuple(
-            sorted(
-                set(
-                    (*readiness.warnings, *eligibility_warnings, *canonical_state.warnings)
-                )
-            )
+            sorted({*readiness.warnings, *eligibility_warnings, *canonical_state.warnings})
         )
         if canonical_state.status is ReadinessStatus.BLOCKED or blockers:
             status = ReadinessStatus.BLOCKED
