@@ -11,7 +11,9 @@ from daily_alpha.agentic.data_plane_readiness import (
     DomainReadinessPolicy,
     InstitutionalDataPlaneReadinessEngine,
 )
-from daily_alpha.agentic.data_plane_reconciliation import InstitutionalReconciliationGateway
+from daily_alpha.agentic.data_plane_reconciliation import (
+    InstitutionalReconciliationGateway,
+)
 from daily_alpha.agentic.data_providers import (
     DataDomain,
     DataRequest,
