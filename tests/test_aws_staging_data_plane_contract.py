@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "config" / "aws_staging_agent_domains.json"
 TEMPLATE_PATH = ROOT / "infra" / "aws" / "staging" / "data-plane-foundation.template.json"
+DOC_PATH = ROOT / "docs" / "aws_staging_independent_agent_data_plane.md"
 
 EXPECTED_SERVICES = {
     "reference-identity",
@@ -126,6 +127,19 @@ def test_iac_foundation_is_staging_only_inert_and_encrypted() -> None:
     log_group = resources["DataPlaneLogGroup"]
     assert log_group["Properties"]["RetentionInDays"] == 30
     assert _tag_map(log_group)["Authority"] == "ResearchOnly"
+
+
+def test_raw_evidence_contract_is_versioned_append_only_not_object_lock_worm() -> None:
+    template = _load(TEMPLATE_PATH)
+    bucket = template["Resources"]["RawEvidenceBucket"]["Properties"]
+    documentation = DOC_PATH.read_text(encoding="utf-8")
+
+    assert bucket["VersioningConfiguration"]["Status"] == "Enabled"
+    assert "ObjectLockEnabled" not in bucket
+    assert "ObjectLockConfiguration" not in bucket
+    assert "versioned and append-only by ingestion contract" in documentation
+    assert "does **not** enable S3 Object Lock" in documentation
+    assert "versioning alone is not treated as WORM/immutable retention" in documentation
 
 
 def test_every_agent_has_one_encrypted_queue_and_dlq_with_redrive() -> None:
