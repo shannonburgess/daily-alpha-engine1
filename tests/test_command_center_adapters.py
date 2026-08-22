@@ -96,9 +96,68 @@ def test_provider_reliability_projection_emits_domain_and_provider_scorecards() 
     assert aggregate.source_record_id == report.report_id
     assert aggregate.status is ReadinessStatus.WARNING
     assert provider.entity_kind is CommandCenterEntityKind.PROVIDER
-    assert provider.entity_id == "MASSIVE"
+    assert provider.entity_id == "MASSIVE:MARKET_BARS"
     assert provider.source_record_id == assessment.assessment_id
+    assert dict(provider.metrics)["provider_id"] == "MASSIVE"
     assert provider.lineage_ids == ("1" * 64,)
+
+
+def test_provider_reliability_projection_keeps_provider_domains_distinct() -> None:
+    assessment = ProviderReliabilityAssessment(
+        provider_id="FMP",
+        independence_group="FMP_RESEARCH_DATA",
+        role=ProviderRole.PRIMARY,
+        status=ReadinessStatus.PASS,
+        runtime_sample_count=20,
+        healthy_runtime_count=20,
+        healthy_ratio=1.0,
+        observation_count=20,
+        eligible_observation_count=20,
+        excluded_observation_count=0,
+        exclusion_ratio=0.0,
+        incident_ids=(),
+        blockers=(),
+        warnings=(),
+    )
+    fundamentals = ProviderReliabilityReport(
+        domain=DataDomain.FUNDAMENTALS,
+        as_of=AS_OF,
+        window_start=AS_OF - timedelta(days=7),
+        policy_id="2" * 64,
+        status=ReadinessStatus.PASS,
+        provider_assessments=(assessment,),
+        incidents=(),
+        blockers=(),
+        warnings=(),
+    )
+    estimates = ProviderReliabilityReport(
+        domain=DataDomain.ESTIMATES_REVISIONS,
+        as_of=AS_OF,
+        window_start=AS_OF - timedelta(days=7),
+        policy_id="2" * 64,
+        status=ReadinessStatus.PASS,
+        provider_assessments=(assessment,),
+        incidents=(),
+        blockers=(),
+        warnings=(),
+    )
+
+    components = (
+        *project_provider_reliability(fundamentals),
+        *project_provider_reliability(estimates),
+    )
+    snapshot = InstitutionalCommandCenterBuilder.build(
+        as_of=AS_OF,
+        components=components,
+    )
+    provider_ids = {
+        item.entity_id
+        for item in snapshot.components
+        if item.entity_kind is CommandCenterEntityKind.PROVIDER
+    }
+
+    assert provider_ids == {"FMP:FUNDAMENTALS", "FMP:ESTIMATES_REVISIONS"}
+    assert snapshot.pass_count == 4
 
 
 def test_model_governance_projection_preserves_eligibility_lineage() -> None:
