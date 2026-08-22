@@ -6,16 +6,15 @@ import pytest
 
 from daily_alpha.agentic.aws_transport import SourceTransportTelemetry
 from daily_alpha.agentic.contracts import ReadinessStatus
-from daily_alpha.agentic.data_providers import DataDomain, ProviderRole
 from daily_alpha.agentic.data_plane_readiness import (
     DataPlaneReadinessError,
     DomainReadinessPolicy,
     InstitutionalDataPlaneReadinessEngine,
     ProviderRuntimeStatus,
 )
+from daily_alpha.agentic.data_providers import DataDomain, ProviderRole
 from daily_alpha.agentic.durable_evidence import SourceHealthStatus
 from daily_alpha.agentic.vendor_adapters import institutional_vendor_registry
-
 
 AS_OF = datetime(2026, 8, 22, 4, 30, tzinfo=UTC)
 
