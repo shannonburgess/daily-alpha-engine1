@@ -8,11 +8,13 @@ this analytics layer cannot re-introduce option execution or authorize trading.
 
 from __future__ import annotations
 
+import math
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from statistics import fmean
+from typing import Any
 
 PAPER_SHADOW_ACCOUNTS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
 MODEL_VALIDATION_FILL_BASIS = "CONFIRMED_SIGNAL_PRICE_MODEL_VALIDATION"
@@ -25,16 +27,63 @@ def _aware_utc(value: datetime, field_name: str) -> datetime:
     return value.astimezone(UTC)
 
 
+def _parse_aware_datetime(value: Any, field_name: str) -> datetime:
+    if isinstance(value, datetime):
+        return _aware_utc(value, field_name)
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"{field_name}_REQUIRED")
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field_name}_INVALID") from exc
+    return _aware_utc(parsed, field_name)
+
+
 def _normalized_label(value: str, fallback: str) -> str:
     normalized = value.strip().upper()
     return normalized or fallback
+
+
+def _optional_positive_float(value: Any, field_name: str) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name}_INVALID") from exc
+    if not math.isfinite(result) or result <= 0:
+        raise ValueError(f"{field_name}_MUST_BE_POSITIVE")
+    return result
+
+
+def _required_positive_float(value: Any, field_name: str) -> float:
+    result = _optional_positive_float(value, field_name)
+    if result is None:
+        raise ValueError(f"{field_name}_REQUIRED")
+    return result
+
+
+def _required_nonnegative_float(value: Any, field_name: str) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name}_INVALID") from exc
+    if not math.isfinite(result):
+        raise ValueError(f"{field_name}_INVALID")
+    return result
 
 
 @dataclass(frozen=True)
 class ForwardTradeObservation:
     """One closed stock PAPER model-validation trade.
 
-    Risk and path extrema are optional because older evidence may not contain them.
+    ``realized_model_pnl`` and ``initial_risk_basis`` are the preferred evidence for
+    lifecycle trades because the canonical ledger may include ADD/PARTIAL events before
+    the final close. When those cumulative values are present, P/L and R are taken from
+    them rather than reconstructed from the last exit price and remaining shares.
+
+    Risk and path extrema remain optional because older evidence may not contain them.
     Missing risk/MFE/MAE is never backfilled or converted to zero; coverage remains
     explicit in every summary.
     """
@@ -48,6 +97,8 @@ class ForwardTradeObservation:
     exit_price: float
     shares: float
     initial_risk_per_share: float | None = None
+    initial_risk_basis: float | None = None
+    realized_model_pnl: float | None = None
     max_price_after_entry: float | None = None
     min_price_after_entry: float | None = None
     setup_type: str = "UNSPECIFIED"
@@ -76,8 +127,24 @@ class ForwardTradeObservation:
             raise ValueError("EXIT_PRECEDES_ENTRY")
         if self.entry_price <= 0 or self.exit_price <= 0 or self.shares <= 0:
             raise ValueError("TRADE_PRICES_AND_SHARES_MUST_BE_POSITIVE")
-        if self.initial_risk_per_share is not None and self.initial_risk_per_share <= 0:
+        if not all(
+            math.isfinite(value)
+            for value in (self.entry_price, self.exit_price, self.shares)
+        ):
+            raise ValueError("TRADE_PRICES_AND_SHARES_MUST_BE_FINITE")
+        if self.initial_risk_per_share is not None and (
+            not math.isfinite(self.initial_risk_per_share)
+            or self.initial_risk_per_share <= 0
+        ):
             raise ValueError("INITIAL_RISK_PER_SHARE_MUST_BE_POSITIVE")
+        if self.initial_risk_basis is not None and (
+            not math.isfinite(self.initial_risk_basis) or self.initial_risk_basis <= 0
+        ):
+            raise ValueError("INITIAL_RISK_BASIS_MUST_BE_POSITIVE")
+        if self.realized_model_pnl is not None and not math.isfinite(self.realized_model_pnl):
+            raise ValueError("REALIZED_MODEL_PNL_MUST_BE_FINITE")
+        if self.initial_risk_basis is not None and self.realized_model_pnl is None:
+            raise ValueError("INITIAL_RISK_BASIS_REQUIRES_REALIZED_MODEL_PNL")
         if self.max_price_after_entry is not None and self.max_price_after_entry <= 0:
             raise ValueError("MAX_PRICE_AFTER_ENTRY_MUST_BE_POSITIVE")
         if self.min_price_after_entry is not None and self.min_price_after_entry <= 0:
@@ -112,10 +179,20 @@ class ForwardTradeObservation:
 
     @property
     def model_pnl(self) -> float:
+        if self.realized_model_pnl is not None:
+            return self.realized_model_pnl
         return (self.exit_price - self.entry_price) * self.shares
 
     @property
+    def model_pnl_source(self) -> str:
+        if self.realized_model_pnl is not None:
+            return "CANONICAL_CUMULATIVE_REALIZED_PNL"
+        return "SIMPLE_CLOSE_PRICE_X_SHARES"
+
+    @property
     def r_multiple(self) -> float | None:
+        if self.initial_risk_basis is not None and self.realized_model_pnl is not None:
+            return self.realized_model_pnl / self.initial_risk_basis
         if self.initial_risk_per_share is None:
             return None
         return (self.exit_price - self.entry_price) / self.initial_risk_per_share
@@ -141,6 +218,55 @@ class ForwardTradeObservation:
     @property
     def holding_minutes(self) -> float:
         return (self.exit_at - self.entry_at).total_seconds() / 60.0
+
+
+def observation_from_closed_paper_trade(
+    account_id: str,
+    trade: Mapping[str, Any],
+    *,
+    setup_type: str = "UNSPECIFIED",
+    lifecycle_stage: str = "UNSPECIFIED",
+    industry: str = "UNKNOWN",
+    exit_reason: str = "UNSPECIFIED",
+) -> ForwardTradeObservation:
+    """Adapt one canonical closed STOCK ledger record without reconstructing economics.
+
+    The durable ledger's ``realized_pnl`` already includes any prior PARTIAL realization
+    plus the final close leg. ``initial_risk_basis`` is the total model risk established
+    by the entry pipeline. Those values therefore take precedence over naive
+    ``(exit-entry) * remaining_quantity`` math when runner lifecycle events occurred.
+    """
+    if account_id not in PAPER_SHADOW_ACCOUNTS:
+        raise ValueError("UNKNOWN_PAPER_SHADOW_ACCOUNT")
+    instrument = str(trade.get("instrument", "")).strip().upper()
+    if instrument != "STOCK":
+        raise ValueError("CLOSED_MODEL_VALIDATION_TRADE_MUST_BE_STOCK")
+    if str(trade.get("state", "")).strip().upper() != "CLOSED":
+        raise ValueError("MODEL_PERFORMANCE_REQUIRES_CLOSED_TRADE")
+
+    realized_pnl = _required_nonnegative_float(trade.get("realized_pnl"), "REALIZED_PNL")
+    # Realized P/L may legitimately be negative; the helper only enforces finite numeric input.
+    initial_risk_basis = _optional_positive_float(
+        trade.get("initial_risk_basis"), "INITIAL_RISK_BASIS"
+    )
+    quantity = _required_positive_float(trade.get("quantity"), "CLOSING_QUANTITY")
+    return ForwardTradeObservation(
+        trade_id=str(trade.get("trade_id", "")).strip(),
+        account_id=account_id,
+        symbol=str(trade.get("symbol", "")),
+        entry_at=_parse_aware_datetime(trade.get("entry_time"), "ENTRY_AT"),
+        exit_at=_parse_aware_datetime(trade.get("exit_time"), "EXIT_AT"),
+        entry_price=_required_positive_float(trade.get("entry_price"), "ENTRY_PRICE"),
+        exit_price=_required_positive_float(trade.get("exit_price"), "EXIT_PRICE"),
+        shares=quantity,
+        initial_risk_basis=initial_risk_basis,
+        realized_model_pnl=realized_pnl,
+        setup_type=setup_type,
+        lifecycle_stage=lifecycle_stage,
+        sector=str(trade.get("sector", "UNKNOWN")),
+        industry=industry,
+        exit_reason=exit_reason,
+    )
 
 
 @dataclass(frozen=True)
@@ -227,6 +353,8 @@ class ModelPerformanceSummary:
     average_mfe_r: float | None
     average_mae_r: float | None
     average_holding_minutes: float | None
+    canonical_realized_pnl_observations: int
+    canonical_realized_pnl_coverage: float
     rejection_count: int
     rejection_reasons: dict[str, int]
     by_setup_type: dict[str, SliceSummary]
@@ -337,6 +465,7 @@ def summarize_model_performance(
     mae_values = [value for item in records if (value := item.mae_r) is not None]
     n = len(records)
     r_coverage = len(r_values) / n if n else 0.0
+    canonical_pnl_count = sum(item.realized_model_pnl is not None for item in records)
 
     if n == 0:
         evidence_status = "NO_CLOSED_TRADES"
@@ -371,6 +500,8 @@ def summarize_model_performance(
         average_mfe_r=_mean(mfe_values),
         average_mae_r=_mean(mae_values),
         average_holding_minutes=_mean([item.holding_minutes for item in records]),
+        canonical_realized_pnl_observations=canonical_pnl_count,
+        canonical_realized_pnl_coverage=canonical_pnl_count / n if n else 0.0,
         rejection_count=len(rejected),
         rejection_reasons=dict(sorted(Counter(item.reason for item in rejected).items())),
         by_setup_type=_slice(records, "setup_type"),
