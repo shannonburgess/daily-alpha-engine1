@@ -1,18 +1,18 @@
 """Forward PAPER model-validation performance analytics for SH24 and SH25.
 
-This module is observability/research only.  A PAPER model-validation fill is an
+This module is observability/research only. A PAPER model-validation fill is an
 internal accounting observation anchored to the confirmed signal price; it is never
-represented as a brokerage fill.  The stock-primary contract is hard-coded here so
+represented as a brokerage fill. The stock-primary contract is hard-coded here so
 this analytics layer cannot re-introduce option execution or authorize trading.
 """
 
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from statistics import fmean
-from typing import Iterable
 
 PAPER_SHADOW_ACCOUNTS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
 MODEL_VALIDATION_FILL_BASIS = "CONFIRMED_SIGNAL_PRICE_MODEL_VALIDATION"
@@ -34,9 +34,9 @@ def _normalized_label(value: str, fallback: str) -> str:
 class ForwardTradeObservation:
     """One closed stock PAPER model-validation trade.
 
-    `initial_risk_per_share` and path extrema are optional because older evidence may
-    not contain them.  Missing risk/MFE/MAE is never backfilled or converted to zero;
-    coverage is reported explicitly in the summary.
+    Risk and path extrema are optional because older evidence may not contain them.
+    Missing risk/MFE/MAE is never backfilled or converted to zero; coverage remains
+    explicit in every summary.
     """
 
     trade_id: str
@@ -124,13 +124,19 @@ class ForwardTradeObservation:
     def mfe_r(self) -> float | None:
         if self.initial_risk_per_share is None or self.max_price_after_entry is None:
             return None
-        return max(0.0, (self.max_price_after_entry - self.entry_price) / self.initial_risk_per_share)
+        return max(
+            0.0,
+            (self.max_price_after_entry - self.entry_price) / self.initial_risk_per_share,
+        )
 
     @property
     def mae_r(self) -> float | None:
         if self.initial_risk_per_share is None or self.min_price_after_entry is None:
             return None
-        return min(0.0, (self.min_price_after_entry - self.entry_price) / self.initial_risk_per_share)
+        return min(
+            0.0,
+            (self.min_price_after_entry - self.entry_price) / self.initial_risk_per_share,
+        )
 
     @property
     def holding_minutes(self) -> float:
@@ -139,7 +145,7 @@ class ForwardTradeObservation:
 
 @dataclass(frozen=True)
 class NoTradeObservation:
-    """One genuine strategy event that did not become a PAPER model-validation fill."""
+    """One genuine strategy event that did not become a model-validation fill."""
 
     event_id: str
     account_id: str
@@ -237,8 +243,15 @@ class ModelPerformanceSummary:
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
-        for key in ("by_setup_type", "by_lifecycle_stage", "by_sector", "by_industry"):
-            payload[key] = {name: summary.to_dict() for name, summary in getattr(self, key).items()}
+        for key in (
+            "by_setup_type",
+            "by_lifecycle_stage",
+            "by_sector",
+            "by_industry",
+        ):
+            payload[key] = {
+                name: summary.to_dict() for name, summary in getattr(self, key).items()
+            }
         return payload
 
 
@@ -274,7 +287,10 @@ def _slice_summary(records: list[ForwardTradeObservation]) -> SliceSummary:
     )
 
 
-def _slice(records: list[ForwardTradeObservation], field_name: str) -> dict[str, SliceSummary]:
+def _slice(
+    records: list[ForwardTradeObservation],
+    field_name: str,
+) -> dict[str, SliceSummary]:
     grouped: dict[str, list[ForwardTradeObservation]] = defaultdict(list)
     for item in records:
         grouped[str(getattr(item, field_name))].append(item)
@@ -286,18 +302,15 @@ def summarize_model_performance(
     trades: Iterable[ForwardTradeObservation],
     no_trades: Iterable[NoTradeObservation] = (),
 ) -> ModelPerformanceSummary:
-    """Summarize one SH24/SH25 book without inferring missing evidence.
+    """Summarize one book without inferring missing evidence.
 
-    Rejections are tracked separately and never increment trade N.  R, MFE and MAE
-    coverage is explicit so partial historical evidence cannot masquerade as complete.
+    Rejections stay separate and never increment trade N. R, MFE and MAE coverage is
+    explicit so partial historical evidence cannot masquerade as complete.
     """
     if account_id not in PAPER_SHADOW_ACCOUNTS:
         raise ValueError("UNKNOWN_PAPER_SHADOW_ACCOUNT")
 
-    records = sorted(
-        tuple(trades),
-        key=lambda item: (item.exit_at, item.trade_id),
-    )
+    records = sorted(trades, key=lambda item: (item.exit_at, item.trade_id))
     rejected = tuple(no_trades)
     if any(item.account_id != account_id for item in records):
         raise ValueError("TRADE_ACCOUNT_MISMATCH")
@@ -317,10 +330,9 @@ def summarize_model_performance(
     gross_profit = sum(winners)
     gross_loss = -sum(losers)
 
-    r_pairs = [(item, item.r_multiple) for item in records]
-    r_values = [value for _, value in r_pairs if value is not None]
-    winner_r = [value for _, value in r_pairs if value is not None and value > 0]
-    loser_r = [value for _, value in r_pairs if value is not None and value < 0]
+    r_values = [value for item in records if (value := item.r_multiple) is not None]
+    winner_r = [value for value in r_values if value > 0]
+    loser_r = [value for value in r_values if value < 0]
     mfe_values = [value for item in records if (value := item.mfe_r) is not None]
     mae_values = [value for item in records if (value := item.mae_r) is not None]
     n = len(records)
