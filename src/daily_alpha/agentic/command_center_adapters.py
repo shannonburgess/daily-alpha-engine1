@@ -1,9 +1,8 @@
 """Typed projections from verified institutional packets into the command center.
 
 These adapters are intentionally read-only. They preserve upstream PASS/WARNING/BLOCKED
-semantics and immutable lineage while translating verified Stage 9D-9H packet types into
-the generic Stage 9J-A command-center contract. Stage 9I model-performance projection is
-intentionally deferred until that upstream stage receives an executable CI gate.
+semantics and immutable lineage while translating verified Stage 9D-9I packet types into
+the generic Stage 9J command-center contract.
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ from .command_center import (
 from .contracts import ReadinessStatus
 from .data_plane_readiness import DataPlaneReadinessSnapshot
 from .model_governance import ModelGovernancePacket
+from .model_performance import ModelPerformancePacket
 from .model_stress import ModelStressPacket
 from .provider_reliability import ProviderReliabilityReport
 
@@ -243,6 +243,83 @@ def project_model_stress(
                 assessment.model_view_id,
                 assessment.upstream_governance_assessment_id,
                 *(item.assessment_id for item in assessment.scenario_assessments),
+            ),
+        )
+        for assessment in packet.assessments
+    )
+    return (packet_component, *model_components)
+
+
+def project_model_performance(
+    packet: ModelPerformancePacket,
+) -> tuple[CommandCenterComponent, ...]:
+    """Project Stage 9I realized model performance and alpha-decay surveillance."""
+    packet_component = CommandCenterComponent(
+        kind=CommandCenterComponentKind.MODEL_PERFORMANCE,
+        entity_kind=CommandCenterEntityKind.SECURITY,
+        entity_id=packet.security_id,
+        security_id=packet.security_id,
+        as_of=packet.as_of,
+        source_record_id=packet.packet_id,
+        status=packet.status,
+        headline=f"Model performance for {packet.security_id}: {packet.status.value}",
+        metrics={
+            "assessment_count": len(packet.assessments),
+            "performance_eligible_model_count": len(
+                packet.performance_eligible_model_view_ids
+            ),
+            "policy_id": packet.policy_id,
+        },
+        blockers=packet.blockers,
+        warnings=packet.warnings,
+        lineage_ids=(
+            packet.upstream_governance_packet_id,
+            packet.upstream_stress_packet_id,
+            *(item.assessment_id for item in packet.assessments),
+        ),
+    )
+    model_components = tuple(
+        CommandCenterComponent(
+            kind=CommandCenterComponentKind.MODEL_PERFORMANCE,
+            entity_kind=CommandCenterEntityKind.MODEL,
+            entity_id=f"{assessment.model_id}:{assessment.model_version}",
+            security_id=packet.security_id,
+            as_of=packet.as_of,
+            source_record_id=assessment.assessment_id,
+            status=assessment.status,
+            headline=(
+                f"{assessment.model_id} {assessment.model_version} performance: "
+                f"{assessment.status.value}"
+            ),
+            metrics={
+                "model_view_id": assessment.model_view_id,
+                "sample_size": assessment.metrics.sample_size,
+                "wins": assessment.metrics.wins,
+                "losses": assessment.metrics.losses,
+                "breakeven": assessment.metrics.breakeven,
+                "hit_rate": assessment.metrics.hit_rate,
+                "expectancy_r": assessment.metrics.expectancy_r,
+                "profit_factor": assessment.metrics.profit_factor,
+                "cumulative_r": assessment.metrics.cumulative_r,
+                "max_drawdown_r": assessment.metrics.max_drawdown_r,
+                "max_loss_streak": assessment.metrics.max_loss_streak,
+                "baseline_expectancy_r": assessment.metrics.baseline_expectancy_r,
+                "expectancy_decay_fraction": (
+                    assessment.metrics.expectancy_decay_fraction
+                ),
+                "performance_eligible_for_cio_research": (
+                    assessment.performance_eligible_for_cio_research
+                ),
+            },
+            blockers=assessment.blockers,
+            warnings=assessment.warnings,
+            lineage_ids=(
+                assessment.model_view_id,
+                assessment.upstream_governance_assessment_id,
+                assessment.upstream_stress_assessment_id,
+                assessment.baseline_validation_id,
+                assessment.metrics.metrics_id,
+                *assessment.metrics.outcome_ids,
             ),
         )
         for assessment in packet.assessments
