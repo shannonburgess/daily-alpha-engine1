@@ -15,9 +15,12 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .contracts import EvidenceStatus
 from .data_providers import DataDomain, ProviderObservation
+
+SEC_EASTERN = ZoneInfo("America/New_York")
 
 
 class PublicPrimaryAdapterError(ValueError):
@@ -66,11 +69,10 @@ def _parse_date(value: Any, reason: str) -> date:
 def _parse_sec_acceptance(value: Any) -> datetime:
     text = _required_text(value, "SEC_ACCEPTANCE_DATETIME_REQUIRED")
     if re.fullmatch(r"\d{14}", text):
-        # EDGAR header convention is Eastern Time. For deterministic ordering inside the
-        # public-source layer, retain the clock value as UTC only when fixtures explicitly
-        # use this legacy compact representation; live transport must preserve source zone.
-        parsed = datetime.strptime(text, "%Y%m%d%H%M%S")
-        return parsed.replace(tzinfo=UTC)
+        # Legacy EDGAR header ACCEPTANCE-DATETIME is expressed in U.S. Eastern local time.
+        # Use the IANA zone so daylight-saving transitions are handled before UTC conversion.
+        parsed = datetime.strptime(text, "%Y%m%d%H%M%S").replace(tzinfo=SEC_EASTERN)
+        return parsed.astimezone(UTC)
     normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
     try:
         parsed = datetime.fromisoformat(normalized)
