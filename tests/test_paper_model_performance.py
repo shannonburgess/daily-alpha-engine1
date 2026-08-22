@@ -6,6 +6,7 @@ from daily_alpha.paper_model_performance import (
     MODEL_VALIDATION_FILL_BASIS,
     ForwardTradeObservation,
     NoTradeObservation,
+    observation_from_closed_paper_trade,
     summarize_model_performance,
     summarize_shadow_books,
 )
@@ -28,6 +29,8 @@ def trade(
     lifecycle: str = "emerging",
     sector: str = "technology",
     industry: str = "semiconductors",
+    realized_model_pnl: float | None = None,
+    initial_risk_basis: float | None = None,
 ) -> ForwardTradeObservation:
     return ForwardTradeObservation(
         trade_id=trade_id,
@@ -39,6 +42,8 @@ def trade(
         exit_price=exit_,
         shares=shares,
         initial_risk_per_share=risk,
+        initial_risk_basis=initial_risk_basis,
+        realized_model_pnl=realized_model_pnl,
         max_price_after_entry=max_price,
         min_price_after_entry=min_price,
         setup_type=setup,
@@ -80,6 +85,8 @@ def test_no_closed_trades_remain_explicitly_unavailable() -> None:
     assert summary.profit_factor is None
     assert summary.cumulative_r is None
     assert summary.average_holding_minutes is None
+    assert summary.canonical_realized_pnl_observations == 0
+    assert summary.canonical_realized_pnl_coverage == 0.0
     assert summary.rejection_count == 2
     assert summary.rejection_reasons == {"SECTOR_DATA_UNVERIFIED": 2}
     assert summary.evidence_status == "NO_CLOSED_TRADES"
@@ -112,7 +119,116 @@ def test_summary_calculates_requested_forward_metrics() -> None:
     assert summary.average_mfe_r == pytest.approx((3.0 + 0.5 + 2.5) / 3)
     assert summary.average_mae_r == pytest.approx((-0.5 - 1.5 - 1.0) / 3)
     assert summary.average_holding_minutes == pytest.approx(60.0)
+    assert summary.canonical_realized_pnl_coverage == 0.0
     assert summary.evidence_status == "SMALL_SAMPLE_DESCRIPTIVE_ONLY"
+
+
+def test_canonical_realized_pnl_prevents_runner_lifecycle_mismeasurement() -> None:
+    record = trade(
+        "runner",
+        entry=102.0,
+        exit_=105.0,
+        shares=5.0,
+        risk=None,
+        max_price=None,
+        min_price=None,
+        realized_model_pnl=150.0,
+        initial_risk_basis=100.0,
+    )
+    # Naive final-leg math would report only (105-102)*5 = $15 and has no way to
+    # include earlier ADD/PARTIAL economics. Canonical cumulative P/L is $150.
+    assert record.model_pnl == pytest.approx(150.0)
+    assert record.model_pnl_source == "CANONICAL_CUMULATIVE_REALIZED_PNL"
+    assert record.r_multiple == pytest.approx(1.5)
+    summary = summarize_model_performance("PAPER_SHADOW_V24", [record])
+    assert summary.cumulative_model_pnl == pytest.approx(150.0)
+    assert summary.expectancy_r == pytest.approx(1.5)
+    assert summary.canonical_realized_pnl_observations == 1
+    assert summary.canonical_realized_pnl_coverage == 1.0
+
+
+def test_closed_stock_ledger_adapter_uses_canonical_realized_pnl_and_risk() -> None:
+    record = observation_from_closed_paper_trade(
+        "PAPER_SHADOW_V24",
+        {
+            "trade_id": "ledger-trade",
+            "signal_id": "entry-1",
+            "symbol": "NVDA",
+            "instrument": "STOCK",
+            "quantity": 5,
+            "target_quantity": 20,
+            "entry_price": 102.0,
+            "entry_time": BASE.isoformat(),
+            "state": "CLOSED",
+            "exit_price": 105.0,
+            "exit_time": (BASE + timedelta(hours=2)).isoformat(),
+            "realized_pnl": 150.0,
+            "sector": "Technology",
+            "initial_risk_basis": 100.0,
+        },
+        setup_type="breakout",
+        lifecycle_stage="leader",
+        industry="semiconductors",
+        exit_reason="signal_exit",
+    )
+    assert record.symbol == "NVDA"
+    assert record.model_pnl == pytest.approx(150.0)
+    assert record.r_multiple == pytest.approx(1.5)
+    assert record.shares == pytest.approx(5.0)
+    assert record.initial_risk_per_share is None
+    assert record.sector == "TECHNOLOGY"
+    assert record.fill_basis == MODEL_VALIDATION_FILL_BASIS
+    assert record.brokerage_fill is False
+
+
+def test_closed_ledger_adapter_accepts_negative_realized_pnl() -> None:
+    record = observation_from_closed_paper_trade(
+        "PAPER_SHADOW_V25",
+        {
+            "trade_id": "loser",
+            "symbol": "DINO",
+            "instrument": "STOCK",
+            "quantity": 10,
+            "entry_price": 12.0,
+            "entry_time": BASE.isoformat(),
+            "state": "CLOSED",
+            "exit_price": 11.0,
+            "exit_time": (BASE + timedelta(hours=1)).isoformat(),
+            "realized_pnl": -20.0,
+            "sector": "Energy",
+            "initial_risk_basis": 10.0,
+        },
+    )
+    assert record.model_pnl == pytest.approx(-20.0)
+    assert record.r_multiple == pytest.approx(-2.0)
+
+
+def test_closed_ledger_adapter_rejects_options_and_open_trades() -> None:
+    base_trade = {
+        "trade_id": "bad",
+        "symbol": "NVDA",
+        "quantity": 1,
+        "entry_price": 100.0,
+        "entry_time": BASE.isoformat(),
+        "exit_price": 101.0,
+        "exit_time": (BASE + timedelta(minutes=5)).isoformat(),
+        "realized_pnl": 1.0,
+    }
+    with pytest.raises(ValueError, match="MUST_BE_STOCK"):
+        observation_from_closed_paper_trade(
+            "PAPER_SHADOW_V24",
+            {**base_trade, "instrument": "OPTION", "state": "CLOSED"},
+        )
+    with pytest.raises(ValueError, match="REQUIRES_CLOSED_TRADE"):
+        observation_from_closed_paper_trade(
+            "PAPER_SHADOW_V24",
+            {**base_trade, "instrument": "STOCK", "state": "OPEN"},
+        )
+
+
+def test_total_risk_basis_without_cumulative_pnl_fails_closed() -> None:
+    with pytest.raises(ValueError, match="REQUIRES_REALIZED_MODEL_PNL"):
+        trade("bad-risk", initial_risk_basis=100.0)
 
 
 def test_rejections_do_not_increment_trade_n() -> None:
