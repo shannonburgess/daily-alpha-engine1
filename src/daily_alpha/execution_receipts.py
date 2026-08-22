@@ -7,6 +7,7 @@ price supplied by the paper executor. Live execution is never authorized here.
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -55,11 +56,26 @@ def build_paper_execution_receipt(
     initial_risk_basis: float | None = None,
     occurred_at: datetime | None = None,
 ) -> PaperExecutionReceipt:
-    """Build one normalized receipt from an executed paper lifecycle event."""
+    """Build one normalized receipt from an executed paper lifecycle event.
+
+    Entry, add, and partial fills must remain strictly positive. A final EXIT may
+    legitimately close at zero (for example a catastrophic total-loss outcome), so
+    zero is retained rather than censored from the audit/performance evidence. All
+    receipt prices must be finite.
+    """
     normalized_action = action.strip().upper()
     if normalized_action not in {"ENTRY_LONG", "ADD", "PARTIAL", "EXIT"}:
         raise ValueError("EXECUTION_RECEIPT_ACTION_INVALID")
-    if fill_price <= 0:
+    try:
+        normalized_fill_price = float(fill_price)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("EXECUTION_RECEIPT_FILL_PRICE_INVALID") from exc
+    if not math.isfinite(normalized_fill_price):
+        raise ValueError("EXECUTION_RECEIPT_FILL_PRICE_INVALID")
+    if normalized_action == "EXIT":
+        if normalized_fill_price < 0:
+            raise ValueError("EXECUTION_RECEIPT_FILL_PRICE_INVALID")
+    elif normalized_fill_price <= 0:
         raise ValueError("EXECUTION_RECEIPT_FILL_PRICE_INVALID")
 
     after_trade = _paper_trade(paper, normalized_action)
@@ -97,7 +113,7 @@ def build_paper_execution_receipt(
         if remaining_quantity > 0
         else 0.0
     )
-    fill_notional = fill_quantity * float(fill_price) * multiplier
+    fill_notional = fill_quantity * normalized_fill_price * multiplier
 
     before_realized = _optional_float(before.get("realized_pnl")) or 0.0
     cumulative_realized = _optional_float(after_trade.get("realized_pnl"))
@@ -130,7 +146,7 @@ def build_paper_execution_receipt(
         option_expiration=_optional_text(after_trade.get("option_expiration")),
         option_strike=_optional_float(after_trade.get("option_strike")),
         option_type=_optional_text(after_trade.get("option_type")),
-        fill_price=round(float(fill_price), 8),
+        fill_price=round(normalized_fill_price, 8),
         fill_quantity=fill_quantity,
         fill_notional=round(fill_notional, 2),
         remaining_quantity=remaining_quantity,
