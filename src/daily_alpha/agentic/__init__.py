@@ -1,5 +1,15 @@
 """Daily Alpha Agentic Intelligence research foundation."""
 
+from .behavioral_intelligence import (
+    AttentionRegime,
+    BehavioralIntelligenceEngine,
+    BehavioralIntelligenceError,
+    BehavioralIntelligencePolicy,
+    BehavioralIntelligenceState,
+    BehavioralObservation,
+    BehavioralSourceClass,
+    SentimentRegime,
+)
 from .cio_fusion import (
     CIOContextKind,
     CIOContextRef,
@@ -118,6 +128,13 @@ __all__ = [
     "AgentMandateRegistry",
     "AgentOpinion",
     "AssetType",
+    "AttentionRegime",
+    "BehavioralIntelligenceEngine",
+    "BehavioralIntelligenceError",
+    "BehavioralIntelligencePolicy",
+    "BehavioralIntelligenceState",
+    "BehavioralObservation",
+    "BehavioralSourceClass",
     "CIOContextKind",
     "CIOContextRef",
     "CIOFusionError",
@@ -196,6 +213,7 @@ __all__ = [
     "SecurityMasterError",
     "SecurityMasterRecord",
     "SecurityMasterSnapshot",
+    "SentimentRegime",
     "SourceAssessment",
     "SourceAuthority",
     "SourceHealthEvent",
