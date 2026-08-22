@@ -14,7 +14,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from .command_center import CommandCenterComponent, InstitutionalCommandCenterSnapshot
+from .command_center import (
+    CommandCenterComponent,
+    CommandCenterComponentKind,
+    InstitutionalCommandCenterSnapshot,
+)
 from .contracts import ReadinessStatus
 
 
@@ -44,6 +48,92 @@ def _rollup_status(components: tuple[CommandCenterComponent, ...]) -> ReadinessS
     if any(item.status is ReadinessStatus.WARNING for item in components):
         return ReadinessStatus.WARNING
     return ReadinessStatus.PASS
+
+
+@dataclass(frozen=True)
+class CommandCenterTileSummary:
+    """Status/count tile derived only from already-governed projected components."""
+
+    kind: CommandCenterComponentKind
+    total_count: int
+    pass_count: int
+    warning_count: int
+    blocked_count: int
+    unresolved_issue_count: int
+    component_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        counts = (
+            self.total_count,
+            self.pass_count,
+            self.warning_count,
+            self.blocked_count,
+            self.unresolved_issue_count,
+        )
+        if any(count < 0 for count in counts):
+            raise ValueError("COMMAND_CENTER_TILE_COUNTS_NONNEGATIVE")
+        if self.total_count != self.pass_count + self.warning_count + self.blocked_count:
+            raise ValueError("COMMAND_CENTER_TILE_STATUS_COUNTS_INVALID")
+        component_ids = tuple(sorted(set(self.component_ids)))
+        if len(component_ids) != self.total_count:
+            raise ValueError("COMMAND_CENTER_TILE_COMPONENT_COUNT_MISMATCH")
+        object.__setattr__(self, "component_ids", component_ids)
+
+    @property
+    def status(self) -> ReadinessStatus:
+        if self.blocked_count:
+            return ReadinessStatus.BLOCKED
+        if self.warning_count:
+            return ReadinessStatus.WARNING
+        return ReadinessStatus.PASS
+
+    @property
+    def tile_id(self) -> str:
+        return _digest(
+            {
+                "kind": self.kind.value,
+                "status": self.status.value,
+                "component_ids": list(self.component_ids),
+                "unresolved_issue_count": self.unresolved_issue_count,
+            }
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tile_id": self.tile_id,
+            "kind": self.kind.value,
+            "status": self.status.value,
+            "total_count": self.total_count,
+            "pass_count": self.pass_count,
+            "warning_count": self.warning_count,
+            "blocked_count": self.blocked_count,
+            "unresolved_issue_count": self.unresolved_issue_count,
+            "component_ids": list(self.component_ids),
+        }
+
+
+def _tile_summaries(
+    components: tuple[CommandCenterComponent, ...],
+) -> tuple[CommandCenterTileSummary, ...]:
+    summaries: list[CommandCenterTileSummary] = []
+    for kind in sorted(CommandCenterComponentKind, key=lambda item: item.value):
+        selected = tuple(item for item in components if item.kind is kind)
+        if not selected:
+            continue
+        summaries.append(
+            CommandCenterTileSummary(
+                kind=kind,
+                total_count=len(selected),
+                pass_count=sum(item.status is ReadinessStatus.PASS for item in selected),
+                warning_count=sum(item.status is ReadinessStatus.WARNING for item in selected),
+                blocked_count=sum(item.status is ReadinessStatus.BLOCKED for item in selected),
+                unresolved_issue_count=sum(
+                    len(item.blockers) + len(item.warnings) for item in selected
+                ),
+                component_ids=tuple(item.component_id for item in selected),
+            )
+        )
+    return tuple(summaries)
 
 
 @dataclass(frozen=True)
@@ -93,6 +183,13 @@ class CommandCenterScopeView:
         return sum(len(item.blockers) + len(item.warnings) for item in self.components)
 
     @property
+    def tile_summaries(self) -> tuple[CommandCenterTileSummary, ...]:
+        return _tile_summaries(self.components)
+
+    def tile(self, kind: CommandCenterComponentKind) -> CommandCenterTileSummary | None:
+        return next((item for item in self.tile_summaries if item.kind is kind), None)
+
+    @property
     def scope_view_id(self) -> str:
         return _digest(
             {
@@ -114,6 +211,7 @@ class CommandCenterScopeView:
             "blocked_count": self.blocked_count,
             "unresolved_issue_count": self.unresolved_issue_count,
             "component_ids": [item.component_id for item in self.components],
+            "tiles": [item.to_dict() for item in self.tile_summaries],
             "components": [item.to_dict() for item in self.components],
             "research_only": True,
             "paper_ledger_mutation_authorized": False,
