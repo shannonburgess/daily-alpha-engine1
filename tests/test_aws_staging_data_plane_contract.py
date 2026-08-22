@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "config" / "aws_staging_agent_domains.json"
 TEMPLATE_PATH = ROOT / "infra" / "aws" / "staging" / "data-plane-foundation.template.json"
 DOC_PATH = ROOT / "docs" / "aws_staging_independent_agent_data_plane.md"
+DEPLOY_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "deploy-aws-staging-data-plane-foundation.yml"
 
 EXPECTED_SERVICES = {
     "reference-identity",
@@ -172,6 +173,26 @@ def test_raw_evidence_contract_is_versioned_append_only_not_object_lock_worm() -
     assert "versioned and append-only by ingestion contract" in documentation
     assert "does **not** enable S3 Object Lock" in documentation
     assert "versioning alone is not treated as WORM/immutable retention" in documentation
+
+
+def test_staging_deployment_workflow_is_main_only_oidc_and_inert() -> None:
+    workflow = DEPLOY_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in workflow
+    assert "branches:\n      - main" in workflow
+    assert "id-token: write" in workflow
+    assert "environment: staging" in workflow
+    assert "role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole" in workflow
+    assert "aws-region: us-east-2" in workflow
+    assert "--stack-name daily-alpha-staging-data-plane-foundation" in workflow
+    assert "aws cloudformation validate-template" in workflow
+    assert "aws cloudformation deploy" in workflow
+    assert "aws lambda " not in workflow
+    assert "aws events " not in workflow
+    assert "aws scheduler " not in workflow
+    assert "aws stepfunctions " not in workflow
+    assert "aws secretsmanager " not in workflow
+    assert "aws iam " not in workflow
 
 
 def test_every_agent_has_one_encrypted_queue_and_dlq_with_redrive() -> None:
