@@ -29,6 +29,15 @@ from .durable_evidence import (
     source_registry_fingerprint,
 )
 from .evidence_store import EvidenceConflictError, InMemoryEvidenceStore
+from .event_reconciliation import (
+    CanonicalEventState,
+    EventCandidate,
+    EventDataError,
+    EventReconciler,
+    EventReconciliationPolicy,
+    SourceAuthority,
+    default_event_policy,
+)
 from .market_reconciliation import (
     CanonicalMarketState,
     MarketBar,
@@ -53,6 +62,7 @@ from .supervisor import DataSupervisor, ReadinessPacket, SourceAssessment
 
 __all__ = [
     "AssetType",
+    "CanonicalEventState",
     "CanonicalMarketState",
     "DataDomain",
     "DataProviderError",
@@ -60,6 +70,10 @@ __all__ = [
     "DataSupervisor",
     "DecisionLineage",
     "DurableEvidenceError",
+    "EventCandidate",
+    "EventDataError",
+    "EventReconciler",
+    "EventReconciliationPolicy",
     "EvidenceBundle",
     "EvidenceConflictError",
     "EvidenceContractError",
@@ -92,6 +106,7 @@ __all__ = [
     "SecurityMasterRecord",
     "SecurityMasterSnapshot",
     "SourceAssessment",
+    "SourceAuthority",
     "SourceHealthEvent",
     "SourceHealthStatus",
     "SourcePolicy",
@@ -99,6 +114,7 @@ __all__ = [
     "SubjectType",
     "TickerAlias",
     "daily_alpha_v1_registry",
+    "default_event_policy",
     "evidence_record_from_payload",
     "evidence_record_to_payload",
     "source_registry_fingerprint",
