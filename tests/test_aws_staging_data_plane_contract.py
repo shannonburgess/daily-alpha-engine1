@@ -95,10 +95,12 @@ def test_iac_foundation_is_staging_only_inert_and_encrypted() -> None:
     resources = template["Resources"]
 
     assert template["Parameters"]["Environment"]["AllowedValues"] == ["staging"]
+    assert len(resources) == 37
     resource_types = {resource["Type"] for resource in resources.values()}
     assert not resource_types.intersection(ACTIVATION_RESOURCE_TYPES)
     assert resource_types <= {
         "AWS::S3::Bucket",
+        "AWS::S3::BucketPolicy",
         "AWS::DynamoDB::Table",
         "AWS::Logs::LogGroup",
         "AWS::SQS::Queue",
@@ -127,6 +129,36 @@ def test_iac_foundation_is_staging_only_inert_and_encrypted() -> None:
     log_group = resources["DataPlaneLogGroup"]
     assert log_group["Properties"]["RetentionInDays"] == 30
     assert _tag_map(log_group)["Authority"] == "ResearchOnly"
+
+
+def test_raw_evidence_contract_is_retained_and_tls_only() -> None:
+    resources = _load(TEMPLATE_PATH)["Resources"]
+    bucket_resource = resources["RawEvidenceBucket"]
+    bucket_policy = resources["RawEvidenceBucketPolicy"]["Properties"]
+
+    assert bucket_resource["DeletionPolicy"] == "Retain"
+    assert bucket_resource["UpdateReplacePolicy"] == "Retain"
+    assert bucket_policy["Bucket"] == {"Ref": "RawEvidenceBucket"}
+
+    statements = bucket_policy["PolicyDocument"]["Statement"]
+    assert statements == [
+        {
+            "Sid": "DenyInsecureTransportForNonServicePrincipals",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": [
+                {"Fn::GetAtt": ["RawEvidenceBucket", "Arn"]},
+                {"Fn::Sub": "${RawEvidenceBucket.Arn}/*"},
+            ],
+            "Condition": {
+                "Bool": {
+                    "aws:SecureTransport": "false",
+                    "aws:PrincipalIsAWSService": "false",
+                }
+            },
+        }
+    ]
 
 
 def test_raw_evidence_contract_is_versioned_append_only_not_object_lock_worm() -> None:
