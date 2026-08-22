@@ -310,7 +310,7 @@ def _require_runner_fraction(signal: PineSignal) -> None:
 
 def _context_reason(action: SignalAction) -> str:
     if action == SignalAction.ENTRY_LONG:
-        return "ENTRY_REQUIRES_PORTFOLIO_RISK_ORATS_CONTEXT"
+        return "ENTRY_REQUIRES_SERVER_PORTFOLIO_RISK_CONTEXT"
     if action == SignalAction.ADD:
         return "ADD_REQUIRES_OPEN_POSITION_AND_INSTRUMENT_FILL_CONTEXT"
     if action == SignalAction.PARTIAL:
