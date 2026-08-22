@@ -29,6 +29,14 @@ from .durable_evidence import (
     source_registry_fingerprint,
 )
 from .evidence_store import EvidenceConflictError, InMemoryEvidenceStore
+from .market_reconciliation import (
+    CanonicalMarketState,
+    MarketBar,
+    MarketDataError,
+    MarketDataReconciler,
+    MarketQuote,
+    MarketReconciliationPolicy,
+)
 from .security_master import (
     AssetType,
     IdentifierNamespace,
@@ -45,6 +53,7 @@ from .supervisor import DataSupervisor, ReadinessPacket, SourceAssessment
 
 __all__ = [
     "AssetType",
+    "CanonicalMarketState",
     "DataDomain",
     "DataProviderError",
     "DataRequest",
@@ -64,6 +73,11 @@ __all__ = [
     "InMemorySecurityMaster",
     "InstitutionalDataProvider",
     "ListingStatus",
+    "MarketBar",
+    "MarketDataError",
+    "MarketDataReconciler",
+    "MarketQuote",
+    "MarketReconciliationPolicy",
     "ProviderCapability",
     "ProviderCoverageAssessment",
     "ProviderDefinition",
