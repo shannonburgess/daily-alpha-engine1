@@ -1,6 +1,20 @@
 """Daily Alpha Agentic Intelligence research foundation."""
 
 from .contracts import EvidenceContractError, EvidenceRecord, EvidenceStatus, ReadinessStatus
+from .data_providers import (
+    DataDomain,
+    DataProviderError,
+    DataRequest,
+    InstitutionalDataProvider,
+    ProviderCapability,
+    ProviderCoverageAssessment,
+    ProviderDefinition,
+    ProviderObservation,
+    ProviderRegistry,
+    ProviderRole,
+    RedundancyPolicy,
+    SubjectType,
+)
 from .durable_evidence import (
     DecisionLineage,
     DurableEvidenceError,
@@ -31,6 +45,9 @@ from .supervisor import DataSupervisor, ReadinessPacket, SourceAssessment
 
 __all__ = [
     "AssetType",
+    "DataDomain",
+    "DataProviderError",
+    "DataRequest",
     "DataSupervisor",
     "DecisionLineage",
     "DurableEvidenceError",
@@ -45,9 +62,17 @@ __all__ = [
     "InMemoryDurableEvidenceRepository",
     "InMemoryEvidenceStore",
     "InMemorySecurityMaster",
+    "InstitutionalDataProvider",
     "ListingStatus",
+    "ProviderCapability",
+    "ProviderCoverageAssessment",
+    "ProviderDefinition",
+    "ProviderObservation",
+    "ProviderRegistry",
+    "ProviderRole",
     "ReadinessPacket",
     "ReadinessStatus",
+    "RedundancyPolicy",
     "SecurityIdentifier",
     "SecurityMasterError",
     "SecurityMasterRecord",
@@ -57,6 +82,7 @@ __all__ = [
     "SourceHealthStatus",
     "SourcePolicy",
     "SourceRegistry",
+    "SubjectType",
     "TickerAlias",
     "daily_alpha_v1_registry",
     "evidence_record_from_payload",
