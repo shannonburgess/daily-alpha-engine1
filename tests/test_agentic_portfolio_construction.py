@@ -140,14 +140,15 @@ def test_low_correlation_candidate_wins_first_marginal_risk_allocation():
     c = _decision("C", InvestmentAction.BUY)
     d = _decision("D", InvestmentAction.BUY)
     opportunities = (_opportunity(c), _opportunity(d))
-    proposal = MarginalPortfolioConstructor().propose(
+    constructor = MarginalPortfolioConstructor(PortfolioConstructionPolicy(max_turnover=0.02))
+    proposal = constructor.propose(
         portfolio=portfolio,
         cio_decisions=(c, d),
         opportunities=opportunities,
         correlations=_correlations(),
     )
     assert proposal.status in {ReadinessStatus.PASS, ReadinessStatus.WARNING}
-    assert proposal.selected_assessments
+    assert len(proposal.selected_assessments) == 1
     assert proposal.selected_assessments[0].security_id == "C"
     assert proposal.capital_allocation_authorized is False
     assert proposal.risk_governor_authorized is False
@@ -174,7 +175,7 @@ def test_sector_limit_reduces_candidate_headroom_instead_of_blind_conviction_siz
         correlations=_correlations(ids=("A", "B", "C")),
     )
     target = next(item for item in proposal.target_allocations if item.security_id == "C")
-    assert target.target_weight <= pytest.approx(0.01, abs=1e-9)
+    assert target.target_weight <= 0.01 + 1e-9
     tech_weight = sum(
         item.target_weight
         for item in proposal.target_allocations
@@ -219,7 +220,8 @@ def test_factor_limit_caps_incremental_exposure():
 def test_sell_intent_translates_to_zero_target_but_not_execution():
     portfolio = _portfolio()
     sell = _decision("A", InvestmentAction.SELL)
-    proposal = MarginalPortfolioConstructor().propose(
+    constructor = MarginalPortfolioConstructor(PortfolioConstructionPolicy(max_turnover=0.50))
+    proposal = constructor.propose(
         portfolio=portfolio,
         cio_decisions=(sell,),
         opportunities=(_opportunity(sell, expected_return_bps=-1000, sector="ENERGY"),),
