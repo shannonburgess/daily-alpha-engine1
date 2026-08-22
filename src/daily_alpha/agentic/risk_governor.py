@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -360,7 +360,6 @@ class DeterministicRiskGovernor:
             blockers.append("PORTFOLIO_PROPOSAL_BLOCKED")
 
         current = portfolio.position_map
-        targets = {item.security_id: item for item in proposal.target_allocations}
         sector_map = context.sector_map
         cluster_map = context.cluster_map
         liquidity_map = context.liquidity_map
@@ -398,7 +397,7 @@ class DeterministicRiskGovernor:
         self._check_cluster_limits(portfolio, proposal, cluster_map, blockers, warnings)
 
         gross = sum(item.target_weight for item in proposal.target_allocations)
-        net = gross  # Long-only V1; future short/hedge sleeves will provide signed exposure.
+        net = gross
         current_gross = sum(item.weight for item in portfolio.positions)
         if gross > self.policy.max_gross_exposure + 1e-12:
             if gross > current_gross + 1e-12:
