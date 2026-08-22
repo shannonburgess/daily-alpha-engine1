@@ -23,7 +23,7 @@ Stage 9D can report a platform WARNING while an optional domain is BLOCKED. The 
 
 ## Provider reliability semantics
 
-The domain report and each provider assessment are projected separately so a future UI can show both the aggregate domain condition and provider-level drill-down. Historical incidents remain lineage/metrics on reliability components rather than being automatically treated as unresolved live blockers; active-incident lifecycle can be added as a separate operational surface later.
+The domain report and each provider assessment are projected separately so a future UI can show both the aggregate domain condition and provider-level drill-down. Provider scorecard entity IDs are domain-qualified as `<PROVIDER_ID>:<DATA_DOMAIN>` while the canonical provider ID remains an explicit metric. This prevents a provider that legitimately serves multiple domains, such as fundamentals and estimates, from colliding in the command-center logical-slot identity at the same point-in-time boundary. Historical incidents remain lineage/metrics on reliability components rather than being automatically treated as unresolved live blockers; active-incident lifecycle can be added as a separate operational surface later.
 
 ## Model governance and stress semantics
 
