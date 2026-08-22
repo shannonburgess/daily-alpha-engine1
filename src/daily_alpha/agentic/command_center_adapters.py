@@ -102,12 +102,13 @@ def project_provider_reliability(
         CommandCenterComponent(
             kind=CommandCenterComponentKind.PROVIDER_RELIABILITY,
             entity_kind=CommandCenterEntityKind.PROVIDER,
-            entity_id=assessment.provider_id,
+            entity_id=f"{assessment.provider_id}:{report.domain.value}",
             as_of=report.as_of,
             source_record_id=assessment.assessment_id,
             status=assessment.status,
             headline=f"{assessment.provider_id} reliability: {assessment.status.value}",
             metrics={
+                "provider_id": assessment.provider_id,
                 "domain": report.domain.value,
                 "independence_group": assessment.independence_group,
                 "role": assessment.role.value,
