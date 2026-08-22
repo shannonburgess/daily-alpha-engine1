@@ -100,6 +100,12 @@ Recommended model-risk tiles include:
 
 `PASS`, `WARNING`, and `BLOCKED` remain research/model-risk states, never execution authorization.
 
+## Operational interpretation
+
+The command center must show the packet `as_of` timestamp, policy ID, rolling sample size, and Stage 9G/9H lineage beside every Stage 9I status. A green performance tile therefore means only that the model satisfies the configured research surveillance policy on evidence known by that boundary. It is not a capital-promotion signal and cannot be treated as permission to increase PAPER or live allocation.
+
+Conversely, `WARNING` must remain visibly distinct from `PASS`: inadequate sample history is uncertainty, not evidence that the model is healthy. `BLOCKED` removes the affected model view from the performance-eligible CIO research set but does not mutate existing PAPER positions or issue an order. Any future operational response must pass through a separately governed portfolio/risk/execution path.
+
 ## Hard boundaries
 
 No PAPER ledger mutation, no execution change, no AWS deployment, no live vendor call, no credential or paid-service activation, no broker connection, no TradingView mutation, no SH24/SH25 mutation, no portfolio-construction authorization, no capital/execution authorization, and no live trading.
