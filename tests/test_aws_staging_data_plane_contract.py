@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "config" / "aws_staging_agent_domains.json"
