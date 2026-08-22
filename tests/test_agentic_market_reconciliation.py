@@ -103,7 +103,7 @@ def _quote_observation(
     bid: float = 99.99,
     ask: float = 100.01,
 ) -> ProviderObservation:
-    quote_time = NOW - timedelta(seconds=1) + timedelta(milliseconds=role_time_offset_ms)
+    quote_time = NOW - timedelta(seconds=10) + timedelta(milliseconds=role_time_offset_ms)
     return ProviderObservation(
         provider_id=provider_id,
         independence_group=group,
