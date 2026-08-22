@@ -2,15 +2,15 @@
 
 ## Purpose
 
-Stage 9J-A defines the read-only projection contract for a future institutional command center, UI, and API. It is deliberately built from Stage 9H, the latest verified green institutional head, while Stage 9I waits for an executable GitHub Actions gate.
+Stage 9J defines the read-only projection contract for a future institutional command center, UI, and API. It is stacked directly on verified Stage 9I so realized model performance and alpha-decay state can appear beside data, provider, model-governance, stress, Research Council, CIO, portfolio-construction, and Risk Governor truth without giving the presentation layer investment authority.
 
 The command center is a projection of governed truth. It does not become another decision maker and cannot recompute, upgrade, override, or mutate upstream investment state.
 
 ## Why a projection layer
 
-Daily Alpha already has separate institutional surfaces for data-plane readiness, provider reliability, model governance, model stress, Research Council output, CIO decisions, portfolio proposals, and deterministic risk governance. Stage 9I adds realized model performance and alpha-decay surveillance.
+Daily Alpha already has separate institutional surfaces for data-plane readiness, provider reliability, model governance, model stress, realized model performance, Research Council output, CIO decisions, portfolio proposals, and deterministic risk governance.
 
-A UI or API must not import those objects and invent its own severity, lineage, or recommendation semantics. Stage 9J-A therefore creates one small, immutable projection envelope that carries the exact upstream record identity into presentation systems.
+A UI or API must not import those objects and invent its own severity, lineage, or recommendation semantics. Stage 9J therefore creates one small, immutable projection envelope that carries the exact upstream record identity into presentation systems.
 
 ## Contract
 
@@ -28,7 +28,7 @@ Each `CommandCenterComponent` contains:
 - deterministic component identity
 - hard read-only/no-trading authority flags
 
-Supported component kinds intentionally include future Stage 9I performance state without importing Stage 9I implementation classes:
+Supported component kinds are:
 
 - DATA_PLANE
 - PROVIDER_RELIABILITY
@@ -66,27 +66,51 @@ Snapshot status is a severity roll-up only:
 
 The command center cannot upgrade an upstream status.
 
-## Deterministic API-ready surface
+## Deterministic API and drill-down surface
 
-`to_dict()` provides a canonical serialization surface containing:
+`InstitutionalCommandCenterAPIView` indexes the same immutable snapshot into deterministic platform, portfolio, and security scopes. Scope status remains the worst upstream component status within that scope, and scope identity is independent of input ordering.
 
-- schema version
-- snapshot ID
-- as-of boundary
+Each scope also exposes deterministic component-kind tiles. A tile reports only facts already present in projected components:
+
+- component kind
+- PASS / WARNING / BLOCKED status counts
+- total component count
+- unresolved blocker/warning count
+- exact component IDs for drill-down
+
+This supports UI tiles for provider health, model governance/stress/performance, Research Council, CIO, portfolio proposals, Risk Governor vetoes, and explicitly projected incidents without reinterpreting metrics or creating new recommendation logic.
+
+`INCIDENT` is intentionally conservative. Stage 9F historical incident IDs remain lineage on provider-reliability components and are not automatically called unresolved incidents. An INCIDENT tile appears only when an upstream lifecycle surface explicitly projects an incident as a command-center component.
+
+The serialized API surface includes:
+
+- schema version and deterministic API-view ID
+- snapshot ID and as-of boundary
 - platform/portfolio/security identities
 - aggregate PASS/WARNING/BLOCKED counts
 - unresolved issue count
 - deterministic component IDs
-- the component projections and exact source-record/lineage IDs
+- deterministic component-kind tiles
+- component projections with exact source-record/lineage IDs
 - explicit false authority flags
 
 This is suitable for a later HTTP/GraphQL/websocket presentation layer without giving that layer investment or execution authority.
 
-## Dependency strategy
+## Typed upstream projections
 
-Stage 9J-A is intentionally decoupled from Stage 9I concrete types. Once Stage 9I is CI-green, Stage 9J will add typed adapters that translate each institutional upstream packet into `CommandCenterComponent` without changing this generic projection contract.
+Stage 9J currently projects governed truth from:
 
-That avoids building new dependent code on an unverified head while still advancing the command-center architecture.
+- Stage 9D data-plane readiness
+- Stage 9F provider reliability
+- Stage 9G model governance
+- Stage 9H model stress
+- Stage 9I realized model performance / alpha decay
+- Research Council output
+- CIO/Fusion decisions
+- Portfolio Construction proposals
+- deterministic Risk Governor decisions
+
+Adapters preserve upstream severity and exact lineage; they do not recompute eligibility, recommendations, sizing, or risk decisions.
 
 ## Safety boundary
 
