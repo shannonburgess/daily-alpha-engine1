@@ -22,6 +22,28 @@ represented as a brokerage fill.
 ORATS/options are outside this performance contract and cannot authorize, reject, delay, or block
 a STOCK PAPER entry.
 
+## Runner-aware P/L and R
+
+The existing PAPER lifecycle can add to a winner and later harvest part of the position before the
+final exit. Therefore a closed trade must not be scored only as `(final exit - current average
+entry) * remaining shares`. That shortcut can omit earlier ADD/PARTIAL economics and materially
+misstate expectancy.
+
+When canonical ledger evidence is available, use:
+
+- `realized_pnl` from the closed durable trade as total model P/L, because it already includes
+  prior partial realization plus the final close leg;
+- `initial_risk_basis` from the entry pipeline as the total original model-risk denominator;
+- full-trade R = `realized_pnl / initial_risk_basis`.
+
+The scorecard reports canonical realized-P/L coverage explicitly. It may fall back to simple
+entry/exit arithmetic only for legacy/simple observations that do not claim a total risk basis.
+A total `initial_risk_basis` without canonical cumulative realized P/L fails closed rather than
+mixing incompatible denominators.
+
+MFE/MAE is not reconstructed from runner state. It is reported only when compatible path/risk
+evidence actually exists.
+
 ## Required reporting
 
 For each book, report when evidence exists:
@@ -34,6 +56,7 @@ For each book, report when evidence exists:
 - maximum drawdown in model P/L and R;
 - MFE/MAE and evidence coverage;
 - average holding period;
+- canonical cumulative-realized-P/L coverage;
 - slices by setup type, lifecycle stage, sector and industry;
 - rejection/no-trade counts by exact reason code.
 
