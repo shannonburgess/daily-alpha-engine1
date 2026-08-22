@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -187,7 +187,10 @@ class AgentMandateRegistry:
             raise ResearchCouncilError(f"AGENT_MANDATE_NOT_FOUND:{role.value}") from exc
 
     def mandates(self) -> tuple[AgentMandate, ...]:
-        return tuple(self._mandates[role] for role in sorted(self._mandates, key=lambda item: item.value))
+        return tuple(
+            self._mandates[role]
+            for role in sorted(self._mandates, key=lambda item: item.value)
+        )
 
     @property
     def registry_id(self) -> str:
@@ -273,7 +276,9 @@ class AgentInputPacket:
         missing = set(mandate.required_input_kinds) - set(self.input_kinds)
         if missing:
             names = ",".join(sorted(item.value for item in missing))
-            raise ResearchCouncilError(f"AGENT_REQUIRED_INPUT_KIND_MISSING:{self.role.value}:{names}")
+            raise ResearchCouncilError(
+                f"AGENT_REQUIRED_INPUT_KIND_MISSING:{self.role.value}:{names}"
+            )
 
 
 @dataclass(frozen=True, order=True)
@@ -347,7 +352,9 @@ class AgentOpinion:
             if self.score is not None or self.stance is not OpinionStance.NO_VIEW:
                 raise ResearchCouncilError("BLOCKED_OPINION_CANNOT_HAVE_DIRECTIONAL_VIEW")
             if self.confidence != 0.0 or not self.blockers:
-                raise ResearchCouncilError("BLOCKED_OPINION_REQUIRES_ZERO_CONFIDENCE_AND_BLOCKER")
+                raise ResearchCouncilError(
+                    "BLOCKED_OPINION_REQUIRES_ZERO_CONFIDENCE_AND_BLOCKER"
+                )
         else:
             if self.score is None or not -100 <= self.score <= 100:
                 raise ResearchCouncilError("AGENT_OPINION_SCORE_OUT_OF_RANGE")
@@ -356,7 +363,9 @@ class AgentOpinion:
             if not self.evidence_refs:
                 raise ResearchCouncilError("NONBLOCKED_OPINION_REQUIRES_EVIDENCE_REFS")
             if not self.invalidation_conditions:
-                raise ResearchCouncilError("NONBLOCKED_OPINION_REQUIRES_INVALIDATION_CONDITION")
+                raise ResearchCouncilError(
+                    "NONBLOCKED_OPINION_REQUIRES_INVALIDATION_CONDITION"
+                )
         evidence_ids = [item.input_id for item in self.evidence_refs]
         if len(set(evidence_ids)) != len(evidence_ids):
             raise ResearchCouncilError("OPINION_EVIDENCE_REFS_MUST_BE_UNIQUE")
@@ -448,10 +457,26 @@ class ResearchCouncilPacket:
         object.__setattr__(self, "security_id", security_id)
         object.__setattr__(self, "mandate_registry_id", registry_id)
         object.__setattr__(self, "as_of", boundary)
-        object.__setattr__(self, "input_packets", tuple(sorted(self.input_packets, key=lambda item: item.role.value)))
-        object.__setattr__(self, "opinions", tuple(sorted(self.opinions, key=lambda item: item.role.value)))
-        object.__setattr__(self, "required_roles", tuple(sorted(set(self.required_roles), key=lambda item: item.value)))
-        object.__setattr__(self, "missing_roles", tuple(sorted(set(self.missing_roles), key=lambda item: item.value)))
+        object.__setattr__(
+            self,
+            "input_packets",
+            tuple(sorted(self.input_packets, key=lambda item: item.role.value)),
+        )
+        object.__setattr__(
+            self,
+            "opinions",
+            tuple(sorted(self.opinions, key=lambda item: item.role.value)),
+        )
+        object.__setattr__(
+            self,
+            "required_roles",
+            tuple(sorted(set(self.required_roles), key=lambda item: item.value)),
+        )
+        object.__setattr__(
+            self,
+            "missing_roles",
+            tuple(sorted(set(self.missing_roles), key=lambda item: item.value)),
+        )
         object.__setattr__(self, "blockers", _normalized_strings(self.blockers))
         object.__setattr__(self, "warnings", _normalized_strings(self.warnings))
 
@@ -563,12 +588,19 @@ class ResearchCouncilAssembler:
             if opinion.security_id != security_id or opinion.as_of != as_of:
                 raise ResearchCouncilError("COUNCIL_OPINION_CONTEXT_MISMATCH")
             if opinion.role in result:
-                raise ResearchCouncilError(f"DUPLICATE_COUNCIL_OPINION_ROLE:{opinion.role.value}")
+                raise ResearchCouncilError(
+                    f"DUPLICATE_COUNCIL_OPINION_ROLE:{opinion.role.value}"
+                )
             packet = packets.get(opinion.role)
             if packet is None:
-                raise ResearchCouncilError(f"COUNCIL_OPINION_INPUT_PACKET_MISSING:{opinion.role.value}")
+                raise ResearchCouncilError(
+                    f"COUNCIL_OPINION_INPUT_PACKET_MISSING:{opinion.role.value}"
+                )
             mandate = self.registry.get(opinion.role)
-            if opinion.mandate_id != mandate.mandate_id or opinion.input_packet_id != packet.packet_id:
+            if (
+                opinion.mandate_id != mandate.mandate_id
+                or opinion.input_packet_id != packet.packet_id
+            ):
                 raise ResearchCouncilError("COUNCIL_OPINION_LINEAGE_MISMATCH")
             allowed_ids = set(packet.input_ids)
             cited_ids = {item.input_id for item in opinion.evidence_refs}
@@ -590,57 +622,87 @@ def default_research_council_registry() -> AgentMandateRegistry:
             AgentMandate(
                 role=CouncilRole.MOMENTUM,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Assess price trend, relative strength, persistence and momentum quality.",
+                objective=(
+                    "Assess price trend, relative strength, persistence and momentum quality."
+                ),
                 required_input_kinds=(CouncilInputKind.FEATURE, CouncilInputKind.MARKET_STATE),
                 optional_input_kinds=(CouncilInputKind.QUANT_MODEL, CouncilInputKind.EVIDENCE),
             ),
             AgentMandate(
                 role=CouncilRole.ROTATION,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Assess sector, industry and cross-sectional leadership and rotation.",
+                objective=(
+                    "Assess sector, industry and cross-sectional leadership and rotation."
+                ),
                 required_input_kinds=(CouncilInputKind.FEATURE, CouncilInputKind.EVIDENCE),
-                optional_input_kinds=(CouncilInputKind.MARKET_STATE, CouncilInputKind.REGIME_CONTEXT),
+                optional_input_kinds=(
+                    CouncilInputKind.MARKET_STATE,
+                    CouncilInputKind.REGIME_CONTEXT,
+                ),
             ),
             AgentMandate(
                 role=CouncilRole.CATALYST,
                 version="RESEARCH_COUNCIL_V1",
                 objective="Assess material events, catalysts, timing and event-path asymmetry.",
-                required_input_kinds=(CouncilInputKind.EVENT_STATE, CouncilInputKind.RESEARCH_FACT),
-                optional_input_kinds=(CouncilInputKind.MARKET_STATE, CouncilInputKind.FEATURE),
+                required_input_kinds=(
+                    CouncilInputKind.EVENT_STATE,
+                    CouncilInputKind.RESEARCH_FACT,
+                ),
+                optional_input_kinds=(
+                    CouncilInputKind.MARKET_STATE,
+                    CouncilInputKind.FEATURE,
+                ),
             ),
             AgentMandate(
                 role=CouncilRole.FUNDAMENTAL,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Assess business quality, fundamentals, revisions and fundamental trajectory.",
+                objective=(
+                    "Assess business quality, fundamentals, revisions and fundamental trajectory."
+                ),
                 required_input_kinds=(CouncilInputKind.RESEARCH_FACT,),
                 optional_input_kinds=(CouncilInputKind.FEATURE, CouncilInputKind.EVENT_STATE),
             ),
             AgentMandate(
                 role=CouncilRole.MACRO,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Assess macro regime, rates, inflation, liquidity and systemic backdrop.",
-                required_input_kinds=(CouncilInputKind.RESEARCH_FACT, CouncilInputKind.REGIME_CONTEXT),
+                objective=(
+                    "Assess macro regime, rates, inflation, liquidity and systemic backdrop."
+                ),
+                required_input_kinds=(
+                    CouncilInputKind.RESEARCH_FACT,
+                    CouncilInputKind.REGIME_CONTEXT,
+                ),
                 optional_input_kinds=(CouncilInputKind.MARKET_STATE,),
             ),
             AgentMandate(
                 role=CouncilRole.INSTITUTIONAL,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Assess institutional ownership, insider activity and disclosed capital flows.",
+                objective=(
+                    "Assess institutional ownership, insider activity and disclosed capital flows."
+                ),
                 required_input_kinds=(CouncilInputKind.RESEARCH_FACT,),
                 optional_input_kinds=(CouncilInputKind.EVENT_STATE, CouncilInputKind.FEATURE),
             ),
             AgentMandate(
                 role=CouncilRole.BEHAVIORAL,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Assess behavioral and alternative-data acceleration without overstating source authority.",
+                objective=(
+                    "Assess behavioral and alternative-data acceleration without overstating "
+                    "source authority."
+                ),
                 required_input_kinds=(CouncilInputKind.RESEARCH_FACT,),
                 optional_input_kinds=(CouncilInputKind.FEATURE, CouncilInputKind.MARKET_STATE),
             ),
             AgentMandate(
                 role=CouncilRole.BULL,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Construct the strongest evidence-backed case for positive investment asymmetry.",
-                required_input_kinds=(CouncilInputKind.FEATURE, CouncilInputKind.RESEARCH_FACT),
+                objective=(
+                    "Construct the strongest evidence-backed case for positive investment asymmetry."
+                ),
+                required_input_kinds=(
+                    CouncilInputKind.FEATURE,
+                    CouncilInputKind.RESEARCH_FACT,
+                ),
                 optional_input_kinds=(
                     CouncilInputKind.EVENT_STATE,
                     CouncilInputKind.QUANT_MODEL,
@@ -650,8 +712,14 @@ def default_research_council_registry() -> AgentMandateRegistry:
             AgentMandate(
                 role=CouncilRole.BEAR,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Construct the strongest evidence-backed case against committing or retaining risk.",
-                required_input_kinds=(CouncilInputKind.FEATURE, CouncilInputKind.RESEARCH_FACT),
+                objective=(
+                    "Construct the strongest evidence-backed case against committing or retaining "
+                    "risk."
+                ),
+                required_input_kinds=(
+                    CouncilInputKind.FEATURE,
+                    CouncilInputKind.RESEARCH_FACT,
+                ),
                 optional_input_kinds=(
                     CouncilInputKind.EVENT_STATE,
                     CouncilInputKind.QUANT_MODEL,
@@ -661,7 +729,9 @@ def default_research_council_registry() -> AgentMandateRegistry:
             AgentMandate(
                 role=CouncilRole.SKEPTIC,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Search for missing, stale, contradictory, crowded or weakly supported evidence.",
+                objective=(
+                    "Search for missing, stale, contradictory, crowded or weakly supported evidence."
+                ),
                 required_input_kinds=(CouncilInputKind.EVIDENCE, CouncilInputKind.FEATURE),
                 optional_input_kinds=(
                     CouncilInputKind.EVENT_STATE,
@@ -672,8 +742,14 @@ def default_research_council_registry() -> AgentMandateRegistry:
             AgentMandate(
                 role=CouncilRole.RISK_ANALYST,
                 version="RESEARCH_COUNCIL_V1",
-                objective="Assess downside paths, concentration, correlation, liquidity and portfolio risk context.",
-                required_input_kinds=(CouncilInputKind.FEATURE, CouncilInputKind.PORTFOLIO_CONTEXT),
+                objective=(
+                    "Assess downside paths, concentration, correlation, liquidity and portfolio "
+                    "risk context."
+                ),
+                required_input_kinds=(
+                    CouncilInputKind.FEATURE,
+                    CouncilInputKind.PORTFOLIO_CONTEXT,
+                ),
                 optional_input_kinds=(
                     CouncilInputKind.EVENT_STATE,
                     CouncilInputKind.REGIME_CONTEXT,
