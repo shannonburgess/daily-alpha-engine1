@@ -1,6 +1,6 @@
-from datetime import UTC, datetime, timedelta
 import math
 import statistics
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
