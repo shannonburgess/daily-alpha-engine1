@@ -8,7 +8,7 @@ The frozen stock-primary pre-AWS reference is branch `baseline/stock-primary-pre
 
 ## Core architecture rule
 
-Every major data/research domain is an **independent specialist agent/service**. A shared AWS account and common infrastructure may be reused, but each domain owns an isolated queue/DLQ boundary, raw-evidence namespace, health state, freshness policy, lineage and fail-closed disposition.
+Every major data/research domain is an **independent specialist agent/service**. A shared AWS account and common infrastructure may be reused, but each domain owns an isolated queue/DLQ boundary, versioned append-only raw-evidence namespace, health state, freshness policy, lineage and fail-closed disposition.
 
 No domain agent can place an order, mutate a PAPER book, override canonical liquidity/earnings/concentration/portfolio-risk controls, or enable live trading.
 
@@ -22,7 +22,7 @@ future connector boundary
 independent domain queue ---> domain DLQ
         |
         v
-immutable raw-evidence namespace
+versioned append-only raw-evidence namespace
         |
         v
 deterministic adapter / canonical observation
@@ -37,7 +37,7 @@ The future shared orchestration shape remains:
 EventBridge / schedule-event ingress
         -> Step Functions orchestration
         -> domain connector / processor
-        -> immutable S3 raw evidence
+        -> versioned append-only S3 raw evidence
         -> domain SQS + DLQ
         -> deterministic adapter / canonical evidence
         -> DynamoDB idempotency + bounded current/index state
@@ -67,7 +67,7 @@ The canonical repo manifest is `config/aws_staging_agent_domains.json`. It decla
 - Model Performance Agent
 - Data Reliability / Supervisor Agent
 
-Each manifest entry includes a permanent `agent_id`, a queue name, a DLQ name, an immutable raw-evidence prefix, the governed data domain, a logical credential reference when one is eventually required, and hard false authority flags.
+Each manifest entry includes a permanent `agent_id`, a queue name, a DLQ name, a versioned append-only raw-evidence prefix, the governed data domain, a logical credential reference when one is eventually required, and hard false authority flags.
 
 ## Existing code contracts reused
 
@@ -89,6 +89,8 @@ When those draft contracts are eventually approved and merged, runtime connector
 3. DynamoDB bounded current-state/index table using on-demand billing and point-in-time recovery;
 4. one encrypted SQS queue and one encrypted DLQ for every independent domain service;
 5. a bounded-retention CloudWatch log group.
+
+The S3 bucket is **versioned and append-only by ingestion contract**, not WORM-enforced. This staging foundation intentionally does **not** enable S3 Object Lock or claim storage-enforced immutability. A future Object Lock/WORM policy would require a separate explicit approval because retention/governance mode changes deletion and recovery semantics.
 
 It deliberately contains no:
 
@@ -126,7 +128,8 @@ No secret value, token, credential, API key, authorization header or signed URL 
 
 ## Point-in-time and failure semantics
 
-- Raw captures are append-only by key convention; rewrites are not a valid ingestion behavior.
+- Raw captures are append-only by ingestion/key convention; rewrites are not a valid ingestion behavior.
+- S3 versioning preserves prior object versions if a key is overwritten accidentally, but versioning alone is not treated as WORM/immutable retention.
 - Provider failures remain attributable to one domain/provider and cannot be hidden by a different domain succeeding.
 - Missing/stale/conflicting required evidence fails closed at the appropriate canonical readiness boundary.
 - Independent provider observations are not counted as redundant unless their upstream independence groups differ.
@@ -153,6 +156,7 @@ This data plane is disconnected from entry authority during model validation.
 4. Add one provider connector at a time behind the Stage 9B transport contract.
 5. Persist raw captures and canonical observations while all new agents remain research/shadow only.
 6. Measure incremental information/alpha contribution before any factor or agent is permitted to influence model promotion.
+7. If storage-enforced WORM retention is desired, review S3 Object Lock retention/governance semantics as a separate approval gate before enabling it.
 
 ## Hard boundary
 
