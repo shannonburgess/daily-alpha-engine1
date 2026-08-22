@@ -36,4 +36,5 @@ def test_processor_accepts_v2_4_v4_ingress_during_migration():
     result = process_ingress_record(payload, now=NOW)
 
     assert result.disposition == "HELD_FOR_CONTEXT"
-    assert result.reason == "ENTRY_REQUIRES_PORTFOLIO_RISK_ORATS_CONTEXT"
+    assert result.reason == "ENTRY_REQUIRES_SERVER_PORTFOLIO_RISK_CONTEXT"
+    assert "ORATS" not in result.reason

@@ -37,11 +37,12 @@ def ingress(action="ENTRY_LONG", **overrides):
     return payload
 
 
-def test_entry_is_held_until_portfolio_risk_and_orats_context_exists():
+def test_entry_is_held_until_server_portfolio_risk_context_exists():
     result = process_ingress_record(ingress(), now=NOW)
 
     assert result.disposition == "HELD_FOR_CONTEXT"
-    assert result.reason == "ENTRY_REQUIRES_PORTFOLIO_RISK_ORATS_CONTEXT"
+    assert result.reason == "ENTRY_REQUIRES_SERVER_PORTFOLIO_RISK_CONTEXT"
+    assert "ORATS" not in result.reason
     assert result.paper_ledger_updated is False
     assert result.paper_execution_triggered is False
     assert result.trading_authorized is False
