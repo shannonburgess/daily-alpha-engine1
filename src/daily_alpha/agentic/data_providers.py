@@ -105,9 +105,12 @@ class DataRequest:
         if self.subject_type is SubjectType.SECURITY:
             if not security_id or series_id is not None:
                 raise DataProviderError("SECURITY_REQUEST_REQUIRES_ONLY_SECURITY_ID")
-        elif self.subject_type is SubjectType.GLOBAL:
-            if not series_id or security_id is not None:
-                raise DataProviderError("GLOBAL_REQUEST_REQUIRES_ONLY_SERIES_ID")
+        elif self.subject_type is SubjectType.GLOBAL and (
+            not series_id or security_id is not None
+        ):
+            raise DataProviderError("GLOBAL_REQUEST_REQUIRES_ONLY_SERIES_ID")
+        elif self.subject_type not in {SubjectType.SECURITY, SubjectType.GLOBAL}:
+            raise DataProviderError("DATA_REQUEST_SUBJECT_TYPE_INVALID")
 
         start = _aware_utc(self.start_at, "DATA_REQUEST_START_AT") if self.start_at else None
         end = _aware_utc(self.end_at, "DATA_REQUEST_END_AT") if self.end_at else None
