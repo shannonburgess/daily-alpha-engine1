@@ -33,3 +33,5 @@ target-version = "py311"
 "src/daily_alpha/backtest_sensitivity.py" = ["BLE001"]
 "src/daily_alpha/agentic/market_reconciliation.py" = ["B008", "SIM102"]
 "src/daily_alpha/agentic/portfolio_construction.py" = ["SIM102"]
+"tests/test_command_center.py" = ["I001"]
+"tests/test_command_center_adapters.py" = ["I001"]
