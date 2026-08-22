@@ -107,6 +107,15 @@ from .research_facts import (
     ResearchFactReconciler,
     default_research_fact_policy,
 )
+from .risk_governor import (
+    DeterministicRiskGovernor,
+    GovernanceLockState,
+    RiskContext,
+    RiskGovernorDecision,
+    RiskGovernorError,
+    RiskPolicy,
+    RiskVerdict,
+)
 from .security_master import (
     AssetType,
     IdentifierNamespace,
@@ -154,6 +163,7 @@ __all__ = [
     "DataRequest",
     "DataSupervisor",
     "DecisionLineage",
+    "DeterministicRiskGovernor",
     "DurableEvidenceError",
     "EventCandidate",
     "EventDataError",
@@ -173,6 +183,7 @@ __all__ = [
     "FeatureSourceFamily",
     "FeatureStoreError",
     "FeatureValue",
+    "GovernanceLockState",
     "HistoricalReplayResult",
     "IdentifierNamespace",
     "InMemoryDurableEvidenceRepository",
@@ -209,6 +220,11 @@ __all__ = [
     "ResearchFactPolicy",
     "ResearchFactQuality",
     "ResearchFactReconciler",
+    "RiskContext",
+    "RiskGovernorDecision",
+    "RiskGovernorError",
+    "RiskPolicy",
+    "RiskVerdict",
     "SecurityIdentifier",
     "SecurityMasterError",
     "SecurityMasterRecord",
