@@ -10,7 +10,6 @@ from daily_alpha.paper_model_performance import (
     summarize_shadow_books,
 )
 
-
 BASE = datetime(2026, 8, 20, 20, 0, tzinfo=UTC)
 
 
@@ -75,7 +74,6 @@ def test_no_closed_trades_remain_explicitly_unavailable() -> None:
         [],
         [no_trade("evt-1"), no_trade("evt-2")],
     )
-
     assert summary.n == 0
     assert summary.win_rate is None
     assert summary.expectancy_r is None
@@ -97,7 +95,6 @@ def test_summary_calculates_requested_forward_metrics() -> None:
         trade("3", exit_=102.0, max_price=105.0, min_price=98.0, minutes=60),
     ]
     summary = summarize_model_performance("PAPER_SHADOW_V24", records)
-
     assert summary.n == 3
     assert summary.wins == 2
     assert summary.losses == 1
@@ -124,7 +121,6 @@ def test_rejections_do_not_increment_trade_n() -> None:
         [trade("1")],
         [no_trade("evt-1"), no_trade("evt-2", reason="LIQUIDITY_FILTERED")],
     )
-
     assert summary.n == 1
     assert summary.rejection_count == 2
     assert summary.rejection_reasons == {
@@ -139,7 +135,6 @@ def test_r_and_path_coverage_are_not_fabricated() -> None:
         trade("missing", risk=None, max_price=None, min_price=None),
     ]
     summary = summarize_model_performance("PAPER_SHADOW_V24", records)
-
     assert summary.n == 2
     assert summary.r_observations == 1
     assert summary.r_coverage == pytest.approx(0.5)
@@ -162,7 +157,6 @@ def test_slices_preserve_setup_lifecycle_sector_and_industry() -> None:
         ),
     ]
     summary = summarize_model_performance("PAPER_SHADOW_V24", records)
-
     assert summary.by_setup_type["BREAKOUT"].n == 1
     assert summary.by_setup_type["RE_ENTRY"].n == 1
     assert summary.by_lifecycle_stage["EMERGING"].n == 1
@@ -184,7 +178,6 @@ def test_shadow_books_are_strictly_separated() -> None:
             no_trade("e25", account="PAPER_SHADOW_V25", reason="EARNINGS_RISK"),
         ],
     )
-
     assert books["PAPER_SHADOW_V24"].n == 1
     assert books["PAPER_SHADOW_V24"].wins == 1
     assert books["PAPER_SHADOW_V24"].rejection_reasons == {"SECTOR_DATA_UNVERIFIED": 1}
@@ -196,7 +189,6 @@ def test_shadow_books_are_strictly_separated() -> None:
 def test_duplicate_trade_and_event_ids_fail_closed() -> None:
     with pytest.raises(ValueError, match="DUPLICATE_TRADE_ID"):
         summarize_model_performance("PAPER_SHADOW_V24", [trade("dup"), trade("dup")])
-
     with pytest.raises(ValueError, match="DUPLICATE_NO_TRADE_EVENT_ID"):
         summarize_model_performance(
             "PAPER_SHADOW_V24",
@@ -211,7 +203,6 @@ def test_cross_book_contamination_fails_closed() -> None:
             "PAPER_SHADOW_V24",
             [trade("wrong", account="PAPER_SHADOW_V25")],
         )
-
     with pytest.raises(ValueError, match="NO_TRADE_ACCOUNT_MISMATCH"):
         summarize_model_performance(
             "PAPER_SHADOW_V24",
@@ -222,7 +213,6 @@ def test_cross_book_contamination_fails_closed() -> None:
 
 def test_model_validation_fill_cannot_be_misrepresented_as_brokerage_fill() -> None:
     assert trade("basis").fill_basis == MODEL_VALIDATION_FILL_BASIS
-
     with pytest.raises(ValueError, match="MUST_NOT_BE_BROKERAGE_FILL"):
         ForwardTradeObservation(
             trade_id="bad",
@@ -264,6 +254,5 @@ def test_naive_or_invalid_time_and_price_evidence_fails_closed() -> None:
             exit_price=101.0,
             shares=1.0,
         )
-
     with pytest.raises(ValueError, match="PRICES_AND_SHARES_MUST_BE_POSITIVE"):
         trade("bad-price", entry=0.0)
