@@ -1,0 +1,193 @@
+name: Deploy AWS staging data-plane foundation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/aws/staging/data-plane-foundation.template.json"
+      - ".github/workflows/deploy-aws-staging-data-plane-foundation.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-alpha-staging-data-plane-foundation
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    name: Validate and deploy inert staging foundation
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run repository quality gates
+        run: |
+          ruff check .
+          pytest -q
+
+      - name: Verify inert template contract before AWS access
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          path = Path("infra/aws/staging/data-plane-foundation.template.json")
+          template = json.loads(path.read_text(encoding="utf-8"))
+          resources = template["Resources"]
+          allowed = {
+              "AWS::S3::Bucket",
+              "AWS::S3::BucketPolicy",
+              "AWS::DynamoDB::Table",
+              "AWS::Logs::LogGroup",
+              "AWS::SQS::Queue",
+          }
+          actual = {resource["Type"] for resource in resources.values()}
+          assert actual <= allowed, actual - allowed
+          assert len(resources) == 37, len(resources)
+          assert sum(r["Type"] == "AWS::S3::Bucket" for r in resources.values()) == 1
+          assert sum(r["Type"] == "AWS::S3::BucketPolicy" for r in resources.values()) == 1
+          assert sum(r["Type"] == "AWS::DynamoDB::Table" for r in resources.values()) == 2
+          assert sum(r["Type"] == "AWS::Logs::LogGroup" for r in resources.values()) == 1
+          assert sum(r["Type"] == "AWS::SQS::Queue" for r in resources.values()) == 32
+
+          bucket = resources["RawEvidenceBucket"]
+          assert bucket["DeletionPolicy"] == "Retain"
+          assert bucket["UpdateReplacePolicy"] == "Retain"
+          assert "ObjectLockEnabled" not in bucket["Properties"]
+          assert "ObjectLockConfiguration" not in bucket["Properties"]
+
+          policy = resources["RawEvidenceBucketPolicy"]["Properties"]["PolicyDocument"]
+          statement = policy["Statement"][0]
+          assert statement["Effect"] == "Deny"
+          assert statement["Condition"]["Bool"] == {
+              "aws:SecureTransport": "false",
+              "aws:PrincipalIsAWSService": "false",
+          }
+          print("Inert staging foundation contract verified: 37 resources, no activation authority.")
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-staging-data-plane
+          aws-region: us-east-2
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Validate CloudFormation template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://infra/aws/staging/data-plane-foundation.template.json
+
+      - name: Deploy inert staging foundation
+        run: |
+          aws cloudformation deploy \
+            --stack-name daily-alpha-staging-data-plane-foundation \
+            --template-file infra/aws/staging/data-plane-foundation.template.json \
+            --parameter-overrides Environment=staging \
+            --no-fail-on-empty-changeset
+
+      - name: Capture deployed stack resources
+        run: |
+          aws cloudformation list-stack-resources \
+            --stack-name daily-alpha-staging-data-plane-foundation \
+            --output json > /tmp/data-plane-resources.json
+          cat /tmp/data-plane-resources.json
+
+      - name: Verify deployed resource inventory
+        shell: python
+        run: |
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/data-plane-resources.json").read_text())
+          resources = payload["StackResourceSummaries"]
+          types = Counter(item["ResourceType"] for item in resources)
+          expected = {
+              "AWS::S3::Bucket": 1,
+              "AWS::S3::BucketPolicy": 1,
+              "AWS::DynamoDB::Table": 2,
+              "AWS::Logs::LogGroup": 1,
+              "AWS::SQS::Queue": 32,
+          }
+          assert len(resources) == 37, len(resources)
+          assert dict(types) == expected, dict(types)
+          bad = [item for item in resources if item["ResourceStatus"] not in {"CREATE_COMPLETE", "UPDATE_COMPLETE"}]
+          assert not bad, bad
+          print("Deployed resource inventory verified:", expected)
+
+      - name: Verify raw-evidence bucket controls
+        shell: bash
+        run: |
+          BUCKET="daily-alpha-staging-raw-${AWS_ACCOUNT_ID:-490809405132}-us-east-2"
+          aws s3api get-bucket-encryption --bucket "$BUCKET"
+          aws s3api get-public-access-block --bucket "$BUCKET"
+          aws s3api get-bucket-versioning --bucket "$BUCKET"
+          aws s3api get-bucket-policy --bucket "$BUCKET" --query Policy --output text > /tmp/raw-bucket-policy.json
+          cat /tmp/raw-bucket-policy.json
+
+      - name: Verify raw-evidence bucket policy semantics
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          policy = json.loads(Path("/tmp/raw-bucket-policy.json").read_text())
+          statement = next(s for s in policy["Statement"] if s["Sid"] == "DenyInsecureTransportForNonServicePrincipals")
+          assert statement["Effect"] == "Deny"
+          assert statement["Condition"]["Bool"]["aws:SecureTransport"] == "false"
+          assert statement["Condition"]["Bool"]["aws:PrincipalIsAWSService"] == "false"
+          print("TLS-only raw-evidence policy verified.")
+
+      - name: Verify DynamoDB point-in-time recovery
+        shell: bash
+        run: |
+          for TABLE in daily-alpha-staging-data-idempotency daily-alpha-staging-data-current-state; do
+            STATUS="$(aws dynamodb describe-continuous-backups \
+              --table-name "$TABLE" \
+              --query 'ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus' \
+              --output text)"
+            test "$STATUS" = "ENABLED"
+            echo "$TABLE PITR=$STATUS"
+          done
+
+      - name: Verify no activation resources exist in stack
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/data-plane-resources.json").read_text())
+          forbidden = {
+              "AWS::Lambda::Function",
+              "AWS::Events::Rule",
+              "AWS::Scheduler::Schedule",
+              "AWS::StepFunctions::StateMachine",
+              "AWS::ApiGateway::RestApi",
+              "AWS::ApiGatewayV2::Api",
+              "AWS::SecretsManager::Secret",
+              "AWS::IAM::Role",
+          }
+          actual = {item["ResourceType"] for item in payload["StackResourceSummaries"]}
+          assert not actual.intersection(forbidden), actual.intersection(forbidden)
+          print("No activation/execution resources are present in the staging foundation stack.")
