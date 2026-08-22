@@ -93,6 +93,25 @@ def test_sec_recent_filings_parse_to_primary_provider_evidence():
     assert ("source_authority", "REGULATOR_PRIMARY") in observation.provenance
 
 
+def test_sec_compact_acceptance_timestamp_converts_eastern_to_utc():
+    payload = {
+        "cik": "320193",
+        "filings": {
+            "recent": {
+                "accessionNumber": ["0000320193-26-000001"],
+                "filingDate": ["2026-08-20"],
+                "reportDate": ["2026-08-19"],
+                "acceptanceDateTime": ["20260820161125"],
+                "form": ["8-K"],
+                "primaryDocument": ["aapl.htm"],
+                "primaryDocDescription": ["Current report"],
+            }
+        },
+    }
+    filing = SecEdgarAdapter.parse_recent_filings(payload)[0]
+    assert filing.acceptance_datetime == datetime(2026, 8, 20, 20, 11, 25, tzinfo=UTC)
+
+
 def test_sec_received_before_acceptance_is_rejected():
     payload = {
         "cik": "320193",
