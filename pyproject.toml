@@ -36,4 +36,5 @@ target-version = "py311"
 "tests/test_command_center.py" = ["I001"]
 "tests/test_command_center_adapters.py" = ["I001"]
 "tests/test_command_center_api.py" = ["I001"]
+"tests/test_command_center_audit.py" = ["I001"]
 "tests/test_command_center_decision_adapters.py" = ["I001"]
