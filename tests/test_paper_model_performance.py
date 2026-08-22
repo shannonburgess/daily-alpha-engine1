@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from daily_alpha.paper_model_performance import (
-    ForwardTradeObservation,
     MODEL_VALIDATION_FILL_BASIS,
+    ForwardTradeObservation,
     NoTradeObservation,
     summarize_model_performance,
     summarize_shadow_books,
