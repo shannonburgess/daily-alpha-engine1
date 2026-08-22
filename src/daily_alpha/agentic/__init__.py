@@ -46,6 +46,15 @@ from .market_reconciliation import (
     MarketQuote,
     MarketReconciliationPolicy,
 )
+from .research_facts import (
+    CanonicalResearchFactState,
+    ResearchFactCandidate,
+    ResearchFactError,
+    ResearchFactPolicy,
+    ResearchFactQuality,
+    ResearchFactReconciler,
+    default_research_fact_policy,
+)
 from .security_master import (
     AssetType,
     IdentifierNamespace,
@@ -64,6 +73,7 @@ __all__ = [
     "AssetType",
     "CanonicalEventState",
     "CanonicalMarketState",
+    "CanonicalResearchFactState",
     "DataDomain",
     "DataProviderError",
     "DataRequest",
@@ -101,6 +111,11 @@ __all__ = [
     "ReadinessPacket",
     "ReadinessStatus",
     "RedundancyPolicy",
+    "ResearchFactCandidate",
+    "ResearchFactError",
+    "ResearchFactPolicy",
+    "ResearchFactQuality",
+    "ResearchFactReconciler",
     "SecurityIdentifier",
     "SecurityMasterError",
     "SecurityMasterRecord",
@@ -115,6 +130,7 @@ __all__ = [
     "TickerAlias",
     "daily_alpha_v1_registry",
     "default_event_policy",
+    "default_research_fact_policy",
     "evidence_record_from_payload",
     "evidence_record_to_payload",
     "source_registry_fingerprint",
