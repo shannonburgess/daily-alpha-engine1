@@ -28,7 +28,6 @@ from .durable_evidence import (
     evidence_record_to_payload,
     source_registry_fingerprint,
 )
-from .evidence_store import EvidenceConflictError, InMemoryEvidenceStore
 from .event_reconciliation import (
     CanonicalEventState,
     EventCandidate,
@@ -38,6 +37,7 @@ from .event_reconciliation import (
     SourceAuthority,
     default_event_policy,
 )
+from .evidence_store import EvidenceConflictError, InMemoryEvidenceStore
 from .market_reconciliation import (
     CanonicalMarketState,
     MarketBar,
