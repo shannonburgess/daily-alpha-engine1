@@ -18,7 +18,7 @@ from enum import StrEnum
 from typing import Any
 
 from .contracts import ReadinessStatus
-from .research_council import CouncilRole, ResearchCouncilPacket
+from .research_council import ResearchCouncilPacket
 
 
 class CIOFusionError(ValueError):
@@ -419,9 +419,15 @@ class CIOFusionValidator:
         for override in decision.overrides:
             if override.source_id not in valid_override_ids:
                 raise CIOFusionError(f"CIO_OVERRIDE_SOURCE_UNKNOWN:{override.source_id}")
-            if override.source_kind is OverrideSourceKind.AGENT_OPINION and override.source_id not in opinion_ids:
+            if (
+                override.source_kind is OverrideSourceKind.AGENT_OPINION
+                and override.source_id not in opinion_ids
+            ):
                 raise CIOFusionError("CIO_OVERRIDE_SOURCE_KIND_MISMATCH")
-            if override.source_kind is OverrideSourceKind.QUANT_MODEL and override.source_id not in model_ids:
+            if (
+                override.source_kind is OverrideSourceKind.QUANT_MODEL
+                and override.source_id not in model_ids
+            ):
                 raise CIOFusionError("CIO_OVERRIDE_SOURCE_KIND_MISMATCH")
 
         blockers: list[str] = []
