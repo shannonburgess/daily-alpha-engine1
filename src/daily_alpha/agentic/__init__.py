@@ -99,6 +99,7 @@ from .source_registry import SourcePolicy, SourceRegistry, daily_alpha_v1_regist
 from .supervisor import DataSupervisor, ReadinessPacket, SourceAssessment
 
 __all__ = [
+    "DEFAULT_COUNCIL_ROLES",
     "AgentInputPacket",
     "AgentMandate",
     "AgentMandateRegistry",
@@ -110,7 +111,6 @@ __all__ = [
     "CouncilInputKind",
     "CouncilInputRef",
     "CouncilRole",
-    "DEFAULT_COUNCIL_ROLES",
     "DailyBarFeatureEngine",
     "DataDomain",
     "DataProviderError",
