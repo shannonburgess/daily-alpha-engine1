@@ -64,13 +64,20 @@ def _required_positive_float(value: Any, field_name: str) -> float:
     return result
 
 
-def _required_nonnegative_float(value: Any, field_name: str) -> float:
+def _required_finite_float(value: Any, field_name: str) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field_name}_INVALID") from exc
     if not math.isfinite(result):
         raise ValueError(f"{field_name}_INVALID")
+    return result
+
+
+def _required_nonnegative_float(value: Any, field_name: str) -> float:
+    result = _required_finite_float(value, field_name)
+    if result < 0:
+        raise ValueError(f"{field_name}_MUST_BE_NONNEGATIVE")
     return result
 
 
@@ -125,8 +132,10 @@ class ForwardTradeObservation:
         exit_at = _aware_utc(self.exit_at, "EXIT_AT")
         if exit_at < entry_at:
             raise ValueError("EXIT_PRECEDES_ENTRY")
-        if self.entry_price <= 0 or self.exit_price <= 0 or self.shares <= 0:
+        if self.entry_price <= 0 or self.shares <= 0:
             raise ValueError("TRADE_PRICES_AND_SHARES_MUST_BE_POSITIVE")
+        if self.exit_price < 0:
+            raise ValueError("EXIT_PRICE_MUST_BE_NONNEGATIVE")
         if not all(
             math.isfinite(value)
             for value in (self.entry_price, self.exit_price, self.shares)
@@ -244,8 +253,7 @@ def observation_from_closed_paper_trade(
     if str(trade.get("state", "")).strip().upper() != "CLOSED":
         raise ValueError("MODEL_PERFORMANCE_REQUIRES_CLOSED_TRADE")
 
-    realized_pnl = _required_nonnegative_float(trade.get("realized_pnl"), "REALIZED_PNL")
-    # Realized P/L may legitimately be negative; the helper only enforces finite numeric input.
+    realized_pnl = _required_finite_float(trade.get("realized_pnl"), "REALIZED_PNL")
     initial_risk_basis = _optional_positive_float(
         trade.get("initial_risk_basis"), "INITIAL_RISK_BASIS"
     )
@@ -257,7 +265,7 @@ def observation_from_closed_paper_trade(
         entry_at=_parse_aware_datetime(trade.get("entry_time"), "ENTRY_AT"),
         exit_at=_parse_aware_datetime(trade.get("exit_time"), "EXIT_AT"),
         entry_price=_required_positive_float(trade.get("entry_price"), "ENTRY_PRICE"),
-        exit_price=_required_positive_float(trade.get("exit_price"), "EXIT_PRICE"),
+        exit_price=_required_nonnegative_float(trade.get("exit_price"), "EXIT_PRICE"),
         shares=quantity,
         initial_risk_basis=initial_risk_basis,
         realized_model_pnl=realized_pnl,
