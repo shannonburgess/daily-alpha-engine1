@@ -1,5 +1,3 @@
-# ruff: noqa: I001
-
 from datetime import UTC, datetime, timedelta
 
 import pytest
