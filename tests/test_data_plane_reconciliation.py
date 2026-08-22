@@ -28,12 +28,7 @@ from daily_alpha.agentic.data_providers import (
 )
 from daily_alpha.agentic.durable_evidence import SourceHealthStatus
 from daily_alpha.agentic.research_facts import ResearchFactQuality
-from daily_alpha.agentic.vendor_adapters import (
-    DatabentoHistoricalAdapter,
-    FinancialModelingPrepAdapter,
-    MassiveStocksAdapter,
-)
-
+from daily_alpha.agentic.vendor_adapters import institutional_vendor_registry
 
 AS_OF = datetime(2026, 8, 21, 20, 0, tzinfo=UTC)
 BAR_END = AS_OF - timedelta(seconds=20)
@@ -59,14 +54,14 @@ def _third_market_definition() -> ProviderDefinition:
 
 
 def _market_registry(*, include_third: bool = False) -> ProviderRegistry:
-    definitions = [MassiveStocksAdapter.definition(), DatabentoHistoricalAdapter.definition()]
+    registry = institutional_vendor_registry()
     if include_third:
-        definitions.append(_third_market_definition())
-    return ProviderRegistry(tuple(definitions))
+        registry.register(_third_market_definition())
+    return registry
 
 
 def _fundamental_registry() -> ProviderRegistry:
-    return ProviderRegistry((FinancialModelingPrepAdapter.definition(),))
+    return institutional_vendor_registry()
 
 
 def _market_request() -> DataRequest:
