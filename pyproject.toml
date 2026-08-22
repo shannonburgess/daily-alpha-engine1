@@ -39,3 +39,4 @@ target-version = "py311"
 "tests/test_command_center_audit.py" = ["I001"]
 "tests/test_command_center_decision_adapters.py" = ["I001"]
 "tests/test_command_center_history.py" = ["I001"]
+"tests/test_command_center_timeline.py" = ["I001"]
