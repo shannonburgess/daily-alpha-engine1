@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from daily_alpha.paper_model_performance import (
-    MODEL_VALIDATION_FILL_BASIS,
     ForwardTradeObservation,
+    MODEL_VALIDATION_FILL_BASIS,
     NoTradeObservation,
     summarize_model_performance,
     summarize_shadow_books,
@@ -258,7 +258,7 @@ def test_naive_or_invalid_time_and_price_evidence_fails_closed() -> None:
             trade_id="naive",
             account_id="PAPER_SHADOW_V24",
             symbol="NVDA",
-            entry_at=datetime(2026, 8, 20, 20, 0),
+            entry_at=BASE.replace(tzinfo=None),
             exit_at=BASE + timedelta(minutes=1),
             entry_price=100.0,
             exit_price=101.0,
