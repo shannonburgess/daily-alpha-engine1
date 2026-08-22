@@ -34,7 +34,7 @@ def _parse_aware_datetime(value: Any, field_name: str) -> datetime:
     if not text:
         raise ValueError(f"{field_name}_REQUIRED")
     try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text)
     except ValueError as exc:
         raise ValueError(f"{field_name}_INVALID") from exc
     return _aware_utc(parsed, field_name)
