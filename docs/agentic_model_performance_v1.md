@@ -31,7 +31,7 @@ Outcome records are read-only research evidence. The contract hard-codes PAPER-l
 
 ## Rolling surveillance metrics
 
-For each current model/version, Stage 9I aggregates deduplicated outcomes known by the packet `as_of` boundary and inside the versioned lookback window. Metrics include:
+For each current model/version, Stage 9I aggregates deduplicated outcomes known by the packet `as_of` boundary and inside the versioned lookback window. The surveillance population is model/version-level and may span securities; each contributing result still preserves its exact security and historical model-view attribution. Metrics include:
 
 - sample size
 - wins / losses / breakeven outcomes
