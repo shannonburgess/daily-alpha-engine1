@@ -10,6 +10,7 @@ from daily_alpha.agentic.command_center import (
 from daily_alpha.agentic.command_center_adapters import (
     project_data_plane_readiness,
     project_model_governance,
+    project_model_performance,
     project_model_stress,
     project_provider_reliability,
 )
@@ -20,6 +21,11 @@ from daily_alpha.agentic.model_governance import (
     ModelGovernanceAssessment,
     ModelGovernancePacket,
     ModelLifecycleStage,
+)
+from daily_alpha.agentic.model_performance import (
+    ModelPerformanceAssessment,
+    ModelPerformanceMetrics,
+    ModelPerformancePacket,
 )
 from daily_alpha.agentic.model_stress import (
     ModelStressAssessment,
@@ -242,6 +248,70 @@ def test_model_stress_projection_preserves_robustness_and_governance_lineage() -
     assert scenario.assessment_id in model.lineage_ids
     assert snapshot.status is ReadinessStatus.PASS
     assert snapshot.pass_count == 2
+
+
+def test_model_performance_projection_surfaces_alpha_decay_and_outcome_lineage() -> None:
+    outcome_ids = tuple(f"{index:064x}" for index in range(30))
+    metrics = ModelPerformanceMetrics(
+        sample_size=30,
+        wins=10,
+        losses=20,
+        breakeven=0,
+        hit_rate=1 / 3,
+        expectancy_r=-0.2,
+        profit_factor=0.65,
+        cumulative_r=-6.0,
+        max_drawdown_r=7.5,
+        max_loss_streak=9,
+        baseline_expectancy_r=0.4,
+        expectancy_decay_fraction=1.5,
+        outcome_ids=outcome_ids,
+    )
+    assessment = ModelPerformanceAssessment(
+        model_view_id="f" * 64,
+        model_id="SH24",
+        model_version="v2.4",
+        upstream_governance_assessment_id="1" * 64,
+        upstream_stress_assessment_id="2" * 64,
+        baseline_validation_id="3" * 64,
+        metrics=metrics,
+        status=ReadinessStatus.BLOCKED,
+        blockers=("EXPECTANCY_DECAY_EXCEEDED",),
+        warnings=(),
+        performance_eligible_for_cio_research=False,
+    )
+    packet = ModelPerformancePacket(
+        security_id="MU",
+        as_of=AS_OF,
+        upstream_governance_packet_id="4" * 64,
+        upstream_stress_packet_id="5" * 64,
+        policy_id="6" * 64,
+        assessments=(assessment,),
+        performance_eligible_model_view_ids=(),
+        status=ReadinessStatus.BLOCKED,
+        blockers=("MODEL_PERFORMANCE_BLOCKED:SH24:v2.4",),
+        warnings=(),
+    )
+
+    aggregate, model = project_model_performance(packet)
+    snapshot = InstitutionalCommandCenterBuilder.build(
+        as_of=AS_OF,
+        components=(aggregate, model),
+        security_id="MU",
+    )
+
+    model_metrics = dict(model.metrics)
+    assert aggregate.source_record_id == packet.packet_id
+    assert packet.upstream_stress_packet_id in aggregate.lineage_ids
+    assert model.status is ReadinessStatus.BLOCKED
+    assert model_metrics["sample_size"] == 30
+    assert model_metrics["expectancy_r"] == -0.2
+    assert model_metrics["expectancy_decay_fraction"] == 1.5
+    assert model_metrics["performance_eligible_for_cio_research"] is False
+    assert metrics.metrics_id in model.lineage_ids
+    assert set(outcome_ids).issubset(model.lineage_ids)
+    assert snapshot.status is ReadinessStatus.BLOCKED
+    assert snapshot.blocked_count == 2
 
 
 def test_typed_projection_layer_remains_read_only() -> None:
