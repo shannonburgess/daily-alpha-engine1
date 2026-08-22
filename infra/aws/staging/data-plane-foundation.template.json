@@ -1,0 +1,229 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Daily Alpha inert AWS staging data-plane foundation. Storage, state, queues and logs only; no connectors, schedules, secrets or trading authority.",
+  "Parameters": {
+    "Environment": {
+      "Type": "String",
+      "Default": "staging",
+      "AllowedValues": ["staging"]
+    }
+  },
+  "Resources": {
+    "RawEvidenceBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": {"Fn::Sub": "daily-alpha-staging-raw-${AWS::AccountId}-${AWS::Region}"},
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {"ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}
+          ]
+        },
+        "OwnershipControls": {
+          "Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "VersioningConfiguration": {"Status": "Enabled"},
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "AbortIncompleteMultipartUploads",
+              "Status": "Enabled",
+              "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7}
+            }
+          ]
+        },
+        "Tags": [
+          {"Key": "System", "Value": "DailyAlpha"},
+          {"Key": "Environment", "Value": "staging"},
+          {"Key": "Authority", "Value": "ResearchOnly"},
+          {"Key": "DataClass", "Value": "RawEvidence"}
+        ]
+      }
+    },
+    "IdempotencyTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "daily-alpha-staging-data-idempotency",
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [{"AttributeName": "idempotency_key", "AttributeType": "S"}],
+        "KeySchema": [{"AttributeName": "idempotency_key", "KeyType": "HASH"}],
+        "SSESpecification": {"SSEEnabled": true},
+        "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true},
+        "TimeToLiveSpecification": {"AttributeName": "expires_at", "Enabled": true},
+        "Tags": [
+          {"Key": "System", "Value": "DailyAlpha"},
+          {"Key": "Environment", "Value": "staging"},
+          {"Key": "Authority", "Value": "ResearchOnly"}
+        ]
+      }
+    },
+    "CurrentStateTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "daily-alpha-staging-data-current-state",
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [{"AttributeName": "state_key", "AttributeType": "S"}],
+        "KeySchema": [{"AttributeName": "state_key", "KeyType": "HASH"}],
+        "SSESpecification": {"SSEEnabled": true},
+        "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true},
+        "TimeToLiveSpecification": {"AttributeName": "expires_at", "Enabled": true},
+        "Tags": [
+          {"Key": "System", "Value": "DailyAlpha"},
+          {"Key": "Environment", "Value": "staging"},
+          {"Key": "Authority", "Value": "ResearchOnly"}
+        ]
+      }
+    },
+    "DataPlaneLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/daily-alpha/staging/data-plane",
+        "RetentionInDays": 30,
+        "Tags": [
+          {"Key": "System", "Value": "DailyAlpha"},
+          {"Key": "Environment", "Value": "staging"},
+          {"Key": "Authority", "Value": "ResearchOnly"}
+        ]
+      }
+    },
+    "ReferenceIdentityDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-reference-identity-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "reference-identity"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "ReferenceIdentityQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-reference-identity", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["ReferenceIdentityDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "reference-identity"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "SecIntelligenceDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-sec-intelligence-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "sec-intelligence"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "SecIntelligenceQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-sec-intelligence", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["SecIntelligenceDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "sec-intelligence"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "MacroDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-macro-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "macro"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "MacroQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-macro", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["MacroDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "macro"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "MarketStructurePrimaryDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-market-structure-primary-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "market-structure-primary"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "MarketStructurePrimaryQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-market-structure-primary", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["MarketStructurePrimaryDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "market-structure-primary"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "MarketVerificationDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-market-verification-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "market-verification"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "MarketVerificationQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-market-verification", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["MarketVerificationDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "market-verification"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "FundamentalDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-fundamental-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "fundamental"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "FundamentalQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-fundamental", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["FundamentalDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "fundamental"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "EstimateRevisionDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-estimate-revision-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "estimate-revision"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "EstimateRevisionQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-estimate-revision", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["EstimateRevisionDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "estimate-revision"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "NewsCatalystDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-news-catalyst-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "news-catalyst"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "NewsCatalystQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-news-catalyst", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["NewsCatalystDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "news-catalyst"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "SectorRotationDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-sector-rotation-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "sector-rotation"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "SectorRotationQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-sector-rotation", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["SectorRotationDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "sector-rotation"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "LiquidityCapacityDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-liquidity-capacity-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "liquidity-capacity"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "LiquidityCapacityQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-liquidity-capacity", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["LiquidityCapacityDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "liquidity-capacity"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "PineSignalEvidenceDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-pine-signal-evidence-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "pine-signal-evidence"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "PineSignalEvidenceQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-pine-signal-evidence", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["PineSignalEvidenceDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "pine-signal-evidence"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "EarningsEventRiskDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-earnings-event-risk-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "earnings-event-risk"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "EarningsEventRiskQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-earnings-event-risk", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["EarningsEventRiskDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "earnings-event-risk"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "BehavioralAttentionDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-behavioral-attention-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "behavioral-attention"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "BehavioralAttentionQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-behavioral-attention", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["BehavioralAttentionDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "behavioral-attention"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "InstitutionalFlowDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-institutional-flow-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "institutional-flow"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "InstitutionalFlowQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-institutional-flow", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["InstitutionalFlowDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "institutional-flow"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "ModelPerformanceDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-model-performance-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "model-performance"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "ModelPerformanceQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-model-performance", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["ModelPerformanceDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "model-performance"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "DataReliabilitySupervisorDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-data-reliability-supervisor-dlq", "MessageRetentionPeriod": 1209600, "SqsManagedSseEnabled": true, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "data-reliability-supervisor"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    },
+    "DataReliabilitySupervisorQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "daily-alpha-staging-data-reliability-supervisor", "VisibilityTimeout": 180, "MessageRetentionPeriod": 345600, "SqsManagedSseEnabled": true, "RedrivePolicy": {"deadLetterTargetArn": {"Fn::GetAtt": ["DataReliabilitySupervisorDlq", "Arn"]}, "maxReceiveCount": 5}, "Tags": [{"Key": "System", "Value": "DailyAlpha"}, {"Key": "Environment", "Value": "staging"}, {"Key": "Agent", "Value": "data-reliability-supervisor"}, {"Key": "Authority", "Value": "ResearchOnly"}]}
+    }
+  },
+  "Outputs": {
+    "RawEvidenceBucketName": {"Value": {"Ref": "RawEvidenceBucket"}},
+    "IdempotencyTableName": {"Value": {"Ref": "IdempotencyTable"}},
+    "CurrentStateTableName": {"Value": {"Ref": "CurrentStateTable"}},
+    "DataPlaneLogGroupName": {"Value": {"Ref": "DataPlaneLogGroup"}}
+  }
+}
