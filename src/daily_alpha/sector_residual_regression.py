@@ -13,6 +13,9 @@ from math import isfinite
 from statistics import fmean
 
 
+_RESIDUAL_ZERO_TOLERANCE = 1e-12
+
+
 @dataclass(frozen=True, slots=True)
 class ResidualCalibrationPoint:
     """One point-in-time periodic return observation used only for factor calibration."""
@@ -244,11 +247,11 @@ class ResidualRegressionAnalyzer:
             joint_residual_63d=joint_residuals[1],
             joint_residual_126d=joint_residuals[2],
             market_residual_positive_fraction=(
-                sum(value > 0.0 for value in market_weekly_residuals)
+                sum(value > _RESIDUAL_ZERO_TOLERANCE for value in market_weekly_residuals)
                 / len(market_weekly_residuals)
             ),
             joint_residual_positive_fraction=(
-                sum(value > 0.0 for value in joint_weekly_residuals)
+                sum(value > _RESIDUAL_ZERO_TOLERANCE for value in joint_weekly_residuals)
                 / len(joint_weekly_residuals)
             ),
         )
