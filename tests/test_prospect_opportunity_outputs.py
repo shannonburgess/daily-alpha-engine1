@@ -2,10 +2,14 @@ import datetime as dt
 
 from daily_alpha.candidates import CandidateAssessment, CandidateBucket
 from daily_alpha.newsletter_delivery import AwsNewsletterEmailDelivery, NewsletterEmailConfig
-from daily_alpha.prospect_opportunity_board import build_prospect_opportunity_board
+from daily_alpha.prospect_opportunity_board import (
+    OpportunityBoardFilter,
+    build_prospect_opportunity_board,
+)
 from daily_alpha.prospect_opportunity_outputs import (
     ProspectOutputChannel,
     build_all_v1_prospect_outputs,
+    build_prospect_api_page,
     build_prospect_output,
     render_prospect_newsletter_html,
 )
@@ -104,6 +108,36 @@ def test_api_output_serializes_all_fifty_not_only_featured_three() -> None:
     assert len(payload["top_picks"]) == 3
     assert len(payload["complete_qualifying"]) == 50
     assert payload["board_id"] == board.board_id
+
+
+def test_api_query_page_filters_and_paginates_without_mutating_canonical_set() -> None:
+    board = _board(50)
+    canonical_ids = tuple(item.candidate_id for item in board.opportunities)
+    query = OpportunityBoardFilter(symbols=tuple(f"Q{i:02d}" for i in range(10, 30)))
+
+    first = build_prospect_api_page(board, query=query, offset=0, limit=7)
+    second = build_prospect_api_page(board, query=query, offset=7, limit=7)
+    third = build_prospect_api_page(board, query=query, offset=14, limit=7)
+
+    assert {page.board_id for page in (first, second, third)} == {board.board_id}
+    assert {page.filter_id for page in (first, second, third)} == {query.filter_id}
+    assert {page.total_qualifying for page in (first, second, third)} == {50}
+    assert {page.total_matched for page in (first, second, third)} == {20}
+    assert [item.symbol for page in (first, second, third) for item in page.opportunities] == [
+        f"Q{i:02d}" for i in range(10, 30)
+    ]
+    assert first.has_more is True
+    assert second.has_more is True
+    assert third.has_more is False
+    assert tuple(item.candidate_id for item in board.opportunities) == canonical_ids
+    assert board.total_qualifying == 50
+
+    payload = first.to_dict()
+    assert payload["channel"] == "API"
+    assert payload["total_qualifying"] == 50
+    assert payload["total_matched"] == 20
+    assert payload["trading_authorized"] is False
+    assert payload["live_trading_enabled"] is False
 
 
 def test_dashboard_output_uses_same_canonical_board_identity() -> None:
