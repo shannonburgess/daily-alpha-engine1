@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime
 
 from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
 from .pine_forward_reference import (
+    PersistedReferenceSnapshot,
     ReceiptBoundForwardParityEvaluation,
     evaluate_forward_deployment_reference,
     parse_forward_deployment_reference_snapshot,
@@ -12,6 +14,7 @@ from .pine_forward_reference import (
 from .pine_forward_replay_provenance import ForwardReplayProvenance
 from .pine_historical_reference import HistoricalSourceArtifact, _parse_market_rows
 from .pine_parameter_manifest import PineParameterManifest, parse_parameter_manifest
+from .pine_parity_compare import ParityReport
 from .pine_v24_parity import (
     PINE_V24_MODEL_ID,
     PINE_V24_SOURCE_BLOB_SHA,
@@ -28,7 +31,7 @@ class LockedForwardV24Evaluation:
 
     Unlike a receipt comparison that accepts caller-supplied Python signals, this record is created
     by replaying the parsed point-in-time market evidence with the complete frozen Pine parameter
-    manifest.  It therefore binds the comparison to the inputs that actually generated the Python
+    manifest. It therefore binds the comparison to the inputs that actually generated the Python
     signal stream rather than merely carrying hashes alongside an independently supplied stream.
     """
 
@@ -85,11 +88,11 @@ class LockedForwardV24Evaluation:
         return self.evaluation.processor_code_sha256
 
     @property
-    def reference_snapshot(self):
+    def reference_snapshot(self) -> PersistedReferenceSnapshot:
         return self.evaluation.reference_snapshot
 
     @property
-    def report(self):
+    def report(self) -> ParityReport:
         return self.evaluation.report
 
     @property
@@ -112,7 +115,7 @@ def _market_bars(market_csv: str, *, symbol: str) -> tuple[tuple[DailyBar, ...],
     normalized, _bar_times, _earnings_count = _parse_market_rows(market_csv, symbol=symbol)
     bars = tuple(
         DailyBar(
-            time=__import__("datetime").datetime.fromisoformat(str(row["time"])),
+            time=datetime.fromisoformat(str(row["time"])),
             open=float(row["open"]),
             high=float(row["high"]),
             low=float(row["low"]),
