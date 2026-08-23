@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+import datetime as dt
 
 import pytest
 
@@ -14,16 +14,16 @@ from daily_alpha.model_training import (
 )
 
 
-BASE = datetime(2026, 1, 2, 21, 0, tzinfo=UTC)
+BASE = dt.datetime(2026, 1, 2, 21, 0, tzinfo=dt.UTC)
 
 
 def _example(symbol: str, day: int, realized_r: float = 1.0) -> TrainingExample:
-    decision_at = BASE + timedelta(days=day)
+    decision_at = BASE + dt.timedelta(days=day)
     return TrainingExample(
         security_id=symbol,
         decision_at=decision_at,
-        feature_known_at=decision_at - timedelta(minutes=1),
-        label_known_at=decision_at + timedelta(days=5),
+        feature_known_at=decision_at - dt.timedelta(minutes=1),
+        label_known_at=decision_at + dt.timedelta(days=5),
         label_horizon_days=5,
         features=(("adx", 24.0 + day), ("residual_momentum", 0.1 + day / 100.0)),
         realized_r=realized_r,
@@ -33,7 +33,7 @@ def _example(symbol: str, day: int, realized_r: float = 1.0) -> TrainingExample:
 
 def _dataset(examples: tuple[TrainingExample, ...]) -> TrainingDatasetSnapshot:
     return TrainingDatasetSnapshot(
-        as_of=BASE + timedelta(days=60),
+        as_of=BASE + dt.timedelta(days=60),
         feature_schema_version="TRAINING_FEATURES_V1",
         label_definition="5D_REALIZED_R_AFTER_DECISION",
         examples=examples,
@@ -46,8 +46,8 @@ def test_feature_must_be_known_by_historical_decision_boundary() -> None:
         TrainingExample(
             security_id="MU",
             decision_at=BASE,
-            feature_known_at=BASE + timedelta(seconds=1),
-            label_known_at=BASE + timedelta(days=5),
+            feature_known_at=BASE + dt.timedelta(seconds=1),
+            label_known_at=BASE + dt.timedelta(days=5),
             label_horizon_days=5,
             features=(("adx", 30.0),),
             realized_r=1.0,
@@ -73,7 +73,7 @@ def test_dataset_rejects_label_not_mature_by_snapshot_cutoff() -> None:
     example = _example("MU", 10)
     with pytest.raises(ModelTrainingError, match="LABEL_NOT_MATURE_BY_DATASET_AS_OF"):
         TrainingDatasetSnapshot(
-            as_of=example.decision_at + timedelta(days=1),
+            as_of=example.decision_at + dt.timedelta(days=1),
             feature_schema_version="TRAINING_FEATURES_V1",
             label_definition="5D_REALIZED_R_AFTER_DECISION",
             examples=(example,),
@@ -123,11 +123,11 @@ def test_walk_forward_fold_keeps_train_validation_test_disjoint() -> None:
     window = WalkForwardWindow(
         fold_id="WF-1",
         train_start=BASE,
-        train_end=BASE + timedelta(days=5),
-        validation_start=BASE + timedelta(days=9),
-        validation_end=BASE + timedelta(days=15),
-        test_start=BASE + timedelta(days=19),
-        test_end=BASE + timedelta(days=25),
+        train_end=BASE + dt.timedelta(days=5),
+        validation_start=BASE + dt.timedelta(days=9),
+        validation_end=BASE + dt.timedelta(days=15),
+        test_start=BASE + dt.timedelta(days=19),
+        test_end=BASE + dt.timedelta(days=25),
     )
 
     fold = build_walk_forward_fold(dataset, window)
@@ -143,11 +143,11 @@ def test_walk_forward_rejects_validation_or_test_use_for_fitting() -> None:
     window = WalkForwardWindow(
         fold_id="WF-1",
         train_start=BASE,
-        train_end=BASE + timedelta(days=2),
-        validation_start=BASE + timedelta(days=3),
-        validation_end=BASE + timedelta(days=4),
-        test_start=BASE + timedelta(days=5),
-        test_end=BASE + timedelta(days=6),
+        train_end=BASE + dt.timedelta(days=2),
+        validation_start=BASE + dt.timedelta(days=3),
+        validation_end=BASE + dt.timedelta(days=4),
+        test_start=BASE + dt.timedelta(days=5),
+        test_end=BASE + dt.timedelta(days=6),
     )
 
     with pytest.raises(ModelTrainingError, match="OUT_OF_SAMPLE_DATA_CANNOT_BE_USED_FOR_FITTING"):
