@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import ClassVar
 
 import lambda_handlers.report as report_handler
 from daily_alpha.newsletter_delivery import NewsletterEmailDeliveryError
@@ -54,7 +55,7 @@ class _Gate:
 
 
 class _ProspectRuntime:
-    instances = []
+    instances: ClassVar[list["_ProspectRuntime"]] = []
 
     def __init__(self, *, s3_client, bucket):
         assert s3_client is not None
