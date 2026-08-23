@@ -14,7 +14,7 @@ NOW = datetime(2026, 8, 24, 13, 5, tzinfo=UTC)
 def _write_csv(path, rows):
     path.write_text(
         "Ticker,Signal,Overlay Start Date,Sector,Industry,Trend,Momentum,Optionable,"
-        "Last Close Price ($),30-Day Avg. Vol.\n"
+        "Last Close Price ($),Average Volume\n"
         + "\n".join(rows)
         + "\n",
         encoding="utf-8",
