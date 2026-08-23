@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from math import isfinite
 from typing import Any
 
-from .pine_parity_compare import ReferenceSignal
+from .pine_forward_deployment_evidence import (
+    CANONICAL_DAILY_TIMEFRAMES,
+    ForwardParityBookEvidence,
+    ForwardParityDeploymentEvidence,
+)
+from .pine_forward_event_classification import partition_forward_events
+from .pine_parity_compare import ParityReport, ReferenceSignal, compare_pine_signals
+from .pine_v24_parity import ParitySignal
 
 TRADINGVIEW_PINE_SOURCE = "TRADINGVIEW_PINE"
 DA_TURTLE_STRATEGY = "DA_TURTLE_ADAPTIVE_TREND"
@@ -27,6 +34,34 @@ class PersistedReferenceSnapshot:
     @property
     def complete(self) -> bool:
         return True
+
+
+@dataclass(frozen=True, slots=True)
+class ReceiptBoundForwardParityEvaluation:
+    """Forward comparison anchored to one trusted deployment receipt identity."""
+
+    model_id: str
+    strategy_version: str
+    deployment_commit_sha: str
+    processor_code_sha256: str
+    reference_snapshot: PersistedReferenceSnapshot
+    report: ParityReport
+    trading_authorized: bool = False
+    live_trading_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        if self.reference_snapshot.model_id != self.model_id:
+            raise ValueError("forward evaluation model_id does not match reference snapshot")
+        if self.reference_snapshot.strategy_version != self.strategy_version:
+            raise ValueError("forward evaluation strategy_version does not match reference snapshot")
+        if self.report.reference_count != len(self.reference_snapshot.signals):
+            raise ValueError("forward evaluation report is not bound to reference snapshot count")
+        if self.trading_authorized or self.live_trading_enabled:
+            raise ValueError("forward parity evaluation cannot authorize trading")
+
+    @property
+    def exact(self) -> bool:
+        return self.report.exact
 
 
 def _required_text(payload: Mapping[str, Any], field: str) -> str:
@@ -64,6 +99,12 @@ def _optional_text(value: Any) -> str | None:
     return str(value)
 
 
+def _timeframe_matches(actual: str, expected: str) -> bool:
+    if actual == expected:
+        return True
+    return actual in CANONICAL_DAILY_TIMEFRAMES and expected in CANONICAL_DAILY_TIMEFRAMES
+
+
 def _reference_signal(
     event: Mapping[str, Any],
     *,
@@ -86,7 +127,7 @@ def _reference_signal(
     if strategy_version != expected_strategy_version:
         raise ValueError("persisted event strategy_version does not match the requested model")
     timeframe = _required_text(event, "timeframe")
-    if timeframe != expected_timeframe:
+    if not _timeframe_matches(timeframe, expected_timeframe):
         raise ValueError("persisted event timeframe is not the frozen parity timeframe")
 
     action = _required_text(event, "action").upper()
@@ -123,13 +164,11 @@ def parse_shadow_book_reference_snapshot(
 ) -> PersistedReferenceSnapshot:
     """Convert a complete read-only monitor book into strict Pine reference signals.
 
-    This adapter intentionally ignores PAPER execution disposition. A genuine TradingView
-    strategy event remains reference evidence even when the downstream PAPER engine says
-    NO_TRADE, DATA_ERROR, or another execution-layer result.
+    PAPER execution disposition is intentionally ignored: source-signal truth remains reference
+    evidence even when the downstream PAPER engine reports NO_TRADE or DATA_ERROR.
     """
     if not isinstance(book_state, Mapping):
         raise TypeError("shadow book state must be an object")
-
     if bool(book_state.get("scan_truncated")):
         raise ValueError("persisted Pine event scan is truncated")
     raw_events = book_state.get("events")
@@ -173,10 +212,68 @@ def parse_shadow_book_reference_snapshot(
     )
 
 
+def parse_forward_deployment_reference_snapshot(
+    book: ForwardParityBookEvidence,
+    *,
+    expected_model_id: str,
+    expected_strategy_version: str,
+) -> PersistedReferenceSnapshot:
+    """Convert validated receipt evidence after removing only exact registered E2E traffic."""
+    if book.account_id != expected_model_id:
+        raise ValueError("deployment receipt book does not match requested model")
+    partition = partition_forward_events(book)
+    reference_state = {
+        "events": [event.to_dict() for event in partition.reference_candidates],
+        "event_count_visible": partition.reference_candidate_count,
+        "event_limit": book.event_limit,
+        "scan_items_evaluated": book.scan_items_evaluated,
+        "scan_truncated": False,
+    }
+    return parse_shadow_book_reference_snapshot(
+        reference_state,
+        expected_model_id=expected_model_id,
+        expected_strategy_version=expected_strategy_version,
+        expected_timeframe="D",
+    )
+
+
+def evaluate_forward_deployment_reference(
+    deployment: ForwardParityDeploymentEvidence,
+    *,
+    expected_model_id: str,
+    expected_strategy_version: str,
+    python_signals: Iterable[ParitySignal],
+) -> ReceiptBoundForwardParityEvaluation:
+    """Compare Python signals only against exact non-E2E events in one trusted receipt."""
+    if expected_model_id == "PAPER_SHADOW_V24":
+        book = deployment.sh24
+    elif expected_model_id == "PAPER_SHADOW_V25":
+        book = deployment.sh25
+    else:
+        raise ValueError("requested model is not an isolated SH24/SH25 parity book")
+    snapshot = parse_forward_deployment_reference_snapshot(
+        book,
+        expected_model_id=expected_model_id,
+        expected_strategy_version=expected_strategy_version,
+    )
+    report = compare_pine_signals(snapshot.signals, python_signals)
+    return ReceiptBoundForwardParityEvaluation(
+        model_id=expected_model_id,
+        strategy_version=expected_strategy_version,
+        deployment_commit_sha=deployment.commit_sha,
+        processor_code_sha256=deployment.processor_code_sha256,
+        reference_snapshot=snapshot,
+        report=report,
+    )
+
+
 __all__ = [
     "DA_TURTLE_STRATEGY",
     "SUPPORTED_SIGNAL_ACTIONS",
     "TRADINGVIEW_PINE_SOURCE",
     "PersistedReferenceSnapshot",
+    "ReceiptBoundForwardParityEvaluation",
+    "evaluate_forward_deployment_reference",
+    "parse_forward_deployment_reference_snapshot",
     "parse_shadow_book_reference_snapshot",
 ]
