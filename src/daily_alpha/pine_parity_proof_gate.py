@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
 from .pine_historical_reference import HistoricalV24Evaluation
 from .pine_historical_reference_locked import LockedHistoricalV24Evaluation
 from .pine_parity_compare import ParityReport
@@ -14,7 +15,8 @@ class V24ParityProofGate:
     Exact comparisons alone are insufficient when the reference stream is empty or the historical
     run was not bound to the exact TradingView Pine input manifest. Historical proof must include
     at least one genuine TradingView strategy event and parameter-locked source evidence. Forward
-    proof must come from the deployed persisted-source monitor with at least one genuine event.
+    proof must come from a validated machine deployment receipt for the persisted-source monitor
+    plus at least one genuine event.
 
     This record is evidence-only. It never authorizes promotion, PAPER mutation, broker routing,
     or live trading.
@@ -26,6 +28,7 @@ class V24ParityProofGate:
     forward_exact: bool
     forward_reference_signal_count: int
     forward_monitor_deployed: bool
+    forward_deployment_commit_sha: str | None
     blockers: tuple[str, ...]
     parity_evidence_complete: bool
     promotion_authorized: bool = False
@@ -37,6 +40,8 @@ class V24ParityProofGate:
             raise ValueError("historical_reference_signal_count must be non-negative")
         if self.forward_reference_signal_count < 0:
             raise ValueError("forward_reference_signal_count must be non-negative")
+        if self.forward_monitor_deployed != bool(self.forward_deployment_commit_sha):
+            raise ValueError("forward monitor deployment state must carry exact commit evidence")
         if self.promotion_authorized:
             raise ValueError("parity proof gate cannot authorize promotion")
         if self.trading_authorized or self.live_trading_enabled:
@@ -50,6 +55,7 @@ class V24ParityProofGate:
             and self.forward_exact
             and self.forward_reference_signal_count > 0
             and self.forward_monitor_deployed
+            and self.forward_deployment_commit_sha
         ):
             raise ValueError("complete parity evidence is inconsistent with required proof gates")
 
@@ -58,15 +64,15 @@ def evaluate_v24_parity_proof_gate(
     *,
     historical_evaluation: HistoricalV24Evaluation | LockedHistoricalV24Evaluation | None,
     forward_report: ParityReport | None,
-    forward_monitor_deployed: bool,
+    forward_deployment_evidence: ForwardParityDeploymentEvidence | None,
 ) -> V24ParityProofGate:
     """Evaluate the minimum evidence required before SH24 promotion can even be considered.
 
-    The function intentionally distinguishes exact empty comparisons from real evidence and
-    distinguishes a replay using caller-supplied/Python-default parameters from one whose complete
-    Pine input manifest was hashed into the historical evidence identity. Promotion remains
-    unauthorized even when all evidence gates are complete; a separate governance decision would
-    still be required.
+    The function intentionally distinguishes exact empty comparisons from real evidence,
+    distinguishes unlocked historical replay from an exact Pine-input manifest, and refuses a
+    caller-supplied deployment boolean. Forward deployment proof must already have passed the
+    machine receipt parser. Promotion remains unauthorized even if every evidence gate completes;
+    a separate governance decision would still be required.
     """
 
     blockers: list[str] = []
@@ -90,8 +96,12 @@ def evaluate_v24_parity_proof_gate(
         if not historical_parameter_manifest_locked:
             blockers.append("HISTORICAL_PARAMETER_MANIFEST_NOT_LOCKED")
 
+    forward_monitor_deployed = forward_deployment_evidence is not None
+    forward_deployment_commit_sha = (
+        forward_deployment_evidence.commit_sha if forward_deployment_evidence is not None else None
+    )
     if not forward_monitor_deployed:
-        blockers.append("FORWARD_PARITY_MONITOR_NOT_DEPLOYED")
+        blockers.append("FORWARD_PARITY_MONITOR_DEPLOYMENT_EVIDENCE_MISSING")
 
     if forward_report is None:
         forward_exact = False
@@ -115,6 +125,7 @@ def evaluate_v24_parity_proof_gate(
         forward_exact=forward_exact,
         forward_reference_signal_count=forward_reference_signal_count,
         forward_monitor_deployed=forward_monitor_deployed,
+        forward_deployment_commit_sha=forward_deployment_commit_sha,
         blockers=normalized_blockers,
         parity_evidence_complete=parity_evidence_complete,
     )
