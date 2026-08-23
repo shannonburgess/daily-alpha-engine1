@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from itertools import pairwise
 from math import isfinite
-from typing import Literal, Sequence
+from typing import Literal
 
 PINE_V24_SOURCE_PATH = "tradingview/da_turtle_20_10_v2_4.pine"
 PINE_V24_SOURCE_BLOB_SHA = "33091e312ad3069ff7d82825b370f2a73d93107c"
@@ -326,7 +328,7 @@ def run_v24_parity(
     if not bars:
         return ()
     params = parameters or V24Parameters()
-    for previous, current in zip(bars, bars[1:], strict=False):
+    for previous, current in pairwise(bars):
         if current.time <= previous.time:
             raise ValueError("bars must be strictly chronological")
 
