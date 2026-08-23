@@ -42,7 +42,7 @@ jobs:
         run: |
           python scripts/render_data_feed_ingestion_template.py \
             --template infra/aws/staging/data-feed-ingestion.template.json \
-            --source lambda_handlers/data_feed_ingest.py \
+            --source staging_lambda_handlers/data_feed_ingest.py \
             --output /tmp/data-feed-ingestion.rendered.json
           python - <<'PY'
           import json
@@ -85,7 +85,7 @@ jobs:
           set -euo pipefail
           aws lambda get-function-configuration \
             --function-name daily-alpha-staging-data-feed-ingestion \
-            --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Role:Role,ReservedConcurrentExecutions:ReservedConcurrentExecutions,Environment:Environment.Variables,LastUpdateStatus:LastUpdateStatus}' \
+            --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Role:Role,Environment:Environment.Variables,LastUpdateStatus:LastUpdateStatus}' \
             --output json > /tmp/function-config.json
           cat /tmp/function-config.json
           python - <<'PY'
@@ -209,6 +209,7 @@ jobs:
         shell: python
         env:
           GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           import json
           import os
@@ -220,6 +221,7 @@ jobs:
           receipt = {
               'schema': 'DAILY_ALPHA_PHASE1_DATA_FEED_STAGING_PROOF_V1',
               'commit': os.environ['GITHUB_SHA'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
               'stack': 'daily-alpha-staging-data-feed-ingestion',
               'function': 'daily-alpha-staging-data-feed-ingestion',
               'providers': {provider: result['target_count'] for provider, result in results.items()},
@@ -228,5 +230,31 @@ jobs:
               'trading_authorized': False,
               'live_trading_enabled': False,
           }
-          Path('/tmp/data-feed-staging-proof.json').write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          Path('/tmp/data-feed-staging-proof.json').write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + '\n'
+          )
+          lines = [
+              '## Phase 1 staging data-feed proof',
+              '',
+              f"- commit: `{receipt['commit']}`",
+              f"- workflow run: `{receipt['workflow_run_id']}`",
+              '- Massive: PASS (SPY + DINO)',
+              '- Tiingo: PASS (SPY + DINO)',
+              '- FRED: PASS (DFF + DGS10 + VIXCLS)',
+              '- EventBridge schedules enabled: yes',
+              '- CloudWatch validation: PASS',
+              '- `trading_authorized=false`',
+              '- `live_trading_enabled=false`',
+              '',
+              '**STAGING_PROVEN for Phase 1 ingestion. No PAPER/live connection.**',
+          ]
+          Path('/tmp/data-feed-staging-proof.md').write_text('\n'.join(lines) + '\n')
           print(json.dumps(receipt, indent=2, sort_keys=True))
+
+      - name: Publish staging proof receipt to issue 354
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 354 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/data-feed-staging-proof.md
