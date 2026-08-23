@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+
+from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
+from .pine_forward_reference import (
+    ReceiptBoundForwardParityEvaluation,
+    evaluate_forward_deployment_reference,
+    parse_forward_deployment_reference_snapshot,
+)
+from .pine_forward_replay_provenance import ForwardReplayProvenance
+from .pine_historical_reference import HistoricalSourceArtifact, _parse_market_rows
+from .pine_parameter_manifest import PineParameterManifest, parse_parameter_manifest
+from .pine_v24_parity import (
+    PINE_V24_MODEL_ID,
+    PINE_V24_SOURCE_BLOB_SHA,
+    PINE_V24_STRATEGY_VERSION,
+    DailyBar,
+    V24Parameters,
+    run_v24_parity,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class LockedForwardV24Evaluation:
+    """Forward SH24 comparison produced from the exact market/settings artifacts.
+
+    Unlike a receipt comparison that accepts caller-supplied Python signals, this record is created
+    by replaying the parsed point-in-time market evidence with the complete frozen Pine parameter
+    manifest.  It therefore binds the comparison to the inputs that actually generated the Python
+    signal stream rather than merely carrying hashes alongside an independently supplied stream.
+    """
+
+    evaluation: ReceiptBoundForwardParityEvaluation
+    market_artifact: HistoricalSourceArtifact
+    parameter_manifest: PineParameterManifest
+    market_start_iso: str
+    market_end_iso: str
+    replay_python_signal_count: int
+
+    def __post_init__(self) -> None:
+        provenance = self.evaluation.replay_provenance
+        if provenance is None:
+            raise ValueError("locked forward evaluation requires replay provenance")
+        if self.evaluation.model_id != PINE_V24_MODEL_ID:
+            raise ValueError("locked forward evaluation is not SH24 CONTROL")
+        if self.evaluation.strategy_version != PINE_V24_STRATEGY_VERSION:
+            raise ValueError("locked forward evaluation is not v2.4")
+        if self.parameter_manifest.model_id != PINE_V24_MODEL_ID:
+            raise ValueError("locked forward parameter manifest crossed the SH24 book")
+        if self.parameter_manifest.strategy_version != PINE_V24_STRATEGY_VERSION:
+            raise ValueError("locked forward parameter manifest crossed the v2.4 version")
+        if self.parameter_manifest.source_blob_sha != PINE_V24_SOURCE_BLOB_SHA:
+            raise ValueError("locked forward parameter manifest crossed the frozen Pine source")
+        if self.parameter_manifest.sha256 != provenance.parameter_manifest_sha256:
+            raise ValueError("locked forward parameter manifest hash is inconsistent")
+        if self.market_artifact.sha256 != provenance.market_evidence_sha256:
+            raise ValueError("locked forward market evidence hash is inconsistent")
+        if self.market_artifact.revision != provenance.market_source_revision:
+            raise ValueError("locked forward market revision is inconsistent")
+        if self.market_artifact.row_count != provenance.replay_bar_count:
+            raise ValueError("locked forward market row count is inconsistent")
+        if self.market_start_iso != provenance.replay_start.isoformat():
+            raise ValueError("locked forward market start is inconsistent")
+        if self.market_end_iso != provenance.replay_end.isoformat():
+            raise ValueError("locked forward market end is inconsistent")
+        if self.replay_python_signal_count != self.evaluation.report.python_count:
+            raise ValueError("locked forward Python signal count is inconsistent")
+
+    @property
+    def model_id(self) -> str:
+        return self.evaluation.model_id
+
+    @property
+    def strategy_version(self) -> str:
+        return self.evaluation.strategy_version
+
+    @property
+    def deployment_commit_sha(self) -> str:
+        return self.evaluation.deployment_commit_sha
+
+    @property
+    def processor_code_sha256(self) -> str:
+        return self.evaluation.processor_code_sha256
+
+    @property
+    def reference_snapshot(self):
+        return self.evaluation.reference_snapshot
+
+    @property
+    def report(self):
+        return self.evaluation.report
+
+    @property
+    def replay_provenance(self) -> ForwardReplayProvenance:
+        provenance = self.evaluation.replay_provenance
+        if provenance is None:  # pragma: no cover - rejected by __post_init__
+            raise RuntimeError("locked forward replay provenance disappeared")
+        return provenance
+
+    @property
+    def exact(self) -> bool:
+        return self.evaluation.exact
+
+    @property
+    def replay_inputs_locked(self) -> bool:
+        return True
+
+
+def _market_bars(market_csv: str, *, symbol: str) -> tuple[tuple[DailyBar, ...], str]:
+    normalized, _bar_times, _earnings_count = _parse_market_rows(market_csv, symbol=symbol)
+    bars = tuple(
+        DailyBar(
+            time=__import__("datetime").datetime.fromisoformat(str(row["time"])),
+            open=float(row["open"]),
+            high=float(row["high"]),
+            low=float(row["low"]),
+            close=float(row["close"]),
+            volume=float(row["volume"]),
+            earnings_actual=row["earnings_actual"],
+        )
+        for row in normalized
+    )
+    return bars, hashlib.sha256(market_csv.encode("utf-8")).hexdigest()
+
+
+def evaluate_locked_forward_v24_reference(
+    *,
+    deployment: ForwardParityDeploymentEvidence,
+    symbol: str,
+    market_csv: str,
+    parameter_manifest_json: str,
+    market_source: str,
+    market_revision: str,
+    python_engine_revision: str,
+) -> LockedForwardV24Evaluation:
+    """Replay SH24 from exact evidence and compare it to genuine persisted TradingView events."""
+    normalized_symbol = symbol.strip().upper()
+    if not normalized_symbol:
+        raise ValueError("symbol is required")
+    if not market_source.strip():
+        raise ValueError("market_source is required")
+    if not market_revision.strip():
+        raise ValueError("market_revision is required")
+    if not python_engine_revision.strip():
+        raise ValueError("python_engine_revision is required")
+
+    snapshot = parse_forward_deployment_reference_snapshot(
+        deployment.sh24,
+        expected_model_id=PINE_V24_MODEL_ID,
+        expected_strategy_version=PINE_V24_STRATEGY_VERSION,
+    )
+    if any(signal.symbol.upper() != normalized_symbol for signal in snapshot.signals):
+        raise ValueError("forward receipt contains genuine events outside the requested symbol")
+
+    bars, market_sha256 = _market_bars(market_csv, symbol=normalized_symbol)
+    bar_times = {bar.time for bar in bars}
+    missing_reference_times = sorted(
+        signal.bar_time.isoformat()
+        for signal in snapshot.signals
+        if signal.bar_time not in bar_times
+    )
+    if missing_reference_times:
+        raise ValueError(
+            "forward receipt event is absent from locked market evidence: "
+            + ",".join(missing_reference_times)
+        )
+
+    manifest = parse_parameter_manifest(
+        parameter_manifest_json,
+        parameter_type=V24Parameters,
+        expected_model_id=PINE_V24_MODEL_ID,
+        expected_strategy_version=PINE_V24_STRATEGY_VERSION,
+        expected_source_blob_sha=PINE_V24_SOURCE_BLOB_SHA,
+        datetime_fields=frozenset({"start_time", "end_time"}),
+    )
+    results = run_v24_parity(normalized_symbol, bars, manifest.parameters)
+    python_signals = tuple(signal for result in results for signal in result.signals)
+
+    provenance = ForwardReplayProvenance(
+        model_id=PINE_V24_MODEL_ID,
+        strategy_version=PINE_V24_STRATEGY_VERSION,
+        strategy_source_blob_sha=PINE_V24_SOURCE_BLOB_SHA,
+        parameter_manifest_sha256=manifest.sha256,
+        market_evidence_sha256=market_sha256,
+        market_source_revision=market_revision.strip(),
+        python_engine_revision=python_engine_revision.strip(),
+        replay_start=bars[0].time,
+        replay_end=bars[-1].time,
+        replay_bar_count=len(bars),
+        deployment_commit_sha=deployment.commit_sha,
+        processor_code_sha256=deployment.processor_code_sha256,
+    )
+    evaluation = evaluate_forward_deployment_reference(
+        deployment,
+        expected_model_id=PINE_V24_MODEL_ID,
+        expected_strategy_version=PINE_V24_STRATEGY_VERSION,
+        python_signals=python_signals,
+        replay_provenance=provenance,
+    )
+    artifact = HistoricalSourceArtifact(
+        source=market_source.strip(),
+        revision=market_revision.strip(),
+        sha256=market_sha256,
+        row_count=len(bars),
+    )
+    return LockedForwardV24Evaluation(
+        evaluation=evaluation,
+        market_artifact=artifact,
+        parameter_manifest=manifest,
+        market_start_iso=bars[0].time.isoformat(),
+        market_end_iso=bars[-1].time.isoformat(),
+        replay_python_signal_count=len(python_signals),
+    )
+
+
+__all__ = ["LockedForwardV24Evaluation", "evaluate_locked_forward_v24_reference"]
