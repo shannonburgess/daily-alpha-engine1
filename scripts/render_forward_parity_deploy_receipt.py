@@ -68,14 +68,27 @@ def _required_sha(value: Any, field: str) -> str:
     return text
 
 
+def _required_non_negative_int(value: Any, field: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ReceiptError(f"{field} must be an integer") from exc
+    if parsed < 0:
+        raise ReceiptError(f"{field} must be non-negative")
+    return parsed
+
+
+def _required_positive_int(value: Any, field: str) -> int:
+    parsed = _required_non_negative_int(value, field)
+    if parsed < 1:
+        raise ReceiptError(f"{field} must be positive")
+    return parsed
+
+
 def _sanitize_event(raw_event: Any, account_id: str, index: int) -> dict[str, Any]:
     event = _required_mapping(raw_event, f"{account_id}.events[{index}]")
     signal_id = _required_text(event.get("signal_id"), f"{account_id}.events[{index}].signal_id")
-    sanitized = {
-        field: event[field]
-        for field in SANITIZED_EVENT_FIELDS
-        if field in event
-    }
+    sanitized = {field: event[field] for field in SANITIZED_EVENT_FIELDS if field in event}
     sanitized["signal_id"] = signal_id
     if sanitized.get("trading_authorized") is True:
         raise ReceiptError(f"{account_id} event trading_authorized must remain false")
@@ -89,12 +102,32 @@ def _book_summary(raw_book: Any, account_id: str) -> dict[str, Any]:
     events = book.get("events")
     if not isinstance(events, list):
         raise ReceiptError(f"{account_id}.events must be a list")
-    if bool(book.get("scan_truncated")):
-        raise ReceiptError(f"{account_id} event scan is truncated")
+    if book.get("scan_truncated") is not False:
+        raise ReceiptError(f"{account_id} event scan is truncated or incomplete")
 
-    visible = int(book.get("event_count_visible", len(events)))
+    visible = _required_non_negative_int(
+        book.get("event_count_visible"), f"{account_id}.event_count_visible"
+    )
+    scanned = _required_non_negative_int(
+        book.get("event_count_scanned"), f"{account_id}.event_count_scanned"
+    )
+    history_omitted = _required_non_negative_int(
+        book.get("event_history_omitted"), f"{account_id}.event_history_omitted"
+    )
+    event_limit = _required_positive_int(book.get("event_limit"), f"{account_id}.event_limit")
+    scan_pages = _required_positive_int(book.get("scan_pages"), f"{account_id}.scan_pages")
+    scan_items_evaluated = _required_non_negative_int(
+        book.get("scan_items_evaluated"), f"{account_id}.scan_items_evaluated"
+    )
+
     if visible != len(events):
         raise ReceiptError(f"{account_id} event_count_visible does not match events")
+    if scanned != visible + history_omitted:
+        raise ReceiptError(f"{account_id} event scan counts do not reconcile")
+    if history_omitted != 0:
+        raise ReceiptError(f"{account_id} forward parity receipt omits persisted event history")
+    if event_limit < visible:
+        raise ReceiptError(f"{account_id} event_limit is below visible event count")
 
     open_positions = book.get("open_positions")
     armed_signals = book.get("armed_signals")
@@ -103,13 +136,27 @@ def _book_summary(raw_book: Any, account_id: str) -> dict[str, Any]:
     if not isinstance(armed_signals, list):
         raise ReceiptError(f"{account_id}.armed_signals must be a list")
 
+    open_count = _required_non_negative_int(book.get("open_count"), f"{account_id}.open_count")
+    armed_count = _required_non_negative_int(
+        book.get("armed_count_visible"), f"{account_id}.armed_count_visible"
+    )
+    if open_count != len(open_positions):
+        raise ReceiptError(f"{account_id} open_count does not match open_positions")
+    if armed_count != len(armed_signals):
+        raise ReceiptError(f"{account_id} armed_count_visible does not match armed_signals")
+
     return {
         "event_count_visible": visible,
+        "event_count_scanned": scanned,
+        "event_history_omitted": history_omitted,
+        "event_limit": event_limit,
+        "scan_pages": scan_pages,
+        "scan_items_evaluated": scan_items_evaluated,
         "events": tuple(
             _sanitize_event(event, account_id, index) for index, event in enumerate(events)
         ),
-        "open_count": int(book.get("open_count", len(open_positions))),
-        "armed_count_visible": int(book.get("armed_count_visible", len(armed_signals))),
+        "open_count": open_count,
+        "armed_count_visible": armed_count,
         "scan_truncated": False,
     }
 
@@ -182,9 +229,9 @@ def render_markdown(receipt: Mapping[str, Any]) -> str:
         "## Forward parity staging deployment receipt\n\n"
         "The deployed staging Pine processor passed the read-only SH24/SH25 monitor contract "
         "and the deployed commit was verified to contain the merged forward-parity projection. "
-        "The receipt includes only the persisted event fields needed for book/forward-parity "
-        "inspection; webhook secrets and raw ingress are excluded. This is deployment evidence "
-        "only; it does not prove signal parity or authorize trading.\n\n"
+        "The receipt includes the complete bounded persisted-event set and only the event fields "
+        "needed for book/forward-parity inspection; webhook secrets and raw ingress are excluded. "
+        "This is deployment evidence only; it does not prove signal parity or authorize trading.\n\n"
         f"```json\n{encoded}\n```\n"
     )
 
