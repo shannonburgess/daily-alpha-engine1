@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import pairwise
 from typing import Any
 
 from .pine_parity_compare import ParityReport, ReferenceSignal, compare_pine_signals
@@ -49,7 +50,7 @@ def _timestamp(value: Any, name: str) -> datetime:
 def _number(payload: Mapping[str, Any], name: str, *, default: float = 0.0) -> float:
     value = payload.get(name, default)
     if isinstance(value, bool):
-        raise ValueError(f"{name} must be numeric")
+        raise TypeError(f"{name} must be numeric")
     try:
         return float(value)
     except (TypeError, ValueError) as exc:
@@ -58,7 +59,7 @@ def _number(payload: Mapping[str, Any], name: str, *, default: float = 0.0) -> f
 
 def _bar(payload: Any) -> DailyBar:
     if not isinstance(payload, Mapping):
-        raise ValueError("each bar must be an object")
+        raise TypeError("each bar must be an object")
     earnings_actual = payload.get("earnings_actual")
     return DailyBar(
         time=_timestamp(payload.get("time"), "bar.time"),
@@ -75,7 +76,7 @@ def _bar(payload: Any) -> DailyBar:
 
 def _reference(payload: Any, *, symbol: str, source: str) -> ReferenceSignal:
     if not isinstance(payload, Mapping):
-        raise ValueError("each reference signal must be an object")
+        raise TypeError("each reference signal must be an object")
     quantity = payload.get("quantity_units")
     return ReferenceSignal(
         symbol=str(payload.get("symbol") or symbol),
@@ -99,7 +100,7 @@ def _reference(payload: Any, *, symbol: str, source: str) -> ReferenceSignal:
 def parse_parity_evidence_bundle(payload: Mapping[str, Any]) -> ParityEvidenceBundle:
     """Validate a point-in-time Pine reference bundle without fetching or retuning data."""
     if not isinstance(payload, Mapping):
-        raise ValueError("parity evidence bundle must be an object")
+        raise TypeError("parity evidence bundle must be an object")
     schema_version = _required_text(payload, "schema_version")
     if schema_version != PARITY_EVIDENCE_SCHEMA_VERSION:
         raise ValueError("unsupported parity evidence schema_version")
@@ -111,13 +112,13 @@ def parse_parity_evidence_bundle(payload: Mapping[str, Any]) -> ParityEvidenceBu
     raw_bars = payload.get("bars")
     raw_reference = payload.get("reference_signals")
     if not isinstance(raw_bars, Sequence) or isinstance(raw_bars, (str, bytes)):
-        raise ValueError("bars must be a list")
+        raise TypeError("bars must be a list")
     if not isinstance(raw_reference, Sequence) or isinstance(raw_reference, (str, bytes)):
-        raise ValueError("reference_signals must be a list")
+        raise TypeError("reference_signals must be a list")
     bars = tuple(_bar(item) for item in raw_bars)
     if not bars:
         raise ValueError("bars cannot be empty")
-    for previous, current in zip(bars, bars[1:], strict=False):
+    for previous, current in pairwise(bars):
         if current.time <= previous.time:
             raise ValueError("bars must be strictly chronological")
     references = tuple(
