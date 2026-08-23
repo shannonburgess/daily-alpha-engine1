@@ -194,6 +194,8 @@ class WalkForwardFold:
     train_example_ids: tuple[str, ...]
     validation_example_ids: tuple[str, ...]
     test_example_ids: tuple[str, ...]
+    purged_train_example_ids: tuple[str, ...] = ()
+    purged_validation_example_ids: tuple[str, ...] = ()
     fitting_may_use_validation: bool = False
     fitting_may_use_test: bool = False
 
@@ -203,14 +205,38 @@ class WalkForwardFold:
         train = set(self.train_example_ids)
         validation = set(self.validation_example_ids)
         test = set(self.test_example_ids)
+        purged_train = set(self.purged_train_example_ids)
+        purged_validation = set(self.purged_validation_example_ids)
         if train & validation or train & test or validation & test:
             raise ModelTrainingError("WALK_FORWARD_PARTITIONS_OVERLAP")
+        if purged_train & purged_validation:
+            raise ModelTrainingError("PURGED_WALK_FORWARD_PARTITIONS_OVERLAP")
+        active = train | validation | test
+        if active & (purged_train | purged_validation):
+            raise ModelTrainingError("PURGED_EXAMPLE_CANNOT_REMAIN_IN_ACTIVE_PARTITION")
+        if len(purged_train) != len(self.purged_train_example_ids):
+            raise ModelTrainingError("PURGED_TRAIN_EXAMPLE_IDS_MUST_BE_UNIQUE")
+        if len(purged_validation) != len(self.purged_validation_example_ids):
+            raise ModelTrainingError("PURGED_VALIDATION_EXAMPLE_IDS_MUST_BE_UNIQUE")
         if not train:
             raise ModelTrainingError("TRAIN_PARTITION_EMPTY")
         if not validation:
             raise ModelTrainingError("VALIDATION_PARTITION_EMPTY")
         if not test:
             raise ModelTrainingError("TEST_PARTITION_EMPTY")
+
+    @property
+    def partition_id(self) -> str:
+        return _sha(
+            {
+                "fold_id": self.window.fold_id,
+                "train_example_ids": self.train_example_ids,
+                "validation_example_ids": self.validation_example_ids,
+                "test_example_ids": self.test_example_ids,
+                "purged_train_example_ids": self.purged_train_example_ids,
+                "purged_validation_example_ids": self.purged_validation_example_ids,
+            }
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,15 +303,30 @@ def build_walk_forward_fold(
     dataset: TrainingDatasetSnapshot,
     window: WalkForwardWindow,
 ) -> WalkForwardFold:
+    """Build a purged fold whose labels are known before the next OOS stage begins.
+
+    TRAIN labels must be known strictly before VALIDATION starts because fitting is frozen
+    before validation. VALIDATION labels must be known strictly before TEST starts because
+    model/threshold selection is frozen before the untouched test. TEST labels only need to
+    be mature by the immutable dataset snapshot; they never participate in fitting/selection.
+    """
     train: list[str] = []
     validation: list[str] = []
     test: list[str] = []
+    purged_train: list[str] = []
+    purged_validation: list[str] = []
     for example in dataset.examples:
         partition = window.partition_for(example.decision_at)
         if partition is DatasetPartition.TRAIN:
-            train.append(example.example_id)
+            if example.label_known_at >= window.validation_start:
+                purged_train.append(example.example_id)
+            else:
+                train.append(example.example_id)
         elif partition is DatasetPartition.VALIDATION:
-            validation.append(example.example_id)
+            if example.label_known_at >= window.test_start:
+                purged_validation.append(example.example_id)
+            else:
+                validation.append(example.example_id)
         elif partition is DatasetPartition.TEST:
             test.append(example.example_id)
     return WalkForwardFold(
@@ -293,6 +334,8 @@ def build_walk_forward_fold(
         train_example_ids=tuple(train),
         validation_example_ids=tuple(validation),
         test_example_ids=tuple(test),
+        purged_train_example_ids=tuple(purged_train),
+        purged_validation_example_ids=tuple(purged_validation),
     )
 
 
