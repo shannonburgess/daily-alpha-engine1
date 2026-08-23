@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 
 from .pine_historical_reference import (
     HistoricalV24Evaluation,
