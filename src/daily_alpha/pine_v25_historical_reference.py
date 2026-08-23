@@ -62,8 +62,17 @@ class HistoricalV25Reference:
 @dataclass(frozen=True, slots=True)
 class HistoricalV25Evaluation:
     reference_id: str
+    parameter_manifest_sha256: str
     signal_report: ParityReport
     bar_outcome_report: BarOutcomeReport
+
+    def __post_init__(self) -> None:
+        if len(self.parameter_manifest_sha256) != 64:
+            raise ValueError("parameter_manifest_sha256 must be a SHA-256 hex digest")
+        try:
+            int(self.parameter_manifest_sha256, 16)
+        except ValueError as exc:
+            raise ValueError("parameter_manifest_sha256 must be a SHA-256 hex digest") from exc
 
     @property
     def exact(self) -> bool:
@@ -164,6 +173,7 @@ def evaluate_historical_v25_reference(
     )
     return HistoricalV25Evaluation(
         reference_id=reference.reference_id,
+        parameter_manifest_sha256=reference.parameter_manifest.sha256,
         signal_report=signal_report,
         bar_outcome_report=bar_report,
     )
