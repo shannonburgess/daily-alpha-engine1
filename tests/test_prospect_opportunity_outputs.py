@@ -1,6 +1,7 @@
 import datetime as dt
 
 from daily_alpha.candidates import CandidateAssessment, CandidateBucket
+from daily_alpha.newsletter_delivery import AwsNewsletterEmailDelivery, NewsletterEmailConfig
 from daily_alpha.prospect_opportunity_board import build_prospect_opportunity_board
 from daily_alpha.prospect_opportunity_outputs import (
     ProspectOutputChannel,
@@ -10,6 +11,15 @@ from daily_alpha.prospect_opportunity_outputs import (
 )
 
 AS_OF = dt.datetime(2026, 8, 23, 19, 0, tzinfo=dt.UTC)
+
+
+class _FakeSes:
+    def __init__(self) -> None:
+        self.requests: list[dict[str, object]] = []
+
+    def send_email(self, **kwargs: object) -> dict[str, str]:
+        self.requests.append(kwargs)
+        return {"MessageId": "prospect-v1-message"}
 
 
 def _candidate(symbol: str, score: float) -> CandidateAssessment:
@@ -57,6 +67,7 @@ def test_newsletter_output_contains_top_three_and_all_other_47() -> None:
 
     html = render_prospect_newsletter_html(board)
 
+    assert "Daily Alpha Research" in html
     assert "Top 3 ConvexRidge Picks" in html
     assert "Additional Qualified Opportunities" in html
     assert f'data-board-id="{board.board_id}"' in html
@@ -105,3 +116,36 @@ def test_dashboard_output_uses_same_canonical_board_identity() -> None:
     assert newsletter.board_id == dashboard.board_id == api.board_id == board.board_id
     assert newsletter.complete_qualifying == dashboard.complete_qualifying == api.complete_qualifying
     assert newsletter.top_picks == dashboard.top_picks == api.top_picks
+
+
+def test_prospect_newsletter_is_compatible_with_existing_ses_delivery_boundary() -> None:
+    board = _board(50)
+    html = render_prospect_newsletter_html(board)
+    ses = _FakeSes()
+    delivery = AwsNewsletterEmailDelivery(
+        config=NewsletterEmailConfig(
+            sender="sender@example.com",
+            recipients=("prospect@example.com",),
+        ),
+        s3_client=object(),
+        sesv2_client=ses,
+        bucket="fixture-bucket",
+    )
+
+    result = delivery.send_html(
+        html=html,
+        report_date="2026-08-23",
+        session="prospect_v1",
+        run_id=board.board_id,
+        source_key="daily-alpha/outputs/prospect-v1/opportunity-board.html",
+    )
+
+    assert result["status"] == "SENT"
+    assert result["message_id"] == "prospect-v1-message"
+    assert result["recipient_count"] == 1
+    assert result["source_key"] == "daily-alpha/outputs/prospect-v1/opportunity-board.html"
+    assert len(ses.requests) == 1
+    sent_html = ses.requests[0]["Content"]["Simple"]["Body"]["Html"]["Data"]
+    assert sent_html == html
+    assert f'data-board-id="{board.board_id}"' in sent_html
+    assert 'data-total-qualifying="50"' in sent_html
