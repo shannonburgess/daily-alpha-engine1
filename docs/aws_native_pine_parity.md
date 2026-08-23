@@ -13,15 +13,21 @@ TradingView, create a broker route, enable live trading, or authorize capital.
 
 ## Current integration baseline
 
-Authoritative `main` is now `e8a14a716d2eecdb79427250ea5861b5ea681c69`, which adds the
-merged V1 prospect opportunity-board launch contract and the research-only point-in-time
-model-training/walk-forward framework. Those changes are independent of SH24/SH25 strategy
-semantics. This parity branch must continue to validate against that current main without
-absorbing product-presentation or adaptive-model logic into the frozen control strategy.
+Authoritative `main` is now `adeccd111a5fb5bdd0642637213bb91e062ee75a`. It includes the
+merged V1 prospect opportunity-board contracts, the research-only point-in-time model-training /
+walk-forward framework, and the default-off V1 prospect staging runtime bridge. Those changes are
+independent of SH24/SH25 strategy semantics. This parity branch must continue to validate against
+that current main without absorbing product-presentation or adaptive-model logic into the frozen
+control strategy.
 
-The latest complete deployed forward-monitor evidence remains the issue #213 staging receipt
-from `9fd6affcbdd7914ff611b029103c95794c7ed3bb`; later main changes are repo/product research
-contracts and do not constitute a new parity-runtime deployment receipt.
+The latest complete deployed forward-monitor evidence is the issue #213
+`DAILY_ALPHA_FORWARD_PARITY_DEPLOYMENT_RECEIPT_V1` from workflow run `32670324393` on exact
+commit `adeccd111a5fb5bdd0642637213bb91e062ee75a`. The deployed Pine processor update is
+`Successful`; both books have complete non-truncated event scans, and the genuine DINO event at
+2026-08-21 20:00 UTC remains `ENTRY_LONG` at 97.32 with downstream
+`NO_TRADE / SECTOR_DATA_UNVERIFIED` in both SH24 and SH25. That receipt proves deployed source
+event persistence and isolation only. It does not prove Pine/Python signal parity, and it carries
+`trading_authorized=false` and `live_trading_enabled=false`.
 
 ## Frozen source authority
 
