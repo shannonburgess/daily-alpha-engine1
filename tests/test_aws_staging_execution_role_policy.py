@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 POLICY_PATH = Path("infra/aws/staging/cloudformation-execution-role-policy.json")
 
 
@@ -38,7 +37,11 @@ def test_execution_role_policy_is_staging_bounded():
             resources = [resources]
         if statement["Sid"] != "DescribeDailyAlphaStagingLogGroups":
             assert "*" not in resources
-            assert all("daily-alpha-staging-" in resource or "/daily-alpha/staging/data-plane" in resource for resource in resources)
+            assert all(
+                "daily-alpha-staging-" in resource
+                or "/daily-alpha/staging/data-plane" in resource
+                for resource in resources
+            )
 
 
 def test_execution_role_policy_covers_cloudformation_resource_lifecycle():
