@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .pine_historical_reference import HistoricalV24Evaluation
+from .pine_historical_reference_locked import LockedHistoricalV24Evaluation
 from .pine_parity_compare import ParityReport
 
 
@@ -10,9 +11,10 @@ from .pine_parity_compare import ParityReport
 class V24ParityProofGate:
     """Fail-closed evidence gate for SH24 server-native source promotion.
 
-    Exact comparisons alone are insufficient when the reference stream is empty. Historical
-    proof must include at least one genuine TradingView strategy event, and forward proof must
-    come from the deployed persisted-source monitor with at least one genuine TradingView event.
+    Exact comparisons alone are insufficient when the reference stream is empty or the historical
+    run was not bound to the exact TradingView Pine input manifest. Historical proof must include
+    at least one genuine TradingView strategy event and parameter-locked source evidence. Forward
+    proof must come from the deployed persisted-source monitor with at least one genuine event.
 
     This record is evidence-only. It never authorizes promotion, PAPER mutation, broker routing,
     or live trading.
@@ -20,6 +22,7 @@ class V24ParityProofGate:
 
     historical_exact: bool
     historical_reference_signal_count: int
+    historical_parameter_manifest_locked: bool
     forward_exact: bool
     forward_reference_signal_count: int
     forward_monitor_deployed: bool
@@ -43,6 +46,7 @@ class V24ParityProofGate:
         if self.parity_evidence_complete and not (
             self.historical_exact
             and self.historical_reference_signal_count > 0
+            and self.historical_parameter_manifest_locked
             and self.forward_exact
             and self.forward_reference_signal_count > 0
             and self.forward_monitor_deployed
@@ -52,16 +56,17 @@ class V24ParityProofGate:
 
 def evaluate_v24_parity_proof_gate(
     *,
-    historical_evaluation: HistoricalV24Evaluation | None,
+    historical_evaluation: HistoricalV24Evaluation | LockedHistoricalV24Evaluation | None,
     forward_report: ParityReport | None,
     forward_monitor_deployed: bool,
 ) -> V24ParityProofGate:
     """Evaluate the minimum evidence required before SH24 promotion can even be considered.
 
-    The function intentionally distinguishes exact empty comparisons from real evidence. A
-    zero-reference comparison is useful as a regression test but is never classified as parity
-    proof. Promotion remains unauthorized even when all evidence gates are complete; a separate
-    governance decision would still be required.
+    The function intentionally distinguishes exact empty comparisons from real evidence and
+    distinguishes a replay using caller-supplied/Python-default parameters from one whose complete
+    Pine input manifest was hashed into the historical evidence identity. Promotion remains
+    unauthorized even when all evidence gates are complete; a separate governance decision would
+    still be required.
     """
 
     blockers: list[str] = []
@@ -69,14 +74,21 @@ def evaluate_v24_parity_proof_gate(
     if historical_evaluation is None:
         historical_exact = False
         historical_reference_signal_count = 0
+        historical_parameter_manifest_locked = False
         blockers.append("HISTORICAL_PARITY_EVIDENCE_MISSING")
     else:
         historical_exact = historical_evaluation.exact
         historical_reference_signal_count = historical_evaluation.signal_report.reference_count
+        historical_parameter_manifest_locked = isinstance(
+            historical_evaluation,
+            LockedHistoricalV24Evaluation,
+        )
         if not historical_exact:
             blockers.append("HISTORICAL_PARITY_MISMATCH")
         if historical_reference_signal_count == 0:
             blockers.append("HISTORICAL_GENUINE_SIGNAL_EVIDENCE_EMPTY")
+        if not historical_parameter_manifest_locked:
+            blockers.append("HISTORICAL_PARAMETER_MANIFEST_NOT_LOCKED")
 
     if not forward_monitor_deployed:
         blockers.append("FORWARD_PARITY_MONITOR_NOT_DEPLOYED")
@@ -99,6 +111,7 @@ def evaluate_v24_parity_proof_gate(
     return V24ParityProofGate(
         historical_exact=historical_exact,
         historical_reference_signal_count=historical_reference_signal_count,
+        historical_parameter_manifest_locked=historical_parameter_manifest_locked,
         forward_exact=forward_exact,
         forward_reference_signal_count=forward_reference_signal_count,
         forward_monitor_deployed=forward_monitor_deployed,
