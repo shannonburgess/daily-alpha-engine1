@@ -93,7 +93,7 @@ class V25Parameters:
     )
 
     def __post_init__(self) -> None:
-        positive_ints = (
+        for name in (
             "entry_len",
             "exit_len",
             "atr_len",
@@ -106,8 +106,7 @@ class V25Parameters:
             "armed_max_bars",
             "structural_exit_len",
             "structural_confirm_bars",
-        )
-        for name in positive_ints:
+        ):
             if int(getattr(self, name)) < 1:
                 raise ValueError(f"{name} must be positive")
         if self.breakout_mode not in {"Close", "High"}:
@@ -146,6 +145,9 @@ class V25BarResult:
     armed_invalidation_level: float | None
     arm_events: tuple[str, ...]
     rejection_reasons: tuple[str, ...]
+    entry_selected_breakout_level: float | None
+    entry_armed_age: int | None
+    entry_replay_max_price: float | None
     signals: tuple[ParitySignal, ...]
     position_units_after_close: int
     position_avg_price_after_close: float | None
@@ -197,7 +199,6 @@ def _earnings_state(
             or gap_atr >= params.min_earnings_gap_atr
         )
     )
-    earnings_breakout = upper20 is not None and bar.close > upper20
     common_quality = (
         bar.close >= bar.open
         and gap_retention >= params.min_gap_retention
@@ -205,7 +206,8 @@ def _earnings_state(
         and rsi is not None
         and rsi <= params.max_earnings_rsi
         and trend_state == 1
-        and earnings_breakout
+        and upper20 is not None
+        and bar.close > upper20
     )
     epsilon = 0.000001
     gap_go = (
@@ -277,7 +279,6 @@ def run_v25_parity(
     _, _, adx_values = _dmi_adx(bars, params.adx_di_len, params.adx_smooth)
     average_volume_prior = _average_volume_prior(bars)
     average_dollar_volume = _average_dollar_volume(bars)
-
     arm_machine = V25ArmedBreakoutMachine(
         V25ArmedParameters(
             use_persistent_armed_entry=params.use_persistent_armed_entry,
@@ -293,7 +294,6 @@ def run_v25_parity(
     bullish_trend_bars = 0
     last_bull_flip_index: int | None = None
     previous_breakout = False
-
     position_units = 0
     position_avg_price: float | None = None
     entry_breakout_level: float | None = None
@@ -315,7 +315,6 @@ def run_v25_parity(
         pre_position_avg = position_avg_price
         previous_trend = trend_state
         previous_bullish_bars = bullish_trend_bars
-
         atr = atr_values[i]
         efficiency = efficiency_values[i]
         rsi = rsi_values[i]
@@ -399,7 +398,6 @@ def run_v25_parity(
         )
         fresh_long_breakout = bool(breakout_now and not previous_breakout)
         previous_breakout = bool(breakout_now)
-
         (
             earnings_gap_class,
             is_earnings_upside_gap,
@@ -432,7 +430,6 @@ def run_v25_parity(
         rsi_ok = not params.use_rsi_cap or (rsi is not None and rsi <= params.max_entry_rsi)
         adx_ok = not params.use_adx_filter or (adx is not None and adx >= params.min_adx)
         quality_entry_ok = price_ok and efficiency_ok and rsi_ok and adx_ok
-
         normal_breakout_candidate = (
             in_window
             and pre_position_units == 0
@@ -493,6 +490,9 @@ def run_v25_parity(
             if selected_breakout_level is not None and selected_replay_atr is not None
             else None
         )
+        entry_selected_breakout_level = selected_breakout_level if long_entry else None
+        entry_armed_age = selected_armed_age if long_entry else None
+        entry_replay_max_price = replay_max_price if long_entry else None
 
         if long_entry:
             entry_breakout_level = selected_breakout_level
@@ -619,17 +619,30 @@ def run_v25_parity(
                 rejection_reasons.append("ARMED_EXTENDED_NO_CHASE")
             if trend_state != 1 or not normal_trend_mature:
                 rejection_reasons.append("ARMED_WAIT_TREND")
-            elif not fresh_trend_ok:
-                rejection_reasons.append("ARMED_BULL_FLIP_TOO_OLD")
-            elif not price_ok:
+            if trend_state == 1 and normal_trend_mature and not price_ok:
                 rejection_reasons.append("ARMED_WAIT_PRICE")
-            elif not efficiency_ok:
+            if trend_state == 1 and normal_trend_mature and price_ok and not efficiency_ok:
                 rejection_reasons.append("ARMED_WAIT_EFFICIENCY")
-            elif not rsi_ok:
+            if (
+                trend_state == 1
+                and normal_trend_mature
+                and price_ok
+                and efficiency_ok
+                and not rsi_ok
+            ):
                 rejection_reasons.append("ARMED_WAIT_RSI")
-            elif not adx_ok:
+            if (
+                trend_state == 1
+                and normal_trend_mature
+                and price_ok
+                and efficiency_ok
+                and rsi_ok
+                and not adx_ok
+            ):
                 rejection_reasons.append("ARMED_WAIT_ADX")
-            elif not armed.armed_above_breakout:
+            if trend_state == 1 and normal_trend_mature and not fresh_trend_ok:
+                rejection_reasons.append("ARMED_BULL_FLIP_TOO_OLD")
+            if not armed.armed_above_breakout:
                 rejection_reasons.append("ARMED_WAIT_ABOVE_BREAKOUT")
         if armed.arm_expired_event:
             rejection_reasons.append("ARM_EXPIRED")
@@ -771,6 +784,7 @@ def run_v25_parity(
             position_units = 0
             position_avg_price = None
 
+        breakout_armed_after_close = armed.breakout_armed and not long_entry
         results.append(
             V25BarResult(
                 symbol=symbol,
@@ -788,13 +802,16 @@ def run_v25_parity(
                 fresh_long_breakout=fresh_long_breakout,
                 earnings_gap_class=earnings_gap_class,
                 entry_type=entry_type,
-                breakout_armed=armed.breakout_armed,
+                breakout_armed=breakout_armed_after_close,
                 armed_age=armed.armed_age,
                 armed_breakout_level=armed.armed_breakout_level,
                 armed_max_price=armed.armed_max_price,
                 armed_invalidation_level=armed.armed_invalidation_level,
                 arm_events=arm_events,
                 rejection_reasons=tuple(rejection_reasons),
+                entry_selected_breakout_level=entry_selected_breakout_level,
+                entry_armed_age=entry_armed_age,
+                entry_replay_max_price=entry_replay_max_price,
                 signals=tuple(signals),
                 position_units_after_close=position_units,
                 position_avg_price_after_close=position_avg_price,
@@ -805,7 +822,6 @@ def run_v25_parity(
 
 
 __all__ = [
-    "DailyBar",
     "PINE_V25_MODEL_ID",
     "PINE_V25_SOURCE_BLOB_SHA",
     "PINE_V25_SOURCE_COMMIT",
@@ -813,6 +829,7 @@ __all__ = [
     "PINE_V25_SOURCE_SHA256",
     "PINE_V25_STRATEGY_VERSION",
     "PROCESS_ORDERS_ON_CLOSE",
+    "DailyBar",
     "V25BarResult",
     "V25Parameters",
     "run_v25_parity",
