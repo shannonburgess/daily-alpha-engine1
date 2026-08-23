@@ -25,7 +25,6 @@ class ForwardReplayProvenance:
     parameter_manifest_sha256: str
     market_evidence_sha256: str
     market_source_revision: str
-    market_symbols: tuple[str, ...]
     python_engine_revision: str
     replay_start: datetime
     replay_end: datetime
@@ -53,12 +52,6 @@ class ForwardReplayProvenance:
             raise ValueError("market_evidence_sha256 must be a lowercase SHA-256")
         if not _GIT_SHA_RE.fullmatch(self.deployment_commit_sha):
             raise ValueError("deployment_commit_sha must be a 40-character Git SHA")
-        normalized_symbols = tuple(
-            sorted({str(symbol).strip().upper() for symbol in self.market_symbols if str(symbol).strip()})
-        )
-        if not normalized_symbols:
-            raise ValueError("market_symbols must contain at least one symbol")
-        object.__setattr__(self, "market_symbols", normalized_symbols)
         if self.replay_start.tzinfo is None or self.replay_start.utcoffset() is None:
             raise ValueError("replay_start must be timezone-aware")
         if self.replay_end.tzinfo is None or self.replay_end.utcoffset() is None:
@@ -79,7 +72,6 @@ class ForwardReplayProvenance:
             "parameter_manifest_sha256": self.parameter_manifest_sha256,
             "market_evidence_sha256": self.market_evidence_sha256,
             "market_source_revision": self.market_source_revision,
-            "market_symbols": self.market_symbols,
             "python_engine_revision": self.python_engine_revision,
             "replay_start": self.replay_start.isoformat(),
             "replay_end": self.replay_end.isoformat(),
