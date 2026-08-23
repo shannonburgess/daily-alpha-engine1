@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from html import escape
 
-from .prospect_opportunity_board import ProspectOpportunity, ProspectOpportunityBoard
+from .prospect_opportunity_board import (
+    OpportunityBoardFilter,
+    ProspectOpportunity,
+    ProspectOpportunityBoard,
+)
 
 
 class ProspectOutputChannel(StrEnum):
@@ -59,6 +63,51 @@ class ProspectOpportunityOutput:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class ProspectOpportunityAPIPage:
+    """Bounded API query view over one immutable canonical opportunity board."""
+
+    board_id: str
+    filter_id: str
+    offset: int
+    limit: int
+    total_qualifying: int
+    total_matched: int
+    opportunities: tuple[ProspectOpportunity, ...]
+    has_more: bool
+    signal_context: str
+    trading_authorized: bool = False
+    live_trading_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.board_id.strip():
+            raise ProspectOpportunityOutputError("API_PAGE_BOARD_ID_REQUIRED")
+        if not self.filter_id.strip():
+            raise ProspectOpportunityOutputError("API_PAGE_FILTER_ID_REQUIRED")
+        if self.total_qualifying < self.total_matched:
+            raise ProspectOpportunityOutputError("API_PAGE_MATCHED_TOTAL_EXCEEDS_CANONICAL_TOTAL")
+        if self.total_matched < len(self.opportunities):
+            raise ProspectOpportunityOutputError("API_PAGE_MATCHED_TOTAL_CANNOT_BE_SMALLER_THAN_PAGE")
+        if self.trading_authorized or self.live_trading_enabled:
+            raise ProspectOpportunityOutputError("PROSPECT_API_PAGE_CANNOT_AUTHORIZE_TRADING")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "channel": ProspectOutputChannel.API.value,
+            "board_id": self.board_id,
+            "filter_id": self.filter_id,
+            "offset": self.offset,
+            "limit": self.limit,
+            "total_qualifying": self.total_qualifying,
+            "total_matched": self.total_matched,
+            "opportunities": [item.to_dict() for item in self.opportunities],
+            "has_more": self.has_more,
+            "signal_context": self.signal_context,
+            "trading_authorized": self.trading_authorized,
+            "live_trading_enabled": self.live_trading_enabled,
+        }
+
+
 def build_prospect_output(
     board: ProspectOpportunityBoard,
     *,
@@ -81,6 +130,28 @@ def build_all_v1_prospect_outputs(
 ) -> tuple[ProspectOpportunityOutput, ...]:
     """Build NEWSLETTER, DASHBOARD and API outputs from the same exact board."""
     return tuple(build_prospect_output(board, channel=channel) for channel in ProspectOutputChannel)
+
+
+def build_prospect_api_page(
+    board: ProspectOpportunityBoard,
+    *,
+    query: OpportunityBoardFilter | None = None,
+    offset: int = 0,
+    limit: int = 50,
+) -> ProspectOpportunityAPIPage:
+    """Create a paginated/filterable API view without changing discovery membership or rank."""
+    page = board.page(offset=offset, limit=limit, query=query)
+    return ProspectOpportunityAPIPage(
+        board_id=page.board_id,
+        filter_id=page.filter_id,
+        offset=page.offset,
+        limit=page.limit,
+        total_qualifying=page.total_qualifying,
+        total_matched=page.total_matched,
+        opportunities=page.opportunities,
+        has_more=page.has_more,
+        signal_context=board.signal_context,
+    )
 
 
 def render_prospect_newsletter_html(board: ProspectOpportunityBoard) -> str:
@@ -165,10 +236,12 @@ def _opportunity_row(item: ProspectOpportunity) -> str:
 
 
 __all__ = [
+    "ProspectOpportunityAPIPage",
     "ProspectOpportunityOutput",
     "ProspectOpportunityOutputError",
     "ProspectOutputChannel",
     "build_all_v1_prospect_outputs",
+    "build_prospect_api_page",
     "build_prospect_output",
     "render_prospect_newsletter_html",
 ]
