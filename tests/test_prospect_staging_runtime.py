@@ -1,7 +1,9 @@
 import json
 from datetime import UTC, datetime
 
-from daily_alpha.prospect_staging_runtime import AwsProspectStagingRuntimePublisher
+from daily_alpha.prospect_staging_runtime import (
+    AwsProspectStagingRuntimePublisher,
+)
 
 
 NOW = datetime(2026, 8, 24, 13, 5, tzinfo=UTC)
@@ -81,6 +83,7 @@ def test_prepare_preserves_all_50_qualifiers_with_top3_plus_47():
 
     assert prepared.board.total_qualifying == 50
     assert [item.symbol for item in prepared.board.top_picks] == ["T01", "T02", "T03"]
+    assert all(item.instrument_selected == "OPTION" for item in prepared.board.top_picks)
     assert len(prepared.board.additional_opportunities) == 47
     assert tuple(item.rank for item in prepared.board.opportunities) == tuple(range(1, 51))
     assert {item.symbol for item in prepared.board.opportunities} == {
@@ -133,7 +136,7 @@ def test_orats_data_error_is_nonblocking_for_actionable_stock_research():
     first = next(item for item in prepared.board.opportunities if item.symbol == "T01")
     assert first.lifecycle_status == "NEW_BUY"
     assert first.bucket == "ENTRY_WATCH"
-    assert first.instrument_selected == "NONE"
+    assert first.instrument_selected == "STOCK"
     assert first.pine_entry is False
     assert first.risk_gate_passed is False
     assert "ORATS_NONBLOCKING_DATA_ERROR" in first.fallback_reason
