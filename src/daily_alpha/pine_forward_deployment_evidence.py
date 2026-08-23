@@ -52,7 +52,7 @@ class ForwardParityDeploymentEvidence:
 
 def _mapping(value: Any, field: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
-        raise ValueError(f"{field} must be an object")
+        raise TypeError(f"{field} must be an object")
     return value
 
 
