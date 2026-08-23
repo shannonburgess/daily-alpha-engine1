@@ -154,6 +154,10 @@ def _joint_betas(
     return (my * ss - sy * ms) / determinant, (sy * mm - my * ms) / determinant
 
 
+def _positive_fraction(values: list[float]) -> float:
+    return sum(value > _RESIDUAL_ZERO_TOLERANCE for value in values) / len(values)
+
+
 class ResidualRegressionAnalyzer:
     """Compute point-in-time factor residuals for an already-qualified candidate."""
 
@@ -223,9 +227,6 @@ class ResidualRegressionAnalyzer:
                 ),
             )
         )
-        positive = lambda values: sum(  # noqa: E731 - local research metric helper
-            value > _RESIDUAL_ZERO_TOLERANCE for value in values
-        ) / len(values)
 
         return ResidualRegressionState(
             security_id=observation.security_id,
@@ -243,6 +244,6 @@ class ResidualRegressionAnalyzer:
             joint_residual_20d=joint_residuals[0],
             joint_residual_63d=joint_residuals[1],
             joint_residual_126d=joint_residuals[2],
-            market_residual_positive_fraction=positive(market_weekly),
-            joint_residual_positive_fraction=positive(joint_weekly),
+            market_residual_positive_fraction=_positive_fraction(market_weekly),
+            joint_residual_positive_fraction=_positive_fraction(joint_weekly),
         )
