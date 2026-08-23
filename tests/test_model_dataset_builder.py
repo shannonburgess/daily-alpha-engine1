@@ -4,7 +4,6 @@ import pytest
 
 import daily_alpha.model_dataset_builder as builder
 
-
 BASE = dt.datetime(2026, 1, 2, 21, 0, tzinfo=dt.UTC)
 
 
