@@ -6,19 +6,24 @@ from daily_alpha.pine_forward_deployment_evidence import (
     ForwardParityDeploymentEvidence,
     ForwardPersistedEventEvidence,
 )
+from daily_alpha.pine_forward_locked_replay import LockedForwardV24Evaluation
 from daily_alpha.pine_forward_reference import (
     PersistedReferenceSnapshot,
     ReceiptBoundForwardParityEvaluation,
 )
-from daily_alpha.pine_historical_reference import HistoricalV24Evaluation
+from daily_alpha.pine_forward_replay_provenance import ForwardReplayProvenance
+from daily_alpha.pine_historical_reference import HistoricalSourceArtifact, HistoricalV24Evaluation
 from daily_alpha.pine_historical_reference_locked import LockedHistoricalV24Evaluation
+from daily_alpha.pine_parameter_manifest import PineParameterManifest
 from daily_alpha.pine_parity_compare import ParityReport, ReferenceSignal
 from daily_alpha.pine_parity_proof_gate import (
     V24ParityProofGate,
     evaluate_v24_parity_proof_gate,
 )
+from daily_alpha.pine_v24_parity import V24Parameters
 
 NOW = datetime(2026, 8, 21, 20, tzinfo=UTC)
+START = datetime(2026, 8, 1, 20, tzinfo=UTC)
 
 
 def _parity_report(reference_count: int, *, exact: bool = True) -> ParityReport:
@@ -85,7 +90,11 @@ def _persisted_event(index: int) -> ForwardPersistedEventEvidence:
 
 
 def _book(account_id: str, count: int = 0) -> ForwardParityBookEvidence:
-    events = tuple(_persisted_event(index) for index in range(count)) if account_id.endswith("V24") else ()
+    events = (
+        tuple(_persisted_event(index) for index in range(count))
+        if account_id.endswith("V24")
+        else ()
+    )
     return ForwardParityBookEvidence(
         account_id=account_id,
         event_count_visible=len(events),
@@ -113,8 +122,29 @@ def _deployment_evidence(count: int = 0) -> ForwardParityDeploymentEvidence:
     )
 
 
+def _replay_provenance(commit_sha: str = "b" * 40) -> ForwardReplayProvenance:
+    return ForwardReplayProvenance(
+        model_id="PAPER_SHADOW_V24",
+        strategy_version="2.4",
+        strategy_source_blob_sha="33091e312ad3069ff7d82825b370f2a73d93107c",
+        parameter_manifest_sha256="1" * 64,
+        market_evidence_sha256="2" * 64,
+        market_source_revision="point-in-time-market-revision",
+        python_engine_revision="pine_v24_parity.py:test-revision",
+        replay_start=START,
+        replay_end=NOW,
+        replay_bar_count=15,
+        deployment_commit_sha=commit_sha,
+        processor_code_sha256="code-hash",
+    )
+
+
 def _forward_evaluation(
-    count: int, *, exact: bool = True, commit_sha: str = "b" * 40
+    count: int,
+    *,
+    exact: bool = True,
+    commit_sha: str = "b" * 40,
+    carry_provenance: bool = True,
 ) -> ReceiptBoundForwardParityEvaluation:
     signals = tuple(
         ReferenceSignal(
@@ -144,6 +174,36 @@ def _forward_evaluation(
             signals=signals,
         ),
         report=_parity_report(count, exact=exact),
+        replay_provenance=_replay_provenance(commit_sha) if carry_provenance else None,
+    )
+
+
+def _locked_forward_evaluation(
+    count: int,
+    *,
+    exact: bool = True,
+    commit_sha: str = "b" * 40,
+) -> LockedForwardV24Evaluation:
+    evaluation = _forward_evaluation(count, exact=exact, commit_sha=commit_sha)
+    return LockedForwardV24Evaluation(
+        evaluation=evaluation,
+        market_artifact=HistoricalSourceArtifact(
+            source="POINT_IN_TIME_TEST_MARKET",
+            revision="point-in-time-market-revision",
+            sha256="2" * 64,
+            row_count=15,
+        ),
+        parameter_manifest=PineParameterManifest(
+            model_id="PAPER_SHADOW_V24",
+            strategy_version="2.4",
+            source_blob_sha="33091e312ad3069ff7d82825b370f2a73d93107c",
+            process_orders_on_close=True,
+            parameters=V24Parameters(),
+            sha256="1" * 64,
+        ),
+        market_start_iso=START.isoformat(),
+        market_end_iso=NOW.isoformat(),
+        replay_python_signal_count=evaluation.report.python_count,
     )
 
 
@@ -164,7 +224,7 @@ def test_missing_evidence_fails_closed() -> None:
 def test_exact_zero_signal_comparisons_are_not_parity_proof() -> None:
     gate = evaluate_v24_parity_proof_gate(
         historical_evaluation=_historical_evaluation(0),
-        forward_evaluation=_forward_evaluation(0),
+        forward_evaluation=_locked_forward_evaluation(0),
         forward_deployment_evidence=_deployment_evidence(0),
     )
     assert gate.parity_evidence_complete is False
@@ -177,7 +237,7 @@ def test_exact_zero_signal_comparisons_are_not_parity_proof() -> None:
 def test_unlocked_history_cannot_complete_the_proof_gate() -> None:
     gate = evaluate_v24_parity_proof_gate(
         historical_evaluation=_unlocked_historical_evaluation(3),
-        forward_evaluation=_forward_evaluation(2),
+        forward_evaluation=_locked_forward_evaluation(2),
         forward_deployment_evidence=_deployment_evidence(2),
     )
     assert gate.parity_evidence_complete is False
@@ -187,7 +247,7 @@ def test_unlocked_history_cannot_complete_the_proof_gate() -> None:
 def test_forward_monitor_runtime_proof_is_required_even_with_exact_events() -> None:
     gate = evaluate_v24_parity_proof_gate(
         historical_evaluation=_historical_evaluation(3),
-        forward_evaluation=_forward_evaluation(2),
+        forward_evaluation=_locked_forward_evaluation(2),
         forward_deployment_evidence=None,
     )
     assert gate.parity_evidence_complete is False
@@ -195,10 +255,33 @@ def test_forward_monitor_runtime_proof_is_required_even_with_exact_events() -> N
     assert "FORWARD_PARITY_EVALUATION_NOT_DEPLOYMENT_BOUND" in gate.blockers
 
 
+def test_receipt_match_without_replay_provenance_cannot_complete_forward_proof() -> None:
+    gate = evaluate_v24_parity_proof_gate(
+        historical_evaluation=_historical_evaluation(3),
+        forward_evaluation=_forward_evaluation(2, carry_provenance=False),
+        forward_deployment_evidence=_deployment_evidence(2),
+    )
+    assert gate.parity_evidence_complete is False
+    assert gate.forward_replay_inputs_locked is False
+    assert gate.forward_replay_evidence_id is None
+    assert gate.blockers == ("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED",)
+
+
+def test_caller_constructed_provenance_alone_cannot_complete_forward_proof() -> None:
+    gate = evaluate_v24_parity_proof_gate(
+        historical_evaluation=_historical_evaluation(3),
+        forward_evaluation=_forward_evaluation(2, carry_provenance=True),
+        forward_deployment_evidence=_deployment_evidence(2),
+    )
+    assert gate.parity_evidence_complete is False
+    assert gate.forward_replay_inputs_locked is False
+    assert gate.blockers == ("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED",)
+
+
 def test_mismatch_blocks_evidence_completion_without_retuning() -> None:
     gate = evaluate_v24_parity_proof_gate(
         historical_evaluation=_historical_evaluation(3, exact=False),
-        forward_evaluation=_forward_evaluation(2, exact=False),
+        forward_evaluation=_locked_forward_evaluation(2, exact=False),
         forward_deployment_evidence=_deployment_evidence(2),
     )
     assert gate.parity_evidence_complete is False
@@ -208,7 +291,7 @@ def test_mismatch_blocks_evidence_completion_without_retuning() -> None:
 def test_receipt_identity_or_event_count_mismatch_blocks_forward_proof() -> None:
     gate = evaluate_v24_parity_proof_gate(
         historical_evaluation=_historical_evaluation(3),
-        forward_evaluation=_forward_evaluation(1, commit_sha="c" * 40),
+        forward_evaluation=_locked_forward_evaluation(1, commit_sha="c" * 40),
         forward_deployment_evidence=_deployment_evidence(2),
     )
     assert "FORWARD_PARITY_DEPLOYMENT_COMMIT_MISMATCH" in gate.blockers
@@ -216,16 +299,18 @@ def test_receipt_identity_or_event_count_mismatch_blocks_forward_proof() -> None
     assert gate.parity_evidence_complete is False
 
 
-def test_nonempty_exact_receipt_bound_evidence_completes_gate_without_authority() -> None:
+def test_nonempty_exact_verified_replay_completes_gate_without_authority() -> None:
     gate = evaluate_v24_parity_proof_gate(
         historical_evaluation=_historical_evaluation(4),
-        forward_evaluation=_forward_evaluation(2),
+        forward_evaluation=_locked_forward_evaluation(2),
         forward_deployment_evidence=_deployment_evidence(2),
     )
     assert gate.parity_evidence_complete is True
     assert gate.blockers == ()
     assert gate.forward_reference_signal_count == 2
     assert gate.forward_deployment_commit_sha == "b" * 40
+    assert gate.forward_replay_inputs_locked is True
+    assert gate.forward_replay_evidence_id is not None
     assert gate.promotion_authorized is False
     assert gate.trading_authorized is False
     assert gate.live_trading_enabled is False
@@ -241,6 +326,8 @@ def test_proof_record_itself_cannot_smuggle_promotion_authority() -> None:
             forward_reference_signal_count=1,
             forward_monitor_deployed=True,
             forward_deployment_commit_sha="b" * 40,
+            forward_replay_inputs_locked=True,
+            forward_replay_evidence_id="a" * 64,
             blockers=(),
             parity_evidence_complete=True,
             promotion_authorized=True,

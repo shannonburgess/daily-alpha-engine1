@@ -4,9 +4,11 @@ from dataclasses import dataclass
 
 from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
 from .pine_forward_event_classification import partition_forward_events
+from .pine_forward_locked_replay import LockedForwardV24Evaluation
 from .pine_forward_reference import ReceiptBoundForwardParityEvaluation
 from .pine_historical_reference import HistoricalV24Evaluation
 from .pine_historical_reference_locked import LockedHistoricalV24Evaluation
+from .pine_v24_parity import PINE_V24_SOURCE_BLOB_SHA
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +22,8 @@ class V24ParityProofGate:
     forward_reference_signal_count: int
     forward_monitor_deployed: bool
     forward_deployment_commit_sha: str | None
+    forward_replay_inputs_locked: bool
+    forward_replay_evidence_id: str | None
     blockers: tuple[str, ...]
     parity_evidence_complete: bool
     promotion_authorized: bool = False
@@ -33,6 +37,8 @@ class V24ParityProofGate:
             raise ValueError("forward_reference_signal_count must be non-negative")
         if self.forward_monitor_deployed != bool(self.forward_deployment_commit_sha):
             raise ValueError("forward monitor deployment state must carry exact commit evidence")
+        if self.forward_replay_inputs_locked != bool(self.forward_replay_evidence_id):
+            raise ValueError("forward replay lock state must carry exact replay evidence identity")
         if self.promotion_authorized:
             raise ValueError("parity proof gate cannot authorize promotion")
         if self.trading_authorized or self.live_trading_enabled:
@@ -47,6 +53,8 @@ class V24ParityProofGate:
             and self.forward_reference_signal_count > 0
             and self.forward_monitor_deployed
             and self.forward_deployment_commit_sha
+            and self.forward_replay_inputs_locked
+            and self.forward_replay_evidence_id
         ):
             raise ValueError("complete parity evidence is inconsistent with required proof gates")
 
@@ -54,10 +62,16 @@ class V24ParityProofGate:
 def evaluate_v24_parity_proof_gate(
     *,
     historical_evaluation: HistoricalV24Evaluation | LockedHistoricalV24Evaluation | None,
-    forward_evaluation: ReceiptBoundForwardParityEvaluation | None,
+    forward_evaluation: ReceiptBoundForwardParityEvaluation | LockedForwardV24Evaluation | None,
     forward_deployment_evidence: ForwardParityDeploymentEvidence | None,
 ) -> V24ParityProofGate:
-    """Evaluate SH24 proof using only receipt-bound, non-E2E forward comparisons."""
+    """Evaluate SH24 proof using receipt-bound events and verified replay-input provenance.
+
+    A generic receipt comparison is useful discrepancy evidence, but it cannot complete forward
+    proof even if it carries caller-constructed provenance. Completion requires a
+    ``LockedForwardV24Evaluation`` produced by replaying the exact parsed market artifact with the
+    exact complete Pine parameter manifest.
+    """
     blockers: list[str] = []
 
     if historical_evaluation is None:
@@ -88,14 +102,26 @@ def evaluate_v24_parity_proof_gate(
     if forward_evaluation is None:
         forward_exact = False
         forward_reference_signal_count = 0
+        forward_replay_inputs_locked = False
+        forward_replay_evidence_id = None
         blockers.append("FORWARD_PARITY_EVIDENCE_MISSING")
     else:
         forward_exact = forward_evaluation.exact
         forward_reference_signal_count = forward_evaluation.report.reference_count
+        forward_replay_inputs_locked = isinstance(forward_evaluation, LockedForwardV24Evaluation)
+        forward_replay_evidence_id = (
+            forward_evaluation.replay_provenance.evidence_id
+            if forward_replay_inputs_locked
+            else None
+        )
         if forward_evaluation.model_id != "PAPER_SHADOW_V24":
             blockers.append("FORWARD_PARITY_BOOK_MISMATCH")
         if forward_evaluation.strategy_version != "2.4":
             blockers.append("FORWARD_PARITY_VERSION_MISMATCH")
+        if not forward_replay_inputs_locked:
+            blockers.append("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED")
+        elif forward_evaluation.replay_provenance.strategy_source_blob_sha != PINE_V24_SOURCE_BLOB_SHA:
+            blockers.append("FORWARD_REPLAY_SOURCE_MISMATCH")
         if forward_deployment_evidence is None:
             blockers.append("FORWARD_PARITY_EVALUATION_NOT_DEPLOYMENT_BOUND")
         else:
@@ -125,6 +151,8 @@ def evaluate_v24_parity_proof_gate(
         forward_reference_signal_count=forward_reference_signal_count,
         forward_monitor_deployed=forward_monitor_deployed,
         forward_deployment_commit_sha=forward_deployment_commit_sha,
+        forward_replay_inputs_locked=forward_replay_inputs_locked,
+        forward_replay_evidence_id=forward_replay_evidence_id,
         blockers=normalized_blockers,
         parity_evidence_complete=not normalized_blockers,
     )

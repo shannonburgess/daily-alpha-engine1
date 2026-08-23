@@ -12,6 +12,7 @@ from .pine_forward_deployment_evidence import (
     ForwardParityDeploymentEvidence,
 )
 from .pine_forward_event_classification import partition_forward_events
+from .pine_forward_replay_provenance import ForwardReplayProvenance
 from .pine_parity_compare import ParityReport, ReferenceSignal, compare_pine_signals
 from .pine_v24_parity import ParitySignal
 
@@ -46,6 +47,7 @@ class ReceiptBoundForwardParityEvaluation:
     processor_code_sha256: str
     reference_snapshot: PersistedReferenceSnapshot
     report: ParityReport
+    replay_provenance: ForwardReplayProvenance | None = None
     trading_authorized: bool = False
     live_trading_enabled: bool = False
 
@@ -56,12 +58,25 @@ class ReceiptBoundForwardParityEvaluation:
             raise ValueError("forward evaluation strategy_version does not match reference snapshot")
         if self.report.reference_count != len(self.reference_snapshot.signals):
             raise ValueError("forward evaluation report is not bound to reference snapshot count")
+        if self.replay_provenance is not None:
+            if self.replay_provenance.model_id != self.model_id:
+                raise ValueError("forward replay provenance crossed the requested model book")
+            if self.replay_provenance.strategy_version != self.strategy_version:
+                raise ValueError("forward replay provenance crossed the requested strategy version")
+            if self.replay_provenance.deployment_commit_sha != self.deployment_commit_sha:
+                raise ValueError("forward replay provenance deployment commit is inconsistent")
+            if self.replay_provenance.processor_code_sha256 != self.processor_code_sha256:
+                raise ValueError("forward replay provenance processor identity is inconsistent")
         if self.trading_authorized or self.live_trading_enabled:
             raise ValueError("forward parity evaluation cannot authorize trading")
 
     @property
     def exact(self) -> bool:
         return self.report.exact
+
+    @property
+    def replay_inputs_locked(self) -> bool:
+        return self.replay_provenance is not None
 
 
 def _required_text(payload: Mapping[str, Any], field: str) -> str:
@@ -243,6 +258,7 @@ def evaluate_forward_deployment_reference(
     expected_model_id: str,
     expected_strategy_version: str,
     python_signals: Iterable[ParitySignal],
+    replay_provenance: ForwardReplayProvenance | None = None,
 ) -> ReceiptBoundForwardParityEvaluation:
     """Compare Python signals only against exact non-E2E events in one trusted receipt."""
     if expected_model_id == "PAPER_SHADOW_V24":
@@ -264,6 +280,7 @@ def evaluate_forward_deployment_reference(
         processor_code_sha256=deployment.processor_code_sha256,
         reference_snapshot=snapshot,
         report=report,
+        replay_provenance=replay_provenance,
     )
 
 
