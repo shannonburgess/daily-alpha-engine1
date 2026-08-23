@@ -16,7 +16,6 @@ from daily_alpha.cost_model_governor import (
     TaskRequirement,
 )
 
-
 AS_OF = datetime(2026, 8, 23, 15, 0, tzinfo=UTC)
 
 
