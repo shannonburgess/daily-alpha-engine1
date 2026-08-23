@@ -5,6 +5,7 @@ import pytest
 from daily_alpha.candidates import CandidateAssessment, CandidateBucket
 from daily_alpha.prospect_opportunity_board import (
     SIGNAL_CONTEXT,
+    OpportunityBoardFilter,
     ProspectOpportunityBoard,
     ProspectOpportunityBoardError,
     build_prospect_opportunity_board,
@@ -20,15 +21,17 @@ def _candidate(
     bucket: CandidateBucket = CandidateBucket.ENTRY_WATCH,
     status: str = "EMERGING",
     fallback_reason: str = "",
+    sector: str = "Technology",
+    instrument_selected: str = "NONE",
 ) -> CandidateAssessment:
     return CandidateAssessment(
         symbol=symbol,
         ovtlyr_status=status,
         bucket=bucket,
         score=score,
-        instrument_selected="NONE",
+        instrument_selected=instrument_selected,
         fallback_reason=fallback_reason,
-        sector="Technology",
+        sector=sector,
         sector_net_score=10,
         pine_entry=bucket is not CandidateBucket.ENTRY_WATCH,
         risk_gate_passed=True,
@@ -135,6 +138,7 @@ def test_pagination_never_changes_canonical_qualifying_count() -> None:
     third = board.page(offset=40, limit=20)
 
     assert first.total_qualifying == second.total_qualifying == third.total_qualifying == 50
+    assert first.total_matched == second.total_matched == third.total_matched == 50
     assert len(first.opportunities) == 20
     assert len(second.opportunities) == 20
     assert len(third.opportunities) == 10
@@ -144,6 +148,88 @@ def test_pagination_never_changes_canonical_qualifying_count() -> None:
     assert [item.symbol for page in (first, second, third) for item in page.opportunities] == [
         item.symbol for item in board.opportunities
     ]
+
+
+def test_filters_are_query_views_and_never_change_canonical_membership_or_rank() -> None:
+    board = build_prospect_opportunity_board(
+        items=(
+            _candidate("A", 100.0, status="LEADER", sector="Technology"),
+            _candidate("B", 99.0, status="EMERGING", sector="Healthcare"),
+            _candidate("C", 98.0, status="LEADER", sector="Technology"),
+            _candidate("D", 97.0, status="LEADER", sector="Healthcare"),
+        ),
+        as_of=AS_OF,
+        source_revision="snapshot-v1",
+    )
+    canonical_ids = tuple(item.candidate_id for item in board.opportunities)
+    query = OpportunityBoardFilter(
+        lifecycle_statuses=("leader",),
+        sectors=("technology",),
+    )
+
+    page = board.page(query=query, offset=0, limit=10)
+
+    assert page.board_id == board.board_id
+    assert page.total_qualifying == 4
+    assert page.total_matched == 2
+    assert [(item.rank, item.symbol) for item in page.opportunities] == [(1, "A"), (3, "C")]
+    assert tuple(item.candidate_id for item in board.opportunities) == canonical_ids
+    assert board.top_picks == board.opportunities[:3]
+
+
+def test_filtered_pagination_preserves_full_count_and_reconstructs_all_matches() -> None:
+    board = build_prospect_opportunity_board(
+        items=tuple(
+            _candidate(
+                f"F{i:02d}",
+                float(100 - i),
+                sector="Technology" if i % 2 == 0 else "Healthcare",
+            )
+            for i in range(50)
+        ),
+        as_of=AS_OF,
+        source_revision="snapshot-v1",
+    )
+    query = OpportunityBoardFilter(sectors=("healthcare",))
+
+    first = board.page(query=query, offset=0, limit=10)
+    second = board.page(query=query, offset=10, limit=10)
+    third = board.page(query=query, offset=20, limit=10)
+
+    assert {page.total_qualifying for page in (first, second, third)} == {50}
+    assert {page.total_matched for page in (first, second, third)} == {25}
+    assert first.filter_id == second.filter_id == third.filter_id == query.filter_id
+    assert first.has_more is True
+    assert second.has_more is True
+    assert third.has_more is False
+    assert len(first.opportunities) == 10
+    assert len(second.opportunities) == 10
+    assert len(third.opportunities) == 5
+    assert [item.symbol for page in (first, second, third) for item in page.opportunities] == [
+        item.symbol for item in board.opportunities if item.sector == "Healthcare"
+    ]
+
+
+def test_filter_identity_is_normalized_order_independent_and_fail_closed() -> None:
+    first = OpportunityBoardFilter(
+        symbols=("nvda", "MU"),
+        lifecycle_statuses=("leader", "emerging"),
+        sectors=("technology",),
+    )
+    second = OpportunityBoardFilter(
+        sectors=("TECHNOLOGY",),
+        lifecycle_statuses=("EMERGING", "LEADER"),
+        symbols=("mu", "NVDA"),
+    )
+
+    assert first == second
+    assert first.filter_id == second.filter_id
+
+    with pytest.raises(ProspectOpportunityBoardError, match="FILTER_BUCKET_NOT_QUALIFYING"):
+        OpportunityBoardFilter(buckets=(CandidateBucket.DATA_ERROR.value,))
+
+    with pytest.raises(ProspectOpportunityBoardError, match="FILTER_SECTOR_VALUE_REQUIRED"):
+        OpportunityBoardFilter(sectors=("",))
 
 
 def test_board_identity_is_input_order_independent() -> None:
