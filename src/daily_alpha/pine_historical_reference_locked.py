@@ -3,13 +3,14 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
+from .pine_bar_outcome_compare import BarOutcomeReport
 from .pine_historical_reference import (
-    HistoricalV24Evaluation,
     HistoricalV24Reference,
     build_historical_v24_reference,
     evaluate_historical_v24_reference,
 )
 from .pine_parameter_manifest import PineParameterManifest, parse_parameter_manifest
+from .pine_parity_compare import ParityReport
 from .pine_v24_parity import (
     PINE_V24_MODEL_ID,
     PINE_V24_SOURCE_BLOB_SHA,
@@ -27,6 +28,28 @@ class LockedHistoricalV24Reference:
     def reference_id(self) -> str:
         identity = f"{self.reference.reference_id}:{self.parameter_manifest.sha256}"
         return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class LockedHistoricalV24Evaluation:
+    """Historical parity evaluation that proves the exact Pine inputs were part of evidence."""
+
+    reference_id: str
+    parameter_manifest_sha256: str
+    signal_report: ParityReport
+    bar_outcome_report: BarOutcomeReport
+
+    def __post_init__(self) -> None:
+        if len(self.parameter_manifest_sha256) != 64:
+            raise ValueError("parameter_manifest_sha256 must be a SHA-256 hex digest")
+        try:
+            int(self.parameter_manifest_sha256, 16)
+        except ValueError as exc:
+            raise ValueError("parameter_manifest_sha256 must be a SHA-256 hex digest") from exc
+
+    @property
+    def exact(self) -> bool:
+        return self.signal_report.exact and self.bar_outcome_report.exact
 
 
 def build_locked_historical_v24_reference(
@@ -70,20 +93,22 @@ def build_locked_historical_v24_reference(
 
 def evaluate_locked_historical_v24_reference(
     reference: LockedHistoricalV24Reference,
-) -> HistoricalV24Evaluation:
+) -> LockedHistoricalV24Evaluation:
     """Evaluate using only the parameter set embedded in the hashed historical evidence."""
     evaluation = evaluate_historical_v24_reference(
         reference.reference,
         reference.parameter_manifest.parameters,
     )
-    return HistoricalV24Evaluation(
+    return LockedHistoricalV24Evaluation(
         reference_id=reference.reference_id,
+        parameter_manifest_sha256=reference.parameter_manifest.sha256,
         signal_report=evaluation.signal_report,
         bar_outcome_report=evaluation.bar_outcome_report,
     )
 
 
 __all__ = [
+    "LockedHistoricalV24Evaluation",
     "LockedHistoricalV24Reference",
     "build_locked_historical_v24_reference",
     "evaluate_locked_historical_v24_reference",
