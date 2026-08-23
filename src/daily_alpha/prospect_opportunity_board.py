@@ -83,21 +83,105 @@ class FilteredProspectCandidate:
 
 
 @dataclass(frozen=True, slots=True)
+class OpportunityBoardFilter:
+    """Deterministic query over the canonical qualifying set; never a discovery gate."""
+
+    symbols: tuple[str, ...] = ()
+    lifecycle_statuses: tuple[str, ...] = ()
+    buckets: tuple[str, ...] = ()
+    sectors: tuple[str, ...] = ()
+    instrument_selected: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "symbols", _normalize_filter_values(self.symbols, "SYMBOL"))
+        object.__setattr__(
+            self,
+            "lifecycle_statuses",
+            _normalize_filter_values(self.lifecycle_statuses, "LIFECYCLE_STATUS"),
+        )
+        object.__setattr__(self, "buckets", _normalize_filter_values(self.buckets, "BUCKET"))
+        object.__setattr__(self, "sectors", _normalize_filter_values(self.sectors, "SECTOR"))
+        object.__setattr__(
+            self,
+            "instrument_selected",
+            _normalize_filter_values(self.instrument_selected, "INSTRUMENT_SELECTED"),
+        )
+        qualifying_bucket_values = {item.value.upper() for item in QUALIFYING_BUCKETS}
+        if any(bucket not in qualifying_bucket_values for bucket in self.buckets):
+            raise ProspectOpportunityBoardError("FILTER_BUCKET_NOT_QUALIFYING")
+
+    @property
+    def filter_id(self) -> str:
+        return _sha(self.to_dict())
+
+    @property
+    def is_empty(self) -> bool:
+        return not any(
+            (
+                self.symbols,
+                self.lifecycle_statuses,
+                self.buckets,
+                self.sectors,
+                self.instrument_selected,
+            )
+        )
+
+    def matches(self, opportunity: ProspectOpportunity) -> bool:
+        checks = (
+            (self.symbols, opportunity.symbol),
+            (self.lifecycle_statuses, opportunity.lifecycle_status),
+            (self.buckets, opportunity.bucket),
+            (self.sectors, opportunity.sector),
+            (self.instrument_selected, opportunity.instrument_selected),
+        )
+        return all(not allowed or value.strip().upper() in allowed for allowed, value in checks)
+
+    def to_dict(self) -> dict[str, tuple[str, ...]]:
+        return {
+            "symbols": self.symbols,
+            "lifecycle_statuses": self.lifecycle_statuses,
+            "buckets": self.buckets,
+            "sectors": self.sectors,
+            "instrument_selected": self.instrument_selected,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class OpportunityBoardPage:
     board_id: str
+    filter_id: str
     offset: int
     limit: int
     total_qualifying: int
+    total_matched: int
     opportunities: tuple[ProspectOpportunity, ...]
     has_more: bool
 
     def __post_init__(self) -> None:
+        if not self.board_id.strip():
+            raise ProspectOpportunityBoardError("PAGE_BOARD_ID_REQUIRED")
+        if not self.filter_id.strip():
+            raise ProspectOpportunityBoardError("PAGE_FILTER_ID_REQUIRED")
         if self.offset < 0:
             raise ProspectOpportunityBoardError("PAGE_OFFSET_MUST_BE_NON_NEGATIVE")
         if self.limit < 1:
             raise ProspectOpportunityBoardError("PAGE_LIMIT_MUST_BE_POSITIVE")
-        if self.total_qualifying < len(self.opportunities):
-            raise ProspectOpportunityBoardError("PAGE_TOTAL_CANNOT_BE_SMALLER_THAN_PAGE")
+        if self.total_qualifying < self.total_matched:
+            raise ProspectOpportunityBoardError("PAGE_MATCHED_TOTAL_EXCEEDS_CANONICAL_TOTAL")
+        if self.total_matched < len(self.opportunities):
+            raise ProspectOpportunityBoardError("PAGE_MATCHED_TOTAL_CANNOT_BE_SMALLER_THAN_PAGE")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "board_id": self.board_id,
+            "filter_id": self.filter_id,
+            "offset": self.offset,
+            "limit": self.limit,
+            "total_qualifying": self.total_qualifying,
+            "total_matched": self.total_matched,
+            "opportunities": [item.to_dict() for item in self.opportunities],
+            "has_more": self.has_more,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,19 +257,30 @@ class ProspectOpportunityBoard:
     def additional_opportunities(self) -> tuple[ProspectOpportunity, ...]:
         return self.opportunities[TOP_PICK_LIMIT:]
 
-    def page(self, *, offset: int = 0, limit: int = 50) -> OpportunityBoardPage:
+    def page(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        query: OpportunityBoardFilter | None = None,
+    ) -> OpportunityBoardPage:
+        """Return a bounded query view while preserving the complete canonical board identity."""
         if offset < 0:
             raise ProspectOpportunityBoardError("PAGE_OFFSET_MUST_BE_NON_NEGATIVE")
         if limit < 1:
             raise ProspectOpportunityBoardError("PAGE_LIMIT_MUST_BE_POSITIVE")
-        page_items = self.opportunities[offset : offset + limit]
+        effective_query = query or OpportunityBoardFilter()
+        matched = tuple(item for item in self.opportunities if effective_query.matches(item))
+        page_items = matched[offset : offset + limit]
         return OpportunityBoardPage(
             board_id=self.board_id,
+            filter_id=effective_query.filter_id,
             offset=offset,
             limit=limit,
             total_qualifying=self.total_qualifying,
+            total_matched=len(matched),
             opportunities=page_items,
-            has_more=offset + len(page_items) < self.total_qualifying,
+            has_more=offset + len(page_items) < len(matched),
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -303,6 +398,16 @@ def _filtered_reason(candidate: CandidateAssessment) -> str:
     return "NOT_CURRENTLY_QUALIFIED"
 
 
+def _normalize_filter_values(values: tuple[str, ...], field: str) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ProspectOpportunityBoardError(f"FILTER_{field}_VALUE_REQUIRED")
+        normalized.append(cleaned.upper())
+    return tuple(sorted(set(normalized)))
+
+
 def _require_aware(value: datetime) -> None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ProspectOpportunityBoardError("AS_OF_MUST_BE_TIMEZONE_AWARE")
@@ -318,6 +423,7 @@ __all__ = [
     "SIGNAL_CONTEXT",
     "TOP_PICK_LIMIT",
     "FilteredProspectCandidate",
+    "OpportunityBoardFilter",
     "OpportunityBoardPage",
     "ProspectOpportunity",
     "ProspectOpportunityBoard",
