@@ -6,6 +6,7 @@ from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
 from .pine_forward_event_classification import partition_forward_events
 from .pine_forward_reference import ReceiptBoundForwardParityEvaluation
 from .pine_v25_historical_reference import HistoricalV25Evaluation
+from .pine_v25_parity import PINE_V25_SOURCE_BLOB_SHA
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,9 +74,7 @@ def evaluate_v25_parity_proof_gate(
     else:
         historical_exact = historical_evaluation.exact
         historical_reference_signal_count = historical_evaluation.signal_report.reference_count
-        historical_parameter_manifest_locked = bool(
-            historical_evaluation.parameter_manifest_sha256
-        )
+        historical_parameter_manifest_locked = bool(historical_evaluation.parameter_manifest_sha256)
         if not historical_exact:
             blockers.append("HISTORICAL_PARITY_MISMATCH")
         if historical_reference_signal_count == 0:
@@ -111,6 +110,12 @@ def evaluate_v25_parity_proof_gate(
             blockers.append("FORWARD_PARITY_VERSION_MISMATCH")
         if not forward_replay_inputs_locked:
             blockers.append("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED")
+        elif (
+            forward_evaluation.replay_provenance is not None
+            and forward_evaluation.replay_provenance.strategy_source_blob_sha
+            != PINE_V25_SOURCE_BLOB_SHA
+        ):
+            blockers.append("FORWARD_REPLAY_SOURCE_MISMATCH")
         if forward_deployment_evidence is None:
             blockers.append("FORWARD_PARITY_EVALUATION_NOT_DEPLOYMENT_BOUND")
         else:
