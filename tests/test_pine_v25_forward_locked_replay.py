@@ -140,7 +140,7 @@ def test_locked_v25_builder_requires_receipt_event_bar_in_market_evidence() -> N
 def test_locked_v25_builder_requires_complete_shadow_forward_start_setting() -> None:
     payload = json.loads(_manifest())
     del payload["parameters"]["shadow_forward_start"]
-    with pytest.raises(ValueError, match="PARAMETER_MANIFEST_FIELD_MISMATCH"):
+    with pytest.raises(ValueError, match="PARAMETER_FIELDS_MISMATCH"):
         evaluate_locked_forward_v25_reference(
             deployment=_deployment(),
             symbol="DINO",
