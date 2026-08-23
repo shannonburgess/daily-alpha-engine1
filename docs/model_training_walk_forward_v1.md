@@ -6,6 +6,10 @@ This layer defines how future adaptive/statistical/ML challengers may learn from
 
 SH24 and SH25 remain source-controlled deterministic strategies. This training layer is research-only and creates no PAPER, portfolio, broker, capital, execution, or live-trading authority.
 
+## Current-main reconciliation
+
+The research branch is intentionally validated against current authoritative `main` `1370d3c579bc41ae7a2320a3aae096358fb5c34f`, which includes the merged V1 prospect opportunity-board launch blocker from PR #338. That product-surface merge is independent of the model-training contracts and does not alter SH24/SH25 semantics, point-in-time dataset rules, model fitting, validation selection, test isolation, or any execution authority.
+
 ## Point-in-time rule
 
 Every training example represents one historical decision boundary. Features must have been known no later than that boundary. The realized label must mature only after the decision and must be fully known by the dataset snapshot `as_of` cutoff.
