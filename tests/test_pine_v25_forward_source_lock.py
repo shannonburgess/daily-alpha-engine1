@@ -151,7 +151,7 @@ def _forward(source_blob_sha: str) -> ReceiptBoundForwardParityEvaluation:
     )
 
 
-def test_wrong_frozen_source_cannot_complete_sh25_forward_proof() -> None:
+def test_caller_supplied_wrong_source_provenance_cannot_complete_sh25_forward_proof() -> None:
     gate = evaluate_v25_parity_proof_gate(
         historical_evaluation=_history(),
         forward_evaluation=_forward("e" * 40),
@@ -159,5 +159,6 @@ def test_wrong_frozen_source_cannot_complete_sh25_forward_proof() -> None:
     )
 
     assert gate.parity_evidence_complete is False
-    assert gate.forward_replay_inputs_locked is True
-    assert gate.blockers == ("FORWARD_REPLAY_SOURCE_MISMATCH",)
+    assert gate.forward_replay_inputs_locked is False
+    assert gate.forward_replay_evidence_id is None
+    assert gate.blockers == ("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED",)
