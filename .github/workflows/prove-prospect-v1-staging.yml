@@ -1,0 +1,209 @@
+name: Prove V1 prospect staging rollout
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: daily-alpha-staging-lambda-deploy
+  cancel-in-progress: false
+
+jobs:
+  prove-prospect-v1:
+    name: Prove Top 3 plus complete board staging delivery
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact repository state
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require authoritative main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "main"
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run repo quality gates
+        run: |
+          ruff check .
+          pytest -q
+
+      - name: Configure short-lived staging AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-prospect-v1-proof
+          aws-region: us-east-2
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Snapshot report Lambda environment and prepare proof environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws lambda get-function-configuration \
+            --function-name daily-alpha-report \
+            --query 'Environment.Variables' \
+            --output json > /tmp/original-vars.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw = json.loads(Path('/tmp/original-vars.json').read_text())
+          original = raw if isinstance(raw, dict) else {}
+          true_values = {'1', 'true', 'yes', 'on'}
+          if str(original.get('DAILY_ALPHA_PROSPECT_V1_RUNTIME_ENABLED', '')).strip().lower() in true_values:
+              raise SystemExit('PROSPECT_RUNTIME_ALREADY_ENABLED_BEFORE_PROOF')
+          enabled = dict(original)
+          enabled['DAILY_ALPHA_PROSPECT_V1_RUNTIME_ENABLED'] = 'true'
+          Path('/tmp/original-environment.json').write_text(
+              json.dumps({'Variables': original}, sort_keys=True)
+          )
+          Path('/tmp/proof-environment.json').write_text(
+              json.dumps({'Variables': enabled}, sort_keys=True)
+          )
+          print('Captured report Lambda environment without printing variable names or values.')
+          PY
+
+      - name: Temporarily enable V1 prospect runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-report \
+            --environment file:///tmp/proof-environment.json \
+            --query '{FunctionName:FunctionName,LastUpdateStatus:LastUpdateStatus}' \
+            --output json
+          aws lambda wait function-updated --function-name daily-alpha-report
+          cat >/tmp/prospect-smoke-request.json <<'JSON'
+          {"smoke_test":true}
+          JSON
+          aws lambda invoke \
+            --function-name daily-alpha-report \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/prospect-smoke-request.json \
+            /tmp/prospect-smoke-result.json >/tmp/prospect-smoke-meta.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('/tmp/prospect-smoke-result.json').read_text())
+          assert result['ok'] is True
+          assert result['prospect_v1_launch_gate_supported'] is True
+          assert result['prospect_v1_runtime_enabled'] is True
+          assert result['live_trading_enabled'] is False
+          print('Prospect runtime smoke gate enabled in staging.')
+          PY
+
+      - name: Invoke real V1 staging report and delivery gate
+        shell: bash
+        env:
+          PROOF_RUN_ID: prospect-v1-proof-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' >/tmp/prospect-v1-request.json
+          import json
+          import os
+          print(json.dumps({
+              'operation': 'PUBLISH_STAGING_REPORT',
+              'session': 'PROSPECT_V1_PROOF',
+              'run_id': os.environ['PROOF_RUN_ID'],
+          }))
+          PY
+          aws lambda invoke \
+            --function-name daily-alpha-report \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/prospect-v1-request.json \
+            /tmp/prospect-v1-result.json >/tmp/prospect-v1-invoke-meta.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          meta = json.loads(Path('/tmp/prospect-v1-invoke-meta.json').read_text())
+          if meta.get('FunctionError'):
+              raise SystemExit('PROSPECT_REPORT_LAMBDA_FUNCTION_ERROR')
+          result = json.loads(Path('/tmp/prospect-v1-result.json').read_text())
+          print(json.dumps({
+              'service': result.get('service'),
+              'status': result.get('status'),
+              'prospect_v1_runtime_enabled': result.get('prospect_v1_runtime_enabled'),
+              'prospect_initial_rollout_ready': (result.get('prospect_initial_rollout') or {}).get('ready'),
+              'live_trading_enabled': result.get('live_trading_enabled'),
+          }, sort_keys=True))
+          PY
+
+      - name: Restore exact prior report Lambda environment
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/original-environment.json
+          aws lambda update-function-configuration \
+            --function-name daily-alpha-report \
+            --environment file:///tmp/original-environment.json \
+            --query '{FunctionName:FunctionName,LastUpdateStatus:LastUpdateStatus}' \
+            --output json
+          aws lambda wait function-updated --function-name daily-alpha-report
+
+      - name: Verify exact environment restoration
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/original-vars.json
+          aws lambda get-function-configuration \
+            --function-name daily-alpha-report \
+            --query 'Environment.Variables' \
+            --output json > /tmp/restored-vars.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          original_raw = json.loads(Path('/tmp/original-vars.json').read_text())
+          restored_raw = json.loads(Path('/tmp/restored-vars.json').read_text())
+          original = original_raw if isinstance(original_raw, dict) else {}
+          restored = restored_raw if isinstance(restored_raw, dict) else {}
+          if original != restored:
+              raise SystemExit('REPORT_LAMBDA_ENVIRONMENT_RESTORE_MISMATCH')
+          print('Exact report Lambda environment restoration verified without printing environment data.')
+          PY
+
+      - name: Validate launch gate and render sanitized proof receipt
+        env:
+          PROOF_COMMIT: ${{ github.sha }}
+          PROOF_RUN_ID: ${{ github.run_id }}
+        run: |
+          python scripts/validate_prospect_v1_staging_proof.py \
+            --result /tmp/prospect-v1-result.json \
+            --output-json /tmp/prospect-v1-staging-proof.json \
+            --output-markdown /tmp/prospect-v1-staging-proof.md \
+            --commit "$PROOF_COMMIT" \
+            --run-id "$PROOF_RUN_ID" \
+            --environment-restored
+          cat /tmp/prospect-v1-staging-proof.json
+
+      - name: Publish sanitized staging proof to issue 337
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 337 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/prospect-v1-staging-proof.md
