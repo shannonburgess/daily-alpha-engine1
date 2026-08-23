@@ -87,7 +87,9 @@ class ProspectOpportunityAPIPage:
         if self.total_qualifying < self.total_matched:
             raise ProspectOpportunityOutputError("API_PAGE_MATCHED_TOTAL_EXCEEDS_CANONICAL_TOTAL")
         if self.total_matched < len(self.opportunities):
-            raise ProspectOpportunityOutputError("API_PAGE_MATCHED_TOTAL_CANNOT_BE_SMALLER_THAN_PAGE")
+            raise ProspectOpportunityOutputError(
+                "API_PAGE_MATCHED_TOTAL_CANNOT_BE_SMALLER_THAN_PAGE"
+            )
         if self.trading_authorized or self.live_trading_enabled:
             raise ProspectOpportunityOutputError("PROSPECT_API_PAGE_CANNOT_AUTHORIZE_TRADING")
 
@@ -129,7 +131,9 @@ def build_all_v1_prospect_outputs(
     board: ProspectOpportunityBoard,
 ) -> tuple[ProspectOpportunityOutput, ...]:
     """Build NEWSLETTER, DASHBOARD and API outputs from the same exact board."""
-    return tuple(build_prospect_output(board, channel=channel) for channel in ProspectOutputChannel)
+    return tuple(
+        build_prospect_output(board, channel=channel) for channel in ProspectOutputChannel
+    )
 
 
 def build_prospect_api_page(
@@ -159,7 +163,10 @@ def render_prospect_newsletter_html(board: ProspectOpportunityBoard) -> str:
     output = build_prospect_output(board, channel=ProspectOutputChannel.NEWSLETTER)
     top_cards = "".join(_top_pick_card(item) for item in output.top_picks)
     if not top_cards:
-        top_cards = '<p class="empty">No opportunities currently meet the governed qualification gates.</p>'
+        top_cards = (
+            '<p class="empty">No opportunities currently meet the governed '
+            "qualification gates.</p>"
+        )
 
     additional = output.complete_qualifying[len(output.top_picks) :]
     additional_rows = "".join(_opportunity_row(item) for item in additional)
@@ -168,7 +175,7 @@ def render_prospect_newsletter_html(board: ProspectOpportunityBoard) -> str:
             '<section class="full-board"><h2>Additional Qualified Opportunities</h2>'
             '<p>Every remaining valid setup is retained below in canonical rank order.</p>'
             '<table><thead><tr><th>Rank</th><th>Symbol</th><th>Status</th>'
-            '<th>Score</th><th>Sector</th><th>Expression</th></tr></thead>'
+            '<th>Score</th><th>Sector</th><th>Theme</th><th>Expression</th></tr></thead>'
             f'<tbody>{additional_rows}</tbody></table></section>'
         )
     else:
@@ -212,13 +219,31 @@ th {{ background: #13294b; color: white; }}
 
 
 def _top_pick_card(item: ProspectOpportunity) -> str:
+    details: list[str] = []
+    if item.thesis:
+        details.append(f"<div><strong>Thesis:</strong> {escape(item.thesis)}</div>")
+    if item.price is not None or item.average_volume is not None:
+        liquidity: list[str] = []
+        if item.price is not None:
+            liquidity.append(f"price ${item.price:,.2f}")
+        if item.average_volume is not None:
+            liquidity.append(f"30D avg volume {item.average_volume:,.0f}")
+        details.append(
+            f'<div><strong>Liquidity:</strong> {escape(" · ".join(liquidity))}</div>'
+        )
+    if item.invalidation:
+        details.append(
+            f"<div><strong>Invalidation:</strong> {escape(item.invalidation)}</div>"
+        )
     return (
         '<article class="top-card">'
         f'<div class="rank">Rank #{item.rank}</div>'
         f'<div class="symbol">{escape(item.symbol)}</div>'
         f'<div>{escape(item.lifecycle_status)} · Score {item.score:.2f}</div>'
-        f'<div>{escape(item.sector)} · {escape(item.instrument_selected)}</div>'
-        "</article>"
+        f'<div>{escape(item.sector)} · {escape(item.theme)} · '
+        f'{escape(item.instrument_selected)}</div>'
+        + "".join(details)
+        + "</article>"
     )
 
 
@@ -230,6 +255,7 @@ def _opportunity_row(item: ProspectOpportunity) -> str:
         f"<td>{escape(item.lifecycle_status)}</td>"
         f"<td>{item.score:.2f}</td>"
         f"<td>{escape(item.sector)}</td>"
+        f"<td>{escape(item.theme)}</td>"
         f"<td>{escape(item.instrument_selected)}</td>"
         "</tr>"
     )
