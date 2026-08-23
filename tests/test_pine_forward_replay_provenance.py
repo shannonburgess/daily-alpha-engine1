@@ -16,6 +16,7 @@ def _provenance(**overrides) -> ForwardReplayProvenance:
         "parameter_manifest_sha256": "1" * 64,
         "market_evidence_sha256": "2" * 64,
         "market_source_revision": "market-snapshot-2026-08-21",
+        "market_symbols": ("DINO",),
         "python_engine_revision": "pine_v24_parity.py@a25166c",
         "replay_start": START,
         "replay_end": END,
@@ -28,20 +29,23 @@ def _provenance(**overrides) -> ForwardReplayProvenance:
 
 
 def test_forward_replay_identity_is_deterministic_and_input_sensitive() -> None:
-    first = _provenance()
+    first = _provenance(market_symbols=("dino", "DINO"))
     second = _provenance()
     changed_market = _provenance(market_evidence_sha256="3" * 64)
 
+    assert first.market_symbols == ("DINO",)
     assert first.evidence_id == second.evidence_id
     assert first.evidence_id != changed_market.evidence_id
     assert len(first.evidence_id) == 64
 
 
-def test_forward_replay_requires_exact_hashes_and_time_bounds() -> None:
+def test_forward_replay_requires_exact_hashes_symbols_and_time_bounds() -> None:
     with pytest.raises(ValueError, match="parameter_manifest_sha256"):
         _provenance(parameter_manifest_sha256="not-a-hash")
     with pytest.raises(ValueError, match="strategy_source_blob_sha"):
         _provenance(strategy_source_blob_sha="not-a-git-blob")
+    with pytest.raises(ValueError, match="market_symbols"):
+        _provenance(market_symbols=())
     with pytest.raises(ValueError, match="replay_end cannot be before replay_start"):
         _provenance(replay_start=END, replay_end=START)
 
