@@ -11,6 +11,8 @@
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy",
         "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:UpdateAssumeRolePolicy",
         "iam:TagRole",
         "iam:UntagRole"
       ],
@@ -33,6 +35,7 @@
         "lambda:DeleteFunction",
         "lambda:GetFunction",
         "lambda:GetFunctionConfiguration",
+        "lambda:GetFunctionConcurrency",
         "lambda:UpdateFunctionCode",
         "lambda:UpdateFunctionConfiguration",
         "lambda:PutFunctionConcurrency",
@@ -56,6 +59,7 @@
         "events:PutTargets",
         "events:RemoveTargets",
         "events:ListTargetsByRule",
+        "events:ListTagsForResource",
         "events:TagResource",
         "events:UntagResource"
       ],
@@ -98,6 +102,7 @@
         "cloudwatch:PutMetricAlarm",
         "cloudwatch:DeleteAlarms",
         "cloudwatch:DescribeAlarms",
+        "cloudwatch:ListTagsForResource",
         "cloudwatch:TagResource",
         "cloudwatch:UntagResource"
       ],
