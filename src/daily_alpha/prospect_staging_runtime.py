@@ -55,13 +55,14 @@ class PreparedProspectStagingRuntime:
 class AwsProspectStagingRuntimePublisher:
     """Bridge the merged V1 prospect contracts into the existing staging report path.
 
-    The canonical stock-primary shortlist is treated as research discovery, not execution
-    authority. Every actionable lifecycle row remains qualifying even when optional ORATS
-    enrichment is unavailable. Pine/risk gates are not invented; the staging prospect board
-    represents them as ENTRY_WATCH research until later evidence exists.
+    The canonical stock-primary shortlist is the sole qualification/ranking source.
+    The complete OVTLYR classification artifact is a required lifecycle-audit source
+    only: it may add explicitly filtered rows, but it can never create a qualifying
+    prospect opportunity or change canonical shortlist rank.
     """
 
     SHORTLIST_KEY = "ovtlyr/shortlist/latest/shortlist.json"
+    CLASSIFICATIONS_KEY = "ovtlyr/shortlist/latest/classifications.json"
     DEFAULT_LATEST_PREFIX = "daily-alpha/outputs/latest"
     ACTIONABLE_LIFECYCLES = frozenset(
         {"NEW_BUY", "EMERGING", "LEADER", "ENTRY_WATCH", "RE_ENTRY"}
@@ -84,19 +85,33 @@ class AwsProspectStagingRuntimePublisher:
             raise ProspectStagingRuntimeError("PROSPECT_HISTORY_PREFIX_REQUIRED")
 
         shortlist_bytes = self._read(self.SHORTLIST_KEY)
-        try:
-            raw_rows = json.loads(shortlist_bytes.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ProspectStagingRuntimeError("PROSPECT_SHORTLIST_JSON_INVALID") from exc
-        if not isinstance(raw_rows, list):
-            raise ProspectStagingRuntimeError("PROSPECT_SHORTLIST_MUST_BE_ARRAY")
+        classifications_bytes = self._read(self.CLASSIFICATIONS_KEY)
+        raw_rows = _json_array(shortlist_bytes, error_prefix="PROSPECT_SHORTLIST")
+        raw_classifications = _json_array(
+            classifications_bytes,
+            error_prefix="PROSPECT_CLASSIFICATIONS",
+        )
 
-        assessments = tuple(
+        shortlist_assessments = tuple(
             _assessment_from_shortlist_row(raw)
             for raw in raw_rows
             if isinstance(raw, Mapping)
         )
-        source_revision = "S3_SHORTLIST_SHA256:" + hashlib.sha256(shortlist_bytes).hexdigest()
+        shortlist_symbols = {item.symbol for item in shortlist_assessments}
+        lifecycle_audit_assessments = tuple(
+            _assessment_from_classification_row(raw)
+            for raw in raw_classifications
+            if isinstance(raw, Mapping)
+            and str(raw.get("symbol") or "").strip().upper() not in shortlist_symbols
+        )
+        assessments = shortlist_assessments + lifecycle_audit_assessments
+
+        shortlist_sha = hashlib.sha256(shortlist_bytes).hexdigest()
+        classifications_sha = hashlib.sha256(classifications_bytes).hexdigest()
+        source_revision = (
+            "S3_PROSPECT_SOURCE_SHA256:"
+            f"shortlist={shortlist_sha};classifications={classifications_sha}"
+        )
         board = build_prospect_opportunity_board(
             items=assessments,
             as_of=as_of,
@@ -299,6 +314,39 @@ def _assessment_from_shortlist_row(raw: Mapping[str, Any]) -> CandidateAssessmen
     )
 
 
+def _assessment_from_classification_row(raw: Mapping[str, Any]) -> CandidateAssessment:
+    """Create an audit-only row; classification data can never qualify a name."""
+    symbol = str(raw.get("symbol") or "").strip().upper()
+    if not symbol:
+        raise ProspectStagingRuntimeError("PROSPECT_CLASSIFICATION_SYMBOL_REQUIRED")
+    lifecycle = str(raw.get("status") or "UNKNOWN").strip().upper()
+    reason = str(raw.get("reason") or "NOT_IN_CANONICAL_QUALIFYING_SHORTLIST").strip()
+    optionable_value = raw.get("optionable")
+    optionable = optionable_value if isinstance(optionable_value, bool) else None
+    filter_reason = f"NOT_IN_CANONICAL_QUALIFYING_SHORTLIST:{lifecycle}:{reason}"
+    industry = str(raw.get("industry") or "").strip()
+    return CandidateAssessment(
+        symbol=symbol,
+        ovtlyr_status=lifecycle,
+        bucket=CandidateBucket.NO_TRADE,
+        score=0.0,
+        instrument_selected="NONE",
+        fallback_reason=filter_reason,
+        sector=str(raw.get("sector") or "UNKNOWN").strip() or "UNKNOWN",
+        sector_net_score=0,
+        pine_entry=False,
+        risk_gate_passed=False,
+        optionable=optionable,
+        display_label=str(raw.get("display_label") or "").strip(),
+        classification_reason=reason,
+        industry=industry,
+        theme=industry,
+        trend=str(raw.get("trend") or "").strip(),
+        momentum=str(raw.get("momentum") or "").strip(),
+        risk_context=(filter_reason,),
+    )
+
+
 def _inject_prospect_section(html: str, board: ProspectOpportunityBoard) -> str:
     if "<main>" not in html:
         raise ProspectStagingRuntimeError("PROSPECT_BASE_NEWSLETTER_MAIN_MISSING")
@@ -398,6 +446,16 @@ def _output_for(
         if output.channel is channel:
             return output
     raise ProspectStagingRuntimeError(f"PROSPECT_OUTPUT_MISSING:{channel.value}")
+
+
+def _json_array(body: bytes, *, error_prefix: str) -> list[object]:
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProspectStagingRuntimeError(f"{error_prefix}_JSON_INVALID") from exc
+    if not isinstance(payload, list):
+        raise ProspectStagingRuntimeError(f"{error_prefix}_MUST_BE_ARRAY")
+    return payload
 
 
 def _json_bytes(payload: object) -> bytes:
