@@ -7,6 +7,7 @@ from .pine_forward_event_classification import partition_forward_events
 from .pine_forward_reference import ReceiptBoundForwardParityEvaluation
 from .pine_historical_reference import HistoricalV24Evaluation
 from .pine_historical_reference_locked import LockedHistoricalV24Evaluation
+from .pine_v24_parity import PINE_V24_SOURCE_BLOB_SHA
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +113,12 @@ def evaluate_v24_parity_proof_gate(
             blockers.append("FORWARD_PARITY_VERSION_MISMATCH")
         if not forward_replay_inputs_locked:
             blockers.append("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED")
+        elif (
+            forward_evaluation.replay_provenance is not None
+            and forward_evaluation.replay_provenance.strategy_source_blob_sha
+            != PINE_V24_SOURCE_BLOB_SHA
+        ):
+            blockers.append("FORWARD_REPLAY_SOURCE_MISMATCH")
         if forward_deployment_evidence is None:
             blockers.append("FORWARD_PARITY_EVALUATION_NOT_DEPLOYMENT_BOUND")
         else:
