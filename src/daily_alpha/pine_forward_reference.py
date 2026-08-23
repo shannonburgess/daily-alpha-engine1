@@ -11,6 +11,7 @@ from .pine_forward_deployment_evidence import (
     ForwardParityBookEvidence,
     ForwardParityDeploymentEvidence,
 )
+from .pine_forward_event_classification import partition_forward_events
 from .pine_parity_compare import ParityReport, ReferenceSignal, compare_pine_signals
 from .pine_v24_parity import ParitySignal
 
@@ -217,11 +218,19 @@ def parse_forward_deployment_reference_snapshot(
     expected_model_id: str,
     expected_strategy_version: str,
 ) -> PersistedReferenceSnapshot:
-    """Convert only validated deployment-receipt book evidence into source references."""
+    """Convert validated receipt evidence after removing only exact registered E2E traffic."""
     if book.account_id != expected_model_id:
         raise ValueError("deployment receipt book does not match requested model")
+    partition = partition_forward_events(book)
+    reference_state = {
+        "events": [event.to_dict() for event in partition.reference_candidates],
+        "event_count_visible": partition.reference_candidate_count,
+        "event_limit": book.event_limit,
+        "scan_items_evaluated": book.scan_items_evaluated,
+        "scan_truncated": False,
+    }
     return parse_shadow_book_reference_snapshot(
-        book.to_reference_book_state(),
+        reference_state,
         expected_model_id=expected_model_id,
         expected_strategy_version=expected_strategy_version,
         expected_timeframe="D",
@@ -235,7 +244,7 @@ def evaluate_forward_deployment_reference(
     expected_strategy_version: str,
     python_signals: Iterable[ParitySignal],
 ) -> ReceiptBoundForwardParityEvaluation:
-    """Compare Python signals only against exact events inside one trusted deployment receipt."""
+    """Compare Python signals only against exact non-E2E events in one trusted receipt."""
     if expected_model_id == "PAPER_SHADOW_V24":
         book = deployment.sh24
     elif expected_model_id == "PAPER_SHADOW_V25":
