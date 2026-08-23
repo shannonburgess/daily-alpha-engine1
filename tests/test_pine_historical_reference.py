@@ -1,9 +1,8 @@
 from daily_alpha.pine_historical_reference import (
+    HistoricalReferenceError,
     build_historical_v24_reference,
     evaluate_historical_v24_reference,
-    HistoricalReferenceError,
 )
-
 
 MARKET_HEADER = (
     "time,symbol,open,high,low,close,volume,earnings_state,earnings_actual,"
