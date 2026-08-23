@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadDailyAlphaStagingStackProof",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:ListStackResources"
+      ],
+      "Resource": "arn:aws:cloudformation:us-east-2:490809405132:stack/daily-alpha-staging-data-plane-foundation/*"
+    },
+    {
+      "Sid": "ReadDailyAlphaStagingRawEvidenceControls",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketVersioning",
+        "s3:GetBucketPolicy"
+      ],
+      "Resource": "arn:aws:s3:::daily-alpha-staging-raw-490809405132-us-east-2"
+    },
+    {
+      "Sid": "ReadDailyAlphaStagingTableRecoveryControls",
+      "Effect": "Allow",
+      "Action": "dynamodb:DescribeContinuousBackups",
+      "Resource": [
+        "arn:aws:dynamodb:us-east-2:490809405132:table/daily-alpha-staging-data-idempotency",
+        "arn:aws:dynamodb:us-east-2:490809405132:table/daily-alpha-staging-data-current-state"
+      ]
+    }
+  ]
+}
