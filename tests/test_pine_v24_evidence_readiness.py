@@ -41,20 +41,9 @@ def _manifest() -> str:
 
 
 def _market_csv(days: int = 35) -> str:
-    header = ",".join(
-        (
-            "time",
-            "symbol",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "earnings_state",
-            "earnings_actual",
-            "earnings_known_at",
-            "source_id",
-        )
+    header = (
+        "time,symbol,open,high,low,close,volume,earnings_state,earnings_actual,"
+        "earnings_known_at,source_id"
     )
     rows = [header]
     for index in range(days):
