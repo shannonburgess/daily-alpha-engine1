@@ -7,7 +7,7 @@ from scripts.render_data_feed_ingestion_template import render
 
 
 TEMPLATE = Path("infra/aws/staging/data-feed-ingestion.template.json")
-SOURCE = Path("lambda_handlers/data_feed_ingest.py")
+SOURCE = Path("staging_lambda_handlers/data_feed_ingest.py")
 CFN_POLICY = Path("infra/aws/staging/data-feed-ingestion-cloudformation-role-policy.json")
 GITHUB_POLICY = Path("infra/aws/staging/data-feed-ingestion-github-deploy-policy.json")
 
