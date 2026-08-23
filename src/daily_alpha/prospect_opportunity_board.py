@@ -44,6 +44,19 @@ class ProspectOpportunity:
     selected_delta: float | None
     selected_spread_pct: float | None
     unusual_options_activity: bool
+    confidence: float | None = None
+    thesis: str = ""
+    evidence_lineage: tuple[str, ...] = ()
+    industry: str = ""
+    theme: str = ""
+    trend: str = ""
+    momentum: str = ""
+    price: float | None = None
+    average_volume: float | None = None
+    average_daily_dollar_volume: float | None = None
+    catalyst_context: tuple[str, ...] = ()
+    risk_context: tuple[str, ...] = ()
+    invalidation: str = ""
 
     def __post_init__(self) -> None:
         if self.rank < 1:
@@ -67,6 +80,8 @@ class FilteredProspectCandidate:
     bucket: str
     score: float
     reason: str
+    thesis: str = ""
+    evidence_lineage: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.candidate_id.strip():
@@ -90,6 +105,7 @@ class OpportunityBoardFilter:
     lifecycle_statuses: tuple[str, ...] = ()
     buckets: tuple[str, ...] = ()
     sectors: tuple[str, ...] = ()
+    themes: tuple[str, ...] = ()
     instrument_selected: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -101,6 +117,7 @@ class OpportunityBoardFilter:
         )
         object.__setattr__(self, "buckets", _normalize_filter_values(self.buckets, "BUCKET"))
         object.__setattr__(self, "sectors", _normalize_filter_values(self.sectors, "SECTOR"))
+        object.__setattr__(self, "themes", _normalize_filter_values(self.themes, "THEME"))
         object.__setattr__(
             self,
             "instrument_selected",
@@ -122,6 +139,7 @@ class OpportunityBoardFilter:
                 self.lifecycle_statuses,
                 self.buckets,
                 self.sectors,
+                self.themes,
                 self.instrument_selected,
             )
         )
@@ -132,6 +150,7 @@ class OpportunityBoardFilter:
             (self.lifecycle_statuses, opportunity.lifecycle_status),
             (self.buckets, opportunity.bucket),
             (self.sectors, opportunity.sector),
+            (self.themes, opportunity.theme),
             (self.instrument_selected, opportunity.instrument_selected),
         )
         return all(not allowed or value.strip().upper() in allowed for allowed, value in checks)
@@ -142,6 +161,7 @@ class OpportunityBoardFilter:
             "lifecycle_statuses": self.lifecycle_statuses,
             "buckets": self.buckets,
             "sectors": self.sectors,
+            "themes": self.themes,
             "instrument_selected": self.instrument_selected,
         }
 
@@ -352,6 +372,19 @@ def build_prospect_opportunity_board(
                     selected_delta=candidate.selected_delta,
                     selected_spread_pct=candidate.selected_spread_pct,
                     unusual_options_activity=candidate.unusual_options_activity,
+                    confidence=candidate.confidence,
+                    thesis=candidate.classification_reason,
+                    evidence_lineage=(source_revision,),
+                    industry=candidate.industry,
+                    theme=candidate.theme or candidate.industry,
+                    trend=candidate.trend,
+                    momentum=candidate.momentum,
+                    price=candidate.price,
+                    average_volume=candidate.average_volume,
+                    average_daily_dollar_volume=_dollar_volume(candidate),
+                    catalyst_context=candidate.catalyst_context,
+                    risk_context=candidate.risk_context,
+                    invalidation=candidate.invalidation,
                 )
             )
         else:
@@ -363,6 +396,8 @@ def build_prospect_opportunity_board(
                     bucket=candidate.bucket.value,
                     score=candidate.score,
                     reason=_filtered_reason(candidate),
+                    thesis=candidate.classification_reason,
+                    evidence_lineage=(source_revision,),
                 )
             )
 
@@ -387,6 +422,14 @@ def _candidate_id(
             "candidate": candidate.to_dict(),
         }
     )
+
+
+def _dollar_volume(candidate: CandidateAssessment) -> float | None:
+    if candidate.price is None or candidate.average_volume is None:
+        return None
+    if candidate.price <= 0 or candidate.average_volume <= 0:
+        return None
+    return candidate.price * candidate.average_volume
 
 
 def _filtered_reason(candidate: CandidateAssessment) -> str:

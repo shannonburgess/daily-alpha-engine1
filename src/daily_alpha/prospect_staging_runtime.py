@@ -55,13 +55,14 @@ class PreparedProspectStagingRuntime:
 class AwsProspectStagingRuntimePublisher:
     """Bridge the merged V1 prospect contracts into the existing staging report path.
 
-    The canonical stock-primary shortlist is treated as research discovery, not execution
-    authority. Every actionable lifecycle row remains qualifying even when optional ORATS
-    enrichment is unavailable. Pine/risk gates are not invented; the staging prospect board
-    represents them as ENTRY_WATCH research until later evidence exists.
+    The canonical stock-primary shortlist is the sole qualification/ranking source.
+    The complete OVTLYR classification artifact is a required lifecycle-audit source
+    only: it may add explicitly filtered rows, but it can never create a qualifying
+    prospect opportunity or change canonical shortlist rank.
     """
 
     SHORTLIST_KEY = "ovtlyr/shortlist/latest/shortlist.json"
+    CLASSIFICATIONS_KEY = "ovtlyr/shortlist/latest/classifications.json"
     DEFAULT_LATEST_PREFIX = "daily-alpha/outputs/latest"
     ACTIONABLE_LIFECYCLES = frozenset(
         {"NEW_BUY", "EMERGING", "LEADER", "ENTRY_WATCH", "RE_ENTRY"}
@@ -84,19 +85,33 @@ class AwsProspectStagingRuntimePublisher:
             raise ProspectStagingRuntimeError("PROSPECT_HISTORY_PREFIX_REQUIRED")
 
         shortlist_bytes = self._read(self.SHORTLIST_KEY)
-        try:
-            raw_rows = json.loads(shortlist_bytes.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ProspectStagingRuntimeError("PROSPECT_SHORTLIST_JSON_INVALID") from exc
-        if not isinstance(raw_rows, list):
-            raise ProspectStagingRuntimeError("PROSPECT_SHORTLIST_MUST_BE_ARRAY")
+        classifications_bytes = self._read(self.CLASSIFICATIONS_KEY)
+        raw_rows = _json_array(shortlist_bytes, error_prefix="PROSPECT_SHORTLIST")
+        raw_classifications = _json_array(
+            classifications_bytes,
+            error_prefix="PROSPECT_CLASSIFICATIONS",
+        )
 
-        assessments = tuple(
+        shortlist_assessments = tuple(
             _assessment_from_shortlist_row(raw)
             for raw in raw_rows
             if isinstance(raw, Mapping)
         )
-        source_revision = "S3_SHORTLIST_SHA256:" + hashlib.sha256(shortlist_bytes).hexdigest()
+        shortlist_symbols = {item.symbol for item in shortlist_assessments}
+        lifecycle_audit_assessments = tuple(
+            _assessment_from_classification_row(raw)
+            for raw in raw_classifications
+            if isinstance(raw, Mapping)
+            and str(raw.get("symbol") or "").strip().upper() not in shortlist_symbols
+        )
+        assessments = shortlist_assessments + lifecycle_audit_assessments
+
+        shortlist_sha = hashlib.sha256(shortlist_bytes).hexdigest()
+        classifications_sha = hashlib.sha256(classifications_bytes).hexdigest()
+        source_revision = (
+            "S3_PROSPECT_SOURCE_SHA256:"
+            f"shortlist={shortlist_sha};classifications={classifications_sha}"
+        )
         board = build_prospect_opportunity_board(
             items=assessments,
             as_of=as_of,
@@ -244,7 +259,29 @@ def _assessment_from_shortlist_row(raw: Mapping[str, Any]) -> CandidateAssessmen
     elif orats_reason:
         fallback_reason += f":{orats_reason}"
 
+    catalyst_context = list(_context_values(raw.get("catalyst_context")))
+    smart_money_bonus = _number(raw.get("smart_money_bonus"), default=0.0)
+    trump_policy_bonus = _number(raw.get("trump_policy_bonus"), default=0.0)
+    if smart_money_bonus > 0:
+        catalyst_context.append(f"SMART_MONEY_RANKING_BONUS={smart_money_bonus:g}")
+    if trump_policy_bonus > 0:
+        catalyst_context.append(f"POLICY_RANKING_BONUS={trump_policy_bonus:g}")
+    for key, label in (
+        ("congressional_rank", "CONGRESSIONAL_RANK"),
+        ("institutional_rank", "INSTITUTIONAL_RANK"),
+        ("trump_policy_rank", "POLICY_RANK"),
+    ):
+        rank = _optional_integer(raw.get(key))
+        if rank is not None:
+            catalyst_context.append(f"{label}={rank}")
+
+    risk_context = list(_context_values(raw.get("risk_context")))
+    if fallback_reason:
+        risk_context.append(fallback_reason)
+
     preferred_expression = "OPTION" if selected_expiration else "STOCK"
+    industry = str(raw.get("industry") or "").strip()
+    theme = str(raw.get("theme") or industry).strip()
     return CandidateAssessment(
         symbol=symbol,
         ovtlyr_status=lifecycle,
@@ -262,6 +299,51 @@ def _assessment_from_shortlist_row(raw: Mapping[str, Any]) -> CandidateAssessmen
         selected_delta=_optional_number(raw.get("selected_delta")),
         selected_spread_pct=_optional_number(raw.get("selected_spread_pct")),
         unusual_options_activity=unusual,
+        confidence=_optional_number(raw.get("confidence")),
+        display_label=str(raw.get("display_label") or "").strip(),
+        classification_reason=str(raw.get("classification_reason") or "").strip(),
+        industry=industry,
+        theme=theme,
+        trend=str(raw.get("trend") or "").strip(),
+        momentum=str(raw.get("momentum") or "").strip(),
+        price=_optional_number(raw.get("price")),
+        average_volume=_optional_number(raw.get("average_volume")),
+        catalyst_context=tuple(dict.fromkeys(catalyst_context)),
+        risk_context=tuple(dict.fromkeys(risk_context)),
+        invalidation=str(raw.get("invalidation") or "").strip(),
+    )
+
+
+def _assessment_from_classification_row(raw: Mapping[str, Any]) -> CandidateAssessment:
+    """Create an audit-only row; classification data can never qualify a name."""
+    symbol = str(raw.get("symbol") or "").strip().upper()
+    if not symbol:
+        raise ProspectStagingRuntimeError("PROSPECT_CLASSIFICATION_SYMBOL_REQUIRED")
+    lifecycle = str(raw.get("status") or "UNKNOWN").strip().upper()
+    reason = str(raw.get("reason") or "NOT_IN_CANONICAL_QUALIFYING_SHORTLIST").strip()
+    optionable_value = raw.get("optionable")
+    optionable = optionable_value if isinstance(optionable_value, bool) else None
+    filter_reason = f"NOT_IN_CANONICAL_QUALIFYING_SHORTLIST:{lifecycle}:{reason}"
+    industry = str(raw.get("industry") or "").strip()
+    return CandidateAssessment(
+        symbol=symbol,
+        ovtlyr_status=lifecycle,
+        bucket=CandidateBucket.NO_TRADE,
+        score=0.0,
+        instrument_selected="NONE",
+        fallback_reason=filter_reason,
+        sector=str(raw.get("sector") or "UNKNOWN").strip() or "UNKNOWN",
+        sector_net_score=0,
+        pine_entry=False,
+        risk_gate_passed=False,
+        optionable=optionable,
+        display_label=str(raw.get("display_label") or "").strip(),
+        classification_reason=reason,
+        industry=industry,
+        theme=industry,
+        trend=str(raw.get("trend") or "").strip(),
+        momentum=str(raw.get("momentum") or "").strip(),
+        risk_context=(filter_reason,),
     )
 
 
@@ -271,15 +353,7 @@ def _inject_prospect_section(html: str, board: ProspectOpportunityBoard) -> str:
     if 'class="prospect-opportunity-board"' in html:
         raise ProspectStagingRuntimeError("PROSPECT_SECTION_ALREADY_PRESENT")
 
-    top_cards = "".join(
-        '<article class="candidate-card prospect-top-pick">'
-        f'<div class="section-kicker">RANK #{item.rank}</div>'
-        f'<h3>{escape(item.symbol)}</h3>'
-        f'<p><strong>{escape(item.lifecycle_status)}</strong> · Score {item.score:.2f}</p>'
-        f'<p>{escape(item.sector)} · research expression {escape(item.instrument_selected)}</p>'
-        "</article>"
-        for item in board.top_picks
-    )
+    top_cards = "".join(_top_pick_card(item) for item in board.top_picks)
     if not top_cards:
         top_cards = (
             '<p class="section-note">No opportunities currently meet the governed '
@@ -293,6 +367,7 @@ def _inject_prospect_section(html: str, board: ProspectOpportunityBoard) -> str:
         f"<td>{escape(item.lifecycle_status)}</td>"
         f"<td>{item.score:.2f}</td>"
         f"<td>{escape(item.sector)}</td>"
+        f"<td>{escape(item.theme)}</td>"
         f"<td>{escape(item.instrument_selected)}</td>"
         "</tr>"
         for item in board.additional_opportunities
@@ -301,7 +376,7 @@ def _inject_prospect_section(html: str, board: ProspectOpportunityBoard) -> str:
         additional = (
             '<div class="table-wrap"><table><thead><tr>'
             "<th>Rank</th><th>Symbol</th><th>Status</th><th>Score</th>"
-            "<th>Sector</th><th>Expression</th>"
+            "<th>Sector</th><th>Theme</th><th>Expression</th>"
             f"</tr></thead><tbody>{additional_rows}</tbody></table></div>"
         )
     else:
@@ -332,6 +407,37 @@ def _inject_prospect_section(html: str, board: ProspectOpportunityBoard) -> str:
     return html.replace("<main>", f"<main>{section}", 1)
 
 
+def _top_pick_card(item) -> str:
+    thesis = (
+        f'<p><strong>Thesis:</strong> {escape(item.thesis)}</p>'
+        if item.thesis
+        else ""
+    )
+    liquidity = ""
+    if item.price is not None or item.average_volume is not None:
+        pieces: list[str] = []
+        if item.price is not None:
+            pieces.append(f"price ${item.price:,.2f}")
+        if item.average_volume is not None:
+            pieces.append(f"30D avg volume {item.average_volume:,.0f}")
+        liquidity = f'<p><strong>Liquidity:</strong> {escape(" · ".join(pieces))}</p>'
+    invalidation = (
+        f'<p><strong>Invalidation:</strong> {escape(item.invalidation)}</p>'
+        if item.invalidation
+        else ""
+    )
+    return (
+        '<article class="candidate-card prospect-top-pick">'
+        f'<div class="section-kicker">RANK #{item.rank}</div>'
+        f'<h3>{escape(item.symbol)}</h3>'
+        f'<p><strong>{escape(item.lifecycle_status)}</strong> · Score {item.score:.2f}</p>'
+        f'<p>{escape(item.sector)} · {escape(item.theme)} · research expression '
+        f'{escape(item.instrument_selected)}</p>'
+        f"{thesis}{liquidity}{invalidation}"
+        "</article>"
+    )
+
+
 def _output_for(
     outputs: tuple[ProspectOpportunityOutput, ...],
     channel: ProspectOutputChannel,
@@ -342,9 +448,31 @@ def _output_for(
     raise ProspectStagingRuntimeError(f"PROSPECT_OUTPUT_MISSING:{channel.value}")
 
 
+def _json_array(body: bytes, *, error_prefix: str) -> list[object]:
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProspectStagingRuntimeError(f"{error_prefix}_JSON_INVALID") from exc
+    if not isinstance(payload, list):
+        raise ProspectStagingRuntimeError(f"{error_prefix}_MUST_BE_ARRAY")
+    return payload
+
+
 def _json_bytes(payload: object) -> bytes:
     serialized = json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n"
     return serialized.encode("utf-8")
+
+
+def _context_values(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return (cleaned,) if cleaned else ()
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    cleaned = str(value).strip()
+    return (cleaned,) if cleaned else ()
 
 
 def _number(value: object, *, default: float) -> float:
@@ -368,6 +496,15 @@ def _integer(value: object, *, default: int) -> int:
         return int(float(value))
     except (TypeError, ValueError):
         return default
+
+
+def _optional_integer(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 __all__ = [
