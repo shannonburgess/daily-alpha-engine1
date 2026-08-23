@@ -117,6 +117,7 @@ def test_orats_request_limit_never_truncates_canonical_prospect_universe(tmp_pat
 
     outputs = write_research_shortlist_outputs(tmp_path / "shortlist", result)
     shortlist_bytes = outputs["shortlist_json"].read_bytes()
+    classifications_bytes = outputs["classifications_json"].read_bytes()
     published_rows = json.loads(shortlist_bytes)
     assert len(published_rows) == 50
     assert [row["rank"] for row in published_rows] == list(range(1, 51))
@@ -124,6 +125,7 @@ def test_orats_request_limit_never_truncates_canonical_prospect_universe(tmp_pat
 
     s3 = _S3()
     s3.objects["ovtlyr/shortlist/latest/shortlist.json"] = shortlist_bytes
+    s3.objects["ovtlyr/shortlist/latest/classifications.json"] = classifications_bytes
     s3.objects["daily-alpha/outputs/latest/newsletter.html"] = (
         b"<!doctype html><html><body><main>"
         b"<section>Existing governed research</section></main></body></html>"
@@ -139,7 +141,12 @@ def test_orats_request_limit_never_truncates_canonical_prospect_universe(tmp_pat
     assert len(prepared.board.top_picks) == 3
     assert len(prepared.board.additional_opportunities) == 47
     assert {item.symbol for item in prepared.board.opportunities} == set(symbols)
-    assert all(item.evidence_lineage == (prepared.board.source_revision,) for item in prepared.board.opportunities)
+    assert all(
+        item.evidence_lineage == (prepared.board.source_revision,)
+        for item in prepared.board.opportunities
+    )
+    assert "shortlist=" in prepared.board.source_revision
+    assert "classifications=" in prepared.board.source_revision
 
     first = prepared.board.opportunities[0]
     assert first.thesis
