@@ -3,19 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
-from .pine_parity_compare import ParityReport
+from .pine_forward_event_classification import partition_forward_events
+from .pine_forward_reference import ReceiptBoundForwardParityEvaluation
 from .pine_v25_historical_reference import HistoricalV25Evaluation
 
 
 @dataclass(frozen=True, slots=True)
 class V25ParityProofGate:
-    """Fail-closed evidence gate for SH25 challenger parity completion.
-
-    The gate is evidence-only. It cannot authorize promotion, PAPER execution, broker routing, or
-    live trading. Historical proof must be exact, parameter-locked, and contain at least one
-    genuine TradingView strategy event. Forward proof must be exact, non-empty, and bound to a
-    validated machine deployment receipt for the persisted-source monitor.
-    """
+    """Fail-closed evidence gate for SH25 challenger parity completion."""
 
     historical_exact: bool
     historical_reference_signal_count: int
@@ -58,15 +53,10 @@ class V25ParityProofGate:
 def evaluate_v25_parity_proof_gate(
     *,
     historical_evaluation: HistoricalV25Evaluation | None,
-    forward_report: ParityReport | None,
+    forward_evaluation: ReceiptBoundForwardParityEvaluation | None,
     forward_deployment_evidence: ForwardParityDeploymentEvidence | None,
 ) -> V25ParityProofGate:
-    """Evaluate minimum SH25 evidence while preserving strict book/source isolation.
-
-    A caller cannot assert deployment with a free boolean. The forward monitor must already have
-    been validated from the trusted staging receipt, including canonical repository/processor
-    identity, exact SH24/SH25 books, complete scans and hard-false trading/live flags.
-    """
+    """Evaluate SH25 proof using only receipt-bound non-E2E forward strategy events."""
     blockers: list[str] = []
 
     if historical_evaluation is None:
@@ -94,13 +84,32 @@ def evaluate_v25_parity_proof_gate(
     if not forward_monitor_deployed:
         blockers.append("FORWARD_PARITY_MONITOR_DEPLOYMENT_EVIDENCE_MISSING")
 
-    if forward_report is None:
+    if forward_evaluation is None:
         forward_exact = False
         forward_reference_signal_count = 0
         blockers.append("FORWARD_PARITY_EVIDENCE_MISSING")
     else:
-        forward_exact = forward_report.exact
-        forward_reference_signal_count = forward_report.reference_count
+        forward_exact = forward_evaluation.exact
+        forward_reference_signal_count = forward_evaluation.report.reference_count
+        if forward_evaluation.model_id != "PAPER_SHADOW_V25":
+            blockers.append("FORWARD_PARITY_BOOK_MISMATCH")
+        if forward_evaluation.strategy_version != "2.5":
+            blockers.append("FORWARD_PARITY_VERSION_MISMATCH")
+        if forward_deployment_evidence is None:
+            blockers.append("FORWARD_PARITY_EVALUATION_NOT_DEPLOYMENT_BOUND")
+        else:
+            if forward_evaluation.deployment_commit_sha != forward_deployment_evidence.commit_sha:
+                blockers.append("FORWARD_PARITY_DEPLOYMENT_COMMIT_MISMATCH")
+            if (
+                forward_evaluation.processor_code_sha256
+                != forward_deployment_evidence.processor_code_sha256
+            ):
+                blockers.append("FORWARD_PARITY_PROCESSOR_CODE_MISMATCH")
+            genuine_count = partition_forward_events(
+                forward_deployment_evidence.sh25
+            ).reference_candidate_count
+            if forward_evaluation.reference_snapshot.event_count_visible != genuine_count:
+                blockers.append("FORWARD_PARITY_RECEIPT_EVENT_COUNT_MISMATCH")
         if not forward_exact:
             blockers.append("FORWARD_PARITY_MISMATCH")
         if forward_reference_signal_count == 0:
