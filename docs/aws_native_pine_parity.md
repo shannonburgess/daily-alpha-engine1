@@ -11,6 +11,18 @@ activation resources exist.
 This document defines the next migration boundary. It does not deploy strategy compute, mutate
 TradingView, create a broker route, enable live trading, or authorize capital.
 
+## Current integration baseline
+
+Authoritative `main` is now `e8a14a716d2eecdb79427250ea5861b5ea681c69`, which adds the
+merged V1 prospect opportunity-board launch contract and the research-only point-in-time
+model-training/walk-forward framework. Those changes are independent of SH24/SH25 strategy
+semantics. This parity branch must continue to validate against that current main without
+absorbing product-presentation or adaptive-model logic into the frozen control strategy.
+
+The latest complete deployed forward-monitor evidence remains the issue #213 staging receipt
+from `9fd6affcbdd7914ff611b029103c95794c7ed3bb`; later main changes are repo/product research
+contracts and do not constitute a new parity-runtime deployment receipt.
+
 ## Frozen source authority
 
 ### SH24 CONTROL
