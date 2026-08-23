@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
 import pytest
-
 from daily_alpha.opportunity_contracts import (
     BusinessLine,
     ConflictDisclosure,
