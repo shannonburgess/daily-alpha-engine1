@@ -23,6 +23,8 @@ jobs:
     environment: staging
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      CFN_EXECUTION_ROLE_ARN: arn:aws:iam::490809405132:role/DailyAlphaCloudFormationStagingRole
 
     steps:
       - name: Check out repository
@@ -104,7 +106,26 @@ jobs:
             --stack-name daily-alpha-staging-data-plane-foundation \
             --template-file infra/aws/staging/data-plane-foundation.template.json \
             --parameter-overrides Environment=staging \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --no-fail-on-empty-changeset
+
+      - name: Print CloudFormation failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          echo "=== stack status ==="
+          aws cloudformation describe-stacks \
+            --stack-name daily-alpha-staging-data-plane-foundation \
+            --query 'Stacks[0].{Status:StackStatus,Reason:StackStatusReason}' \
+            --output json \
+            --no-cli-pager
+          echo "=== non-cancelled create/delete failures ==="
+          aws cloudformation describe-stack-events \
+            --stack-name daily-alpha-staging-data-plane-foundation \
+            --query "StackEvents[?(ResourceStatus=='CREATE_FAILED' || ResourceStatus=='DELETE_FAILED') && ResourceStatusReason!='Resource creation cancelled'].[Timestamp,LogicalResourceId,ResourceType,ResourceStatus,ResourceStatusReason]" \
+            --output text \
+            --no-cli-pager
 
       - name: Capture deployed stack resources
         run: |
