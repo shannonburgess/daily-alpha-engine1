@@ -3,32 +3,7 @@ from datetime import UTC, datetime
 
 from daily_alpha.prospect_staging_runtime import AwsProspectStagingRuntimePublisher
 
-
 NOW = datetime(2026, 8, 24, 13, 5, tzinfo=UTC)
-
-
-class _Body:
-    def __init__(self, value: bytes):
-        self.value = value
-
-    def read(self) -> bytes:
-        return self.value
-
-
-class _S3:
-    def __init__(self):
-        self.objects: dict[str, bytes] = {}
-
-    def get_object(self, *, Bucket, Key):
-        assert Bucket == "unit-bucket"
-        return {"Body": _Body(self.objects[Key])}
-
-    def put_object(self, *, Bucket, Key, Body, ContentType, ServerSideEncryption):
-        assert Bucket == "unit-bucket"
-        assert ContentType
-        assert ServerSideEncryption == "AES256"
-        self.objects[Key] = bytes(Body)
-        return {}
 
 
 def _row(rank: int, *, status: str = "LEADER", orats_status: str = "ENRICHED"):
@@ -55,6 +30,30 @@ def _row(rank: int, *, status: str = "LEADER", orats_status: str = "ENRICHED"):
         "selected_volume": 200 if orats_status == "ENRICHED" else 0,
         "selected_open_interest": 100 if orats_status == "ENRICHED" else 0,
     }
+
+
+class _Body:
+    def __init__(self, value: bytes):
+        self.value = value
+
+    def read(self) -> bytes:
+        return self.value
+
+
+class _S3:
+    def __init__(self):
+        self.objects: dict[str, bytes] = {}
+
+    def get_object(self, *, Bucket, Key):
+        assert Bucket == "unit-bucket"
+        return {"Body": _Body(self.objects[Key])}
+
+    def put_object(self, *, Bucket, Key, Body, ContentType, ServerSideEncryption):
+        assert Bucket == "unit-bucket"
+        assert ContentType
+        assert ServerSideEncryption == "AES256"
+        self.objects[Key] = bytes(Body)
+        return {}
 
 
 def _publisher(rows):
