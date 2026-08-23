@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
+
 from daily_alpha.opportunity_contracts import (
     BusinessLine,
     ConflictDisclosure,
@@ -21,7 +22,6 @@ from daily_alpha.opportunity_contracts import (
     PublicPrivateOpportunityGraph,
     VehicleType,
 )
-
 
 AS_OF = datetime(2026, 8, 23, 14, 0, tzinfo=UTC)
 
