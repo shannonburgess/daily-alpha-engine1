@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from html import escape
-from typing import Any, Mapping
+from typing import Any
 
 from .candidates import CandidateAssessment, CandidateBucket
 from .prospect_launch_gate import (
@@ -243,12 +244,13 @@ def _assessment_from_shortlist_row(raw: Mapping[str, Any]) -> CandidateAssessmen
     elif orats_reason:
         fallback_reason += f":{orats_reason}"
 
+    preferred_expression = "OPTION" if selected_expiration else "STOCK"
     return CandidateAssessment(
         symbol=symbol,
         ovtlyr_status=lifecycle,
         bucket=bucket,
         score=_number(raw.get("score"), default=0.0),
-        instrument_selected="NONE",
+        instrument_selected=preferred_expression,
         fallback_reason=fallback_reason,
         sector=str(raw.get("sector") or "UNKNOWN").strip() or "UNKNOWN",
         sector_net_score=_integer(raw.get("sector_net_score"), default=0),
@@ -279,7 +281,10 @@ def _inject_prospect_section(html: str, board: ProspectOpportunityBoard) -> str:
         for item in board.top_picks
     )
     if not top_cards:
-        top_cards = '<p class="section-note">No opportunities currently meet the governed qualification gates.</p>'
+        top_cards = (
+            '<p class="section-note">No opportunities currently meet the governed '
+            "qualification gates.</p>"
+        )
 
     additional_rows = "".join(
         "<tr>"
@@ -295,11 +300,15 @@ def _inject_prospect_section(html: str, board: ProspectOpportunityBoard) -> str:
     if additional_rows:
         additional = (
             '<div class="table-wrap"><table><thead><tr>'
-            "<th>Rank</th><th>Symbol</th><th>Status</th><th>Score</th><th>Sector</th><th>Expression</th>"
+            "<th>Rank</th><th>Symbol</th><th>Status</th><th>Score</th>"
+            "<th>Sector</th><th>Expression</th>"
             f"</tr></thead><tbody>{additional_rows}</tbody></table></div>"
         )
     else:
-        additional = '<p class="section-note">No additional qualifying opportunities beyond the featured set.</p>'
+        additional = (
+            '<p class="section-note">No additional qualifying opportunities beyond the '
+            "featured set.</p>"
+        )
 
     canonical_ids = ",".join(item.candidate_id for item in board.opportunities)
     section = (
@@ -309,11 +318,15 @@ def _inject_prospect_section(html: str, board: ProspectOpportunityBoard) -> str:
         f'data-canonical-candidate-ids="{escape(canonical_ids)}">'
         '<div class="section-kicker">CONVEXRIDGE OPPORTUNITY BOARD</div>'
         "<h2>Top 3 ConvexRidge Picks</h2>"
-        '<p class="section-note">Highest-ranked governed research/model signals receive priority presentation. Every other qualifying setup remains available below; Top 3 is not a truncation rule.</p>'
+        '<p class="section-note">Highest-ranked governed research/model signals receive '
+        "priority presentation. Every other qualifying setup remains available below; Top 3 "
+        "is not a truncation rule.</p>"
         f'<div class="card-grid">{top_cards}</div>'
         f"<h3>Additional Qualified Opportunities ({len(board.additional_opportunities)})</h3>"
         f"{additional}"
-        '<p class="section-note">Governed research/model signals only; not personalized advice. Portfolio recommendation authority: false. Trading authorization: false. Live trading: false.</p>'
+        '<p class="section-note">Governed research/model signals only; not personalized '
+        "advice. Portfolio recommendation authority: false. Trading authorization: false. "
+        "Live trading: false.</p>"
         "</section>"
     )
     return html.replace("<main>", f"<main>{section}", 1)
@@ -330,7 +343,8 @@ def _output_for(
 
 
 def _json_bytes(payload: object) -> bytes:
-    return (json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n").encode("utf-8")
+    serialized = json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n"
+    return serialized.encode("utf-8")
 
 
 def _number(value: object, *, default: float) -> float:
