@@ -1,0 +1,278 @@
+"""Research-only staging ingestion for Massive, Tiingo, and FRED."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
+
+PROVIDERS = frozenset({"massive", "tiingo", "fred"})
+SECRET_NAMES = {
+    "massive": "daily-alpha/data-feeds/staging/massive",
+    "tiingo": "daily-alpha/data-feeds/staging/tiingo",
+    "fred": "daily-alpha/data-feeds/staging/fred",
+}
+DEFAULT_TARGETS = {
+    "massive": ("SPY", "DINO"),
+    "tiingo": ("SPY", "DINO"),
+    "fred": ("DFF", "DGS10", "VIXCLS"),
+}
+_TARGET_RE = re.compile(r"^[A-Z0-9.^_-]{1,32}$")
+
+
+class DataFeedIngestionError(RuntimeError):
+    """Fail-closed staging ingestion error with a non-secret error code."""
+
+
+def _aws_client(service: str):
+    import boto3  # AWS Lambda runtime dependency; intentionally not a project dependency.
+
+    return boto3.client(service)
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _safe_secret_value(secret_string: str) -> str:
+    text = str(secret_string or "").strip()
+    if not text:
+        raise DataFeedIngestionError("SECRET_VALUE_EMPTY")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(payload, dict):
+        raise DataFeedIngestionError("SECRET_JSON_OBJECT_REQUIRED")
+    values: list[str] = []
+    for key in ("api_key", "token", "key", "apiKey"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(value.strip())
+    unique = tuple(dict.fromkeys(values))
+    if len(unique) != 1:
+        raise DataFeedIngestionError("SECRET_JSON_KEY_AMBIGUOUS_OR_MISSING")
+    return unique[0]
+
+
+def _load_secret(provider: str, client=None) -> str:
+    secrets = client or _aws_client("secretsmanager")
+    response = secrets.get_secret_value(
+        SecretId=SECRET_NAMES[provider],
+        VersionStage="AWSCURRENT",
+    )
+    if "SecretString" not in response:
+        raise DataFeedIngestionError("BINARY_SECRET_NOT_SUPPORTED")
+    return _safe_secret_value(response["SecretString"])
+
+
+def _targets(provider: str, event: dict[str, Any]) -> tuple[str, ...]:
+    raw = event.get("targets")
+    if raw is None:
+        values = DEFAULT_TARGETS[provider]
+    elif isinstance(raw, list):
+        values = tuple(str(item).strip().upper() for item in raw)
+    else:
+        raise DataFeedIngestionError("TARGETS_MUST_BE_ARRAY")
+    if not values or len(values) > 20:
+        raise DataFeedIngestionError("TARGET_COUNT_OUT_OF_RANGE")
+    if len(set(values)) != len(values):
+        raise DataFeedIngestionError("TARGETS_MUST_BE_UNIQUE")
+    if any(not _TARGET_RE.fullmatch(value) for value in values):
+        raise DataFeedIngestionError("TARGET_INVALID")
+    return values
+
+
+def _request_spec(
+    provider: str,
+    target: str,
+    api_key: str,
+    as_of: datetime,
+) -> tuple[str, dict[str, str]]:
+    end_date = as_of.date()
+    start_date = end_date - timedelta(days=7)
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "daily-alpha-staging-ingestion/1.0",
+    }
+    if provider == "massive":
+        path_target = quote(target, safe=".-")
+        url = (
+            f"https://api.massive.com/v2/aggs/ticker/{path_target}/range/1/day/"
+            f"{start_date.isoformat()}/{end_date.isoformat()}?adjusted=true&sort=asc&limit=20"
+        )
+        headers["Authorization"] = f"Bearer {api_key}"
+        return url, headers
+    if provider == "tiingo":
+        path_target = quote(target, safe=".-")
+        query = urlencode(
+            {
+                "startDate": start_date.isoformat(),
+                "endDate": end_date.isoformat(),
+                "resampleFreq": "daily",
+            }
+        )
+        headers["Authorization"] = f"Token {api_key}"
+        return f"https://api.tiingo.com/tiingo/daily/{path_target}/prices?{query}", headers
+    query = urlencode(
+        {
+            "series_id": target,
+            "api_key": api_key,
+            "file_type": "json",
+            "sort_order": "desc",
+            "limit": 5,
+        }
+    )
+    return f"https://api.stlouisfed.org/fred/series/observations?{query}", headers
+
+
+def _http_get(
+    url: str,
+    headers: dict[str, str],
+    timeout_seconds: int = 15,
+) -> tuple[bytes, str]:
+    request = Request(url, headers=headers, method="GET")
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+            status = int(response.status)
+            body = response.read()
+            content_type = str(response.headers.get("Content-Type") or "application/json")
+    except HTTPError as exc:
+        raise DataFeedIngestionError(f"PROVIDER_HTTP_{exc.code}") from None
+    except (URLError, TimeoutError):
+        raise DataFeedIngestionError("PROVIDER_NETWORK_ERROR") from None
+    if not 200 <= status < 300:
+        raise DataFeedIngestionError(f"PROVIDER_HTTP_{status}")
+    if not body:
+        raise DataFeedIngestionError("PROVIDER_EMPTY_RESPONSE")
+    return body, content_type
+
+
+def _put_immutable(
+    *,
+    bucket: str,
+    key: str,
+    body: bytes,
+    content_type: str,
+    metadata: dict[str, str],
+    client=None,
+) -> None:
+    s3 = client or _aws_client("s3")
+    try:
+        s3.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=body,
+            ContentType=content_type,
+            ServerSideEncryption="AES256",
+            Metadata=metadata,
+            IfNoneMatch="*",
+        )
+    except Exception as exc:
+        response = getattr(exc, "response", {})
+        code = None
+        if isinstance(response, dict):
+            code = (response.get("Error") or {}).get("Code")
+        if code in {"PreconditionFailed", "412"}:
+            raise DataFeedIngestionError("IMMUTABLE_OBJECT_ALREADY_EXISTS") from None
+        raise DataFeedIngestionError("S3_WRITE_FAILED") from None
+
+
+def _log(event: str, **fields: Any) -> None:
+    payload = {
+        "event": event,
+        "trading_authorized": False,
+        "live_trading_enabled": False,
+        **fields,
+    }
+    print(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str))
+
+
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    """Fetch bounded staging research data and archive raw bytes plus a receipt."""
+    provider = str(event.get("provider") or "").strip().lower()
+    if provider not in PROVIDERS:
+        raise DataFeedIngestionError("PROVIDER_UNSUPPORTED")
+    bucket = os.environ.get("RAW_EVIDENCE_BUCKET", "").strip()
+    if not bucket:
+        raise DataFeedIngestionError("RAW_EVIDENCE_BUCKET_REQUIRED")
+    targets = _targets(provider, event)
+    as_of = _now()
+    request_id = str(getattr(context, "aws_request_id", "") or "manual").strip()
+    secret = _load_secret(provider)
+    records: list[dict[str, Any]] = []
+    try:
+        for ordinal, target in enumerate(targets, start=1):
+            body, content_type = _http_get(*_request_spec(provider, target, secret, as_of))
+            digest = hashlib.sha256(body).hexdigest()
+            date_path = as_of.strftime("%Y/%m/%d")
+            safe_target = target.replace(".", "_").replace("^", "_")
+            stem = f"{request_id}-{ordinal:02d}-{safe_target}"
+            raw_key = f"data-feeds/staging/{provider}/raw/{date_path}/{stem}.json"
+            receipt_key = f"data-feeds/staging/{provider}/receipts/{date_path}/{stem}.json"
+            metadata = {
+                "provider": provider,
+                "target": target,
+                "sha256": digest,
+                "trading-authorized": "false",
+                "live-trading-enabled": "false",
+            }
+            _put_immutable(
+                bucket=bucket,
+                key=raw_key,
+                body=body,
+                content_type=content_type.split(";", 1)[0],
+                metadata=metadata,
+            )
+            receipt = {
+                "schema": "DAILY_ALPHA_STAGING_DATA_FEED_RECEIPT_V1",
+                "provider": provider.upper(),
+                "target": target,
+                "captured_at": as_of.isoformat(),
+                "raw_s3_key": raw_key,
+                "raw_sha256": digest,
+                "raw_bytes": len(body),
+                "trading_authorized": False,
+                "live_trading_enabled": False,
+            }
+            receipt_body = (json.dumps(receipt, sort_keys=True) + "\n").encode()
+            _put_immutable(
+                bucket=bucket,
+                key=receipt_key,
+                body=receipt_body,
+                content_type="application/json",
+                metadata=metadata,
+            )
+            records.append(receipt)
+            _log(
+                "DATA_FEED_INGEST_SUCCESS",
+                provider=provider.upper(),
+                target=target,
+                raw_s3_key=raw_key,
+                receipt_s3_key=receipt_key,
+                raw_bytes=len(body),
+            )
+    except DataFeedIngestionError as exc:
+        _log(
+            "DATA_FEED_INGEST_FAILURE",
+            provider=provider.upper(),
+            error_code=str(exc),
+            request_id=request_id,
+        )
+        raise
+
+    return {
+        "ok": True,
+        "service": "daily-alpha-staging-data-feed-ingestion",
+        "provider": provider.upper(),
+        "target_count": len(targets),
+        "records": records,
+        "trading_authorized": False,
+        "live_trading_enabled": False,
+    }
