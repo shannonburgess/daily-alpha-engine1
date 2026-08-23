@@ -11,11 +11,11 @@ must earn their own point-in-time validation.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from math import isfinite
-from typing import Iterable
 
 
 class ResidualMomentumClass(StrEnum):
@@ -136,7 +136,7 @@ class _RawResidualState:
 def _normalized_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         raise ValueError("decision_at must be timezone-aware")
-    return value.astimezone(timezone.utc)
+    return value.astimezone(UTC)
 
 
 def _average_rank_percentiles(values: dict[str, float]) -> dict[str, float]:
@@ -180,8 +180,8 @@ class SectorResidualMomentumAnalyzer:
         decision_at_utc = _normalized_utc(decision_at)
         unique: dict[str, SectorResidualObservation] = {}
         for observation in observations:
-            known_at_utc = observation.known_at.astimezone(timezone.utc)
-            as_of_utc = observation.as_of.astimezone(timezone.utc)
+            known_at_utc = observation.known_at.astimezone(UTC)
+            as_of_utc = observation.as_of.astimezone(UTC)
             if known_at_utc > decision_at_utc or as_of_utc > decision_at_utc:
                 raise ValueError(
                     f"future residual-momentum input for {observation.security_id}"
