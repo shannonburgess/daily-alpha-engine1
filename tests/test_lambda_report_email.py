@@ -101,8 +101,12 @@ def _context():
     return SimpleNamespace(aws_request_id="request-1")
 
 
-def _patch_publish_path(monkeypatch, delivery):
+def _patch_publish_path(monkeypatch, delivery, *, prospect_enabled: bool = True):
     _ProspectRuntime.instances.clear()
+    if prospect_enabled:
+        monkeypatch.setenv("DAILY_ALPHA_PROSPECT_V1_RUNTIME_ENABLED", "true")
+    else:
+        monkeypatch.delenv("DAILY_ALPHA_PROSPECT_V1_RUNTIME_ENABLED", raising=False)
     monkeypatch.setattr(report_handler, "AwsStagingReportPublisher", _Publisher)
     monkeypatch.setattr(
         report_handler,
@@ -114,6 +118,33 @@ def _patch_publish_path(monkeypatch, delivery):
         "AwsNewsletterEmailDelivery",
         lambda: delivery,
     )
+
+
+def test_publish_keeps_prospect_runtime_disabled_by_default(monkeypatch):
+    delivery = _Delivery()
+    _patch_publish_path(monkeypatch, delivery, prospect_enabled=False)
+
+    result = report_handler.lambda_handler(
+        {
+            "operation": "PUBLISH_STAGING_REPORT",
+            "session": "MORNING",
+            "run_id": "run-123",
+        },
+        _context(),
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "PUBLISHED"
+    assert result["email_delivery"]["status"] == "SENT"
+    assert result["prospect_v1_runtime_enabled"] is False
+    assert result["prospect_initial_rollout"]["ready"] is False
+    assert result["prospect_initial_rollout"]["reasons"] == [
+        "PROSPECT_V1_RUNTIME_DISABLED"
+    ]
+    assert result["prospect_initial_rollout"]["trading_authorized"] is False
+    assert result["prospect_initial_rollout"]["live_trading_enabled"] is False
+    assert _ProspectRuntime.instances == []
+    assert len(delivery.calls) == 1
 
 
 def test_publish_automatically_emails_full_newsletter_after_prospect_gate_prepare(
@@ -134,6 +165,7 @@ def test_publish_automatically_emails_full_newsletter_after_prospect_gate_prepar
     assert result["ok"] is True
     assert result["status"] == "PUBLISHED"
     assert result["email_delivery"]["status"] == "SENT"
+    assert result["prospect_v1_runtime_enabled"] is True
     assert result["prospect_initial_rollout"]["ready"] is True
     assert result["prospect_initial_rollout"]["total_qualifying"] == 50
     assert result["prospect_initial_rollout"]["additional_qualifying_count"] == 47
@@ -210,6 +242,7 @@ def test_prospect_prepare_failure_prevents_initial_rollout_email(monkeypatch):
         def prepare(self, **kwargs):
             raise ProspectStagingRuntimeError("PROSPECT_SHORTLIST_JSON_INVALID")
 
+    monkeypatch.setenv("DAILY_ALPHA_PROSPECT_V1_RUNTIME_ENABLED", "true")
     monkeypatch.setattr(report_handler, "AwsStagingReportPublisher", _Publisher)
     monkeypatch.setattr(
         report_handler,
