@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
 from .pine_parity_compare import ParityReport
 from .pine_v25_historical_reference import HistoricalV25Evaluation
 
@@ -12,8 +13,8 @@ class V25ParityProofGate:
 
     The gate is evidence-only. It cannot authorize promotion, PAPER execution, broker routing, or
     live trading. Historical proof must be exact, parameter-locked, and contain at least one
-    genuine TradingView strategy event. Forward proof must be exact, non-empty, and come from a
-    confirmed deployed persisted-source monitor.
+    genuine TradingView strategy event. Forward proof must be exact, non-empty, and bound to a
+    validated machine deployment receipt for the persisted-source monitor.
     """
 
     historical_exact: bool
@@ -22,6 +23,7 @@ class V25ParityProofGate:
     forward_exact: bool
     forward_reference_signal_count: int
     forward_monitor_deployed: bool
+    forward_deployment_commit_sha: str | None
     blockers: tuple[str, ...]
     parity_evidence_complete: bool
     promotion_authorized: bool = False
@@ -33,6 +35,8 @@ class V25ParityProofGate:
             raise ValueError("historical_reference_signal_count must be non-negative")
         if self.forward_reference_signal_count < 0:
             raise ValueError("forward_reference_signal_count must be non-negative")
+        if self.forward_monitor_deployed != bool(self.forward_deployment_commit_sha):
+            raise ValueError("forward monitor deployment state must carry exact commit evidence")
         if self.promotion_authorized:
             raise ValueError("parity proof gate cannot authorize promotion")
         if self.trading_authorized or self.live_trading_enabled:
@@ -46,6 +50,7 @@ class V25ParityProofGate:
             and self.forward_exact
             and self.forward_reference_signal_count > 0
             and self.forward_monitor_deployed
+            and self.forward_deployment_commit_sha
         ):
             raise ValueError("complete parity evidence is inconsistent with required proof gates")
 
@@ -54,9 +59,14 @@ def evaluate_v25_parity_proof_gate(
     *,
     historical_evaluation: HistoricalV25Evaluation | None,
     forward_report: ParityReport | None,
-    forward_monitor_deployed: bool,
+    forward_deployment_evidence: ForwardParityDeploymentEvidence | None,
 ) -> V25ParityProofGate:
-    """Evaluate minimum SH25 evidence while preserving strict book/source isolation."""
+    """Evaluate minimum SH25 evidence while preserving strict book/source isolation.
+
+    A caller cannot assert deployment with a free boolean. The forward monitor must already have
+    been validated from the trusted staging receipt, including canonical repository/processor
+    identity, exact SH24/SH25 books, complete scans and hard-false trading/live flags.
+    """
     blockers: list[str] = []
 
     if historical_evaluation is None:
@@ -77,8 +87,12 @@ def evaluate_v25_parity_proof_gate(
         if not historical_parameter_manifest_locked:
             blockers.append("HISTORICAL_PARAMETER_MANIFEST_NOT_LOCKED")
 
+    forward_monitor_deployed = forward_deployment_evidence is not None
+    forward_deployment_commit_sha = (
+        forward_deployment_evidence.commit_sha if forward_deployment_evidence is not None else None
+    )
     if not forward_monitor_deployed:
-        blockers.append("FORWARD_PARITY_MONITOR_NOT_DEPLOYED")
+        blockers.append("FORWARD_PARITY_MONITOR_DEPLOYMENT_EVIDENCE_MISSING")
 
     if forward_report is None:
         forward_exact = False
@@ -100,6 +114,7 @@ def evaluate_v25_parity_proof_gate(
         forward_exact=forward_exact,
         forward_reference_signal_count=forward_reference_signal_count,
         forward_monitor_deployed=forward_monitor_deployed,
+        forward_deployment_commit_sha=forward_deployment_commit_sha,
         blockers=normalized_blockers,
         parity_evidence_complete=not normalized_blockers,
     )
