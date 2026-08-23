@@ -126,7 +126,6 @@ def assess_forward_v24_evidence_readiness(
 
     market_state = EvidenceArtifactState.MISSING
     market_sha256: str | None = None
-    market_bar_times = set()
     if not _present(market_csv):
         blockers.append("POINT_IN_TIME_MARKET_EARNINGS_EVIDENCE_MISSING")
     else:
@@ -142,9 +141,11 @@ def assess_forward_v24_evidence_readiness(
         else:
             market_state = EvidenceArtifactState.PRESENT
             market_sha256 = hashlib.sha256((market_csv or "").encode("utf-8")).hexdigest()
-            market_bar_times = set(bar_times)
+            market_bar_time_isos = {bar_time.isoformat() for bar_time in bar_times}
             missing_times = tuple(
-                bar_time for bar_time in reference_bar_times if bar_time not in market_bar_times
+                bar_time
+                for bar_time in reference_bar_times
+                if bar_time not in market_bar_time_isos
             )
             if missing_times:
                 blockers.append("REFERENCE_EVENT_BAR_MISSING_FROM_MARKET_EVIDENCE")
@@ -213,7 +214,9 @@ def assess_historical_v24_evidence_readiness(
     blockers: list[str] = []
     diagnostics: list[str] = []
 
-    market_state = EvidenceArtifactState.PRESENT if _present(market_csv) else EvidenceArtifactState.MISSING
+    market_state = (
+        EvidenceArtifactState.PRESENT if _present(market_csv) else EvidenceArtifactState.MISSING
+    )
     signal_state = (
         EvidenceArtifactState.PRESENT
         if _present(tradingview_signal_csv)
