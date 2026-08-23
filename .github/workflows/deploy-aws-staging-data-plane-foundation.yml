@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 concurrency:
   group: daily-alpha-staging-data-plane-foundation
@@ -212,3 +213,68 @@ jobs:
           actual = {item["ResourceType"] for item in payload["StackResourceSummaries"]}
           assert not actual.intersection(forbidden), actual.intersection(forbidden)
           print("No activation/execution resources are present in the staging foundation stack.")
+
+      - name: Publish staging proof receipt to issue 316
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+
+          STACK_STATUS="$(aws cloudformation describe-stacks \
+            --stack-name daily-alpha-staging-data-plane-foundation \
+            --query 'Stacks[0].StackStatus' \
+            --output text \
+            --no-cli-pager 2>/dev/null || true)"
+          test -n "$STACK_STATUS" || STACK_STATUS="UNAVAILABLE"
+
+          RESOURCE_COUNT="$(aws cloudformation list-stack-resources \
+            --stack-name daily-alpha-staging-data-plane-foundation \
+            --query 'length(StackResourceSummaries)' \
+            --output text \
+            --no-cli-pager 2>/dev/null || true)"
+          test -n "$RESOURCE_COUNT" || RESOURCE_COUNT="UNAVAILABLE"
+
+          FAILURES="$(aws cloudformation describe-stack-events \
+            --stack-name daily-alpha-staging-data-plane-foundation \
+            --query "StackEvents[?(ResourceStatus=='CREATE_FAILED' || ResourceStatus=='DELETE_FAILED') && ResourceStatusReason!='Resource creation cancelled'].[Timestamp,LogicalResourceId,ResourceType,ResourceStatus,ResourceStatusReason]" \
+            --output text \
+            --no-cli-pager 2>/dev/null | head -20 || true)"
+          test -n "$FAILURES" || FAILURES="NONE"
+
+          if [ "$JOB_STATUS" = "success" ]; then
+            VERDICT="STAGING_PROVEN"
+            GATES="PASS — deploy + exact inventory + S3 controls/policy + DynamoDB PITR + zero activation resources"
+          else
+            VERDICT="NOT_STAGING_PROVEN"
+            GATES="FAIL — inspect failed step and CloudFormation events"
+          fi
+
+          BODY="$(cat <<EOF
+          ## AWS staging machine receipt
+
+          - verdict: **${VERDICT}**
+          - workflow job status: \`${JOB_STATUS}\`
+          - commit: \`${GITHUB_SHA}\`
+          - run: ${RUN_URL}
+          - CloudFormation stack status: \`${STACK_STATUS}\`
+          - observed stack resource count: \`${RESOURCE_COUNT}\`
+          - post-deploy gates: ${GATES}
+          - trading boundary: \`trading_authorized=false\`, \`live_trading_enabled=false\`
+
+          ### Non-cancelled CloudFormation failures
+          \`\`\`
+          ${FAILURES}
+          \`\`\`
+
+          This receipt is emitted automatically by the canonical staging workflow. A **STAGING_PROVEN** verdict is valid only when the job itself is green, which means all existing post-deploy verification steps completed successfully.
+          EOF
+          )"
+
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/316/comments" \
+            -f body="$BODY"
