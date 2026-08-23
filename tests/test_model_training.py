@@ -1,8 +1,8 @@
 import datetime as dt
 
-import daily_alpha.model_training as mt
 import pytest
 
+import daily_alpha.model_training as mt
 
 BASE = dt.datetime(2026, 1, 2, 21, 0, tzinfo=dt.UTC)
 
