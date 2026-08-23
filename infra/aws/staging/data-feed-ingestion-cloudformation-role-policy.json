@@ -1,0 +1,106 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageDataFeedIngestionRuntimeRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole"
+      ],
+      "Resource": "arn:aws:iam::490809405132:role/DailyAlphaDataFeedIngestionStagingRole"
+    },
+    {
+      "Sid": "PassOnlyDataFeedRuntimeRoleToLambda",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::490809405132:role/DailyAlphaDataFeedIngestionStagingRole",
+      "Condition": {
+        "StringEquals": {"iam:PassedToService": "lambda.amazonaws.com"}
+      }
+    },
+    {
+      "Sid": "ManageOnlyDataFeedIngestionLambda",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:PutFunctionConcurrency",
+        "lambda:DeleteFunctionConcurrency",
+        "lambda:AddPermission",
+        "lambda:RemovePermission",
+        "lambda:GetPolicy",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:ListTags"
+      ],
+      "Resource": "arn:aws:lambda:us-east-2:490809405132:function:daily-alpha-staging-data-feed-ingestion"
+    },
+    {
+      "Sid": "ManageOnlyDataFeedSchedules",
+      "Effect": "Allow",
+      "Action": [
+        "events:PutRule",
+        "events:DeleteRule",
+        "events:DescribeRule",
+        "events:PutTargets",
+        "events:RemoveTargets",
+        "events:ListTargetsByRule",
+        "events:TagResource",
+        "events:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:events:us-east-2:490809405132:rule/daily-alpha-staging-data-feed-massive",
+        "arn:aws:events:us-east-2:490809405132:rule/daily-alpha-staging-data-feed-tiingo",
+        "arn:aws:events:us-east-2:490809405132:rule/daily-alpha-staging-data-feed-fred"
+      ]
+    },
+    {
+      "Sid": "ManageOnlyDataFeedLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:DescribeLogGroups",
+        "logs:PutRetentionPolicy",
+        "logs:DeleteRetentionPolicy",
+        "logs:PutMetricFilter",
+        "logs:DeleteMetricFilter",
+        "logs:DescribeMetricFilters",
+        "logs:TagResource",
+        "logs:UntagResource",
+        "logs:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:logs:us-east-2:490809405132:log-group:/aws/lambda/daily-alpha-staging-data-feed-ingestion",
+        "arn:aws:logs:us-east-2:490809405132:log-group:/aws/lambda/daily-alpha-staging-data-feed-ingestion:*"
+      ]
+    },
+    {
+      "Sid": "ManageOnlyDataFeedAlarms",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:cloudwatch:us-east-2:490809405132:alarm:DailyAlphaStagingDataFeedIngestionFailure",
+        "arn:aws:cloudwatch:us-east-2:490809405132:alarm:DailyAlphaStagingDataFeedLambdaErrors",
+        "arn:aws:cloudwatch:us-east-2:490809405132:alarm:DailyAlphaStagingDataFeedLambdaThrottles"
+      ]
+    }
+  ]
+}
