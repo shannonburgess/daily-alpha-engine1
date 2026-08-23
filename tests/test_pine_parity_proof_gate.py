@@ -1,5 +1,8 @@
 from daily_alpha.pine_bar_outcome_compare import BarOutcomeReport
-from daily_alpha.pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
+from daily_alpha.pine_forward_deployment_evidence import (
+    ForwardParityBookEvidence,
+    ForwardParityDeploymentEvidence,
+)
 from daily_alpha.pine_historical_reference import HistoricalV24Evaluation
 from daily_alpha.pine_historical_reference_locked import LockedHistoricalV24Evaluation
 from daily_alpha.pine_parity_compare import ParityReport
@@ -52,6 +55,21 @@ def _unlocked_historical_evaluation(
     )
 
 
+def _book(account_id: str) -> ForwardParityBookEvidence:
+    return ForwardParityBookEvidence(
+        account_id=account_id,
+        event_count_visible=0,
+        event_count_scanned=0,
+        event_history_omitted=0,
+        event_limit=100,
+        scan_pages=1,
+        scan_items_evaluated=0,
+        open_count=0,
+        armed_count_visible=0,
+        events=(),
+    )
+
+
 def _deployment_evidence() -> ForwardParityDeploymentEvidence:
     return ForwardParityDeploymentEvidence(
         repository="shannonburgess/daily-alpha-engine1",
@@ -60,8 +78,8 @@ def _deployment_evidence() -> ForwardParityDeploymentEvidence:
         workflow_run_attempt="1",
         processor_version="42",
         processor_code_sha256="code-hash",
-        sh24_event_count_visible=2,
-        sh25_event_count_visible=2,
+        sh24=_book("PAPER_SHADOW_V24"),
+        sh25=_book("PAPER_SHADOW_V25"),
     )
 
 
