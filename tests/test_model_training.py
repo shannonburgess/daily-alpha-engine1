@@ -2,24 +2,15 @@ import datetime as dt
 
 import pytest
 
-from daily_alpha.model_training import (
-    ModelTrainingError,
-    ResearchModelCandidateAssessment,
-    TrainingDatasetSnapshot,
-    TrainingExample,
-    WalkForwardFold,
-    WalkForwardWindow,
-    build_walk_forward_fold,
-    evaluate_oos_realized_r,
-)
+import daily_alpha.model_training as mt
 
 
 BASE = dt.datetime(2026, 1, 2, 21, 0, tzinfo=dt.UTC)
 
 
-def _example(symbol: str, day: int, realized_r: float = 1.0) -> TrainingExample:
+def _example(symbol: str, day: int, realized_r: float = 1.0) -> mt.TrainingExample:
     decision_at = BASE + dt.timedelta(days=day)
-    return TrainingExample(
+    return mt.TrainingExample(
         security_id=symbol,
         decision_at=decision_at,
         feature_known_at=decision_at - dt.timedelta(minutes=1),
@@ -31,8 +22,8 @@ def _example(symbol: str, day: int, realized_r: float = 1.0) -> TrainingExample:
     )
 
 
-def _dataset(examples: tuple[TrainingExample, ...]) -> TrainingDatasetSnapshot:
-    return TrainingDatasetSnapshot(
+def _dataset(examples: tuple[mt.TrainingExample, ...]) -> mt.TrainingDatasetSnapshot:
+    return mt.TrainingDatasetSnapshot(
         as_of=BASE + dt.timedelta(days=60),
         feature_schema_version="TRAINING_FEATURES_V1",
         label_definition="5D_REALIZED_R_AFTER_DECISION",
@@ -42,8 +33,8 @@ def _dataset(examples: tuple[TrainingExample, ...]) -> TrainingDatasetSnapshot:
 
 
 def test_feature_must_be_known_by_historical_decision_boundary() -> None:
-    with pytest.raises(ModelTrainingError, match="FEATURE_KNOWN_AFTER_DECISION"):
-        TrainingExample(
+    with pytest.raises(mt.ModelTrainingError, match="FEATURE_KNOWN_AFTER_DECISION"):
+        mt.TrainingExample(
             security_id="MU",
             decision_at=BASE,
             feature_known_at=BASE + dt.timedelta(seconds=1),
@@ -56,8 +47,8 @@ def test_feature_must_be_known_by_historical_decision_boundary() -> None:
 
 
 def test_label_must_mature_after_decision() -> None:
-    with pytest.raises(ModelTrainingError, match="LABEL_MUST_MATURE_AFTER_DECISION"):
-        TrainingExample(
+    with pytest.raises(mt.ModelTrainingError, match="LABEL_MUST_MATURE_AFTER_DECISION"):
+        mt.TrainingExample(
             security_id="MU",
             decision_at=BASE,
             feature_known_at=BASE,
@@ -71,8 +62,8 @@ def test_label_must_mature_after_decision() -> None:
 
 def test_dataset_rejects_label_not_mature_by_snapshot_cutoff() -> None:
     example = _example("MU", 10)
-    with pytest.raises(ModelTrainingError, match="LABEL_NOT_MATURE_BY_DATASET_AS_OF"):
-        TrainingDatasetSnapshot(
+    with pytest.raises(mt.ModelTrainingError, match="LABEL_NOT_MATURE_BY_DATASET_AS_OF"):
+        mt.TrainingDatasetSnapshot(
             as_of=example.decision_at + dt.timedelta(days=1),
             feature_schema_version="TRAINING_FEATURES_V1",
             label_definition="5D_REALIZED_R_AFTER_DECISION",
@@ -94,7 +85,7 @@ def test_dataset_identity_is_input_order_independent() -> None:
 
 def test_dataset_rejects_duplicate_security_decision_example() -> None:
     first = _example("MU", 1)
-    duplicate = TrainingExample(
+    duplicate = mt.TrainingExample(
         security_id="MU",
         decision_at=first.decision_at,
         feature_known_at=first.feature_known_at,
@@ -105,7 +96,7 @@ def test_dataset_rejects_duplicate_security_decision_example() -> None:
         evidence_ids=("different-evidence",),
     )
 
-    with pytest.raises(ModelTrainingError, match="DUPLICATE_SECURITY_DECISION_EXAMPLE"):
+    with pytest.raises(mt.ModelTrainingError, match="DUPLICATE_SECURITY_DECISION_EXAMPLE"):
         _dataset((first, duplicate))
 
 
@@ -120,7 +111,7 @@ def test_walk_forward_fold_keeps_train_validation_test_disjoint() -> None:
             _example("F", 21),
         )
     )
-    window = WalkForwardWindow(
+    window = mt.WalkForwardWindow(
         fold_id="WF-1",
         train_start=BASE,
         train_end=BASE + dt.timedelta(days=5),
@@ -130,7 +121,7 @@ def test_walk_forward_fold_keeps_train_validation_test_disjoint() -> None:
         test_end=BASE + dt.timedelta(days=25),
     )
 
-    fold = build_walk_forward_fold(dataset, window)
+    fold = mt.build_walk_forward_fold(dataset, window)
 
     assert len(fold.train_example_ids) == 2
     assert len(fold.validation_example_ids) == 2
@@ -140,7 +131,7 @@ def test_walk_forward_fold_keeps_train_validation_test_disjoint() -> None:
 
 def test_walk_forward_rejects_validation_or_test_use_for_fitting() -> None:
     example_ids = (_example("MU", 1).example_id,)
-    window = WalkForwardWindow(
+    window = mt.WalkForwardWindow(
         fold_id="WF-1",
         train_start=BASE,
         train_end=BASE + dt.timedelta(days=2),
@@ -150,8 +141,8 @@ def test_walk_forward_rejects_validation_or_test_use_for_fitting() -> None:
         test_end=BASE + dt.timedelta(days=6),
     )
 
-    with pytest.raises(ModelTrainingError, match="OUT_OF_SAMPLE_DATA_CANNOT_BE_USED_FOR_FITTING"):
-        WalkForwardFold(
+    with pytest.raises(mt.ModelTrainingError, match="OUT_OF_SAMPLE_DATA_CANNOT_BE_USED_FOR_FITTING"):
+        mt.WalkForwardFold(
             window=window,
             train_example_ids=example_ids,
             validation_example_ids=("validation",),
@@ -161,7 +152,7 @@ def test_walk_forward_rejects_validation_or_test_use_for_fitting() -> None:
 
 
 def test_oos_metrics_are_computed_only_from_supplied_realized_results() -> None:
-    metrics = evaluate_oos_realized_r((1.0, -0.5, 2.0, -1.0))
+    metrics = mt.evaluate_oos_realized_r((1.0, -0.5, 2.0, -1.0))
 
     assert metrics.sample_count == 4
     assert metrics.hit_rate == 0.5
@@ -172,13 +163,13 @@ def test_oos_metrics_are_computed_only_from_supplied_realized_results() -> None:
 
 
 def test_research_candidate_cannot_self_promote_or_authorize_trading() -> None:
-    metrics = evaluate_oos_realized_r((1.0, -0.25, 0.5))
+    metrics = mt.evaluate_oos_realized_r((1.0, -0.25, 0.5))
 
     with pytest.raises(
-        ModelTrainingError,
+        mt.ModelTrainingError,
         match="RESEARCH_ASSESSMENT_CANNOT_AUTHORIZE_PROMOTION_OR_TRADING",
     ):
-        ResearchModelCandidateAssessment(
+        mt.ResearchModelCandidateAssessment(
             candidate_id="ML-CHALLENGER-1",
             dataset_id="dataset-1",
             fold_id="WF-1",
