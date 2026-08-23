@@ -112,7 +112,7 @@ def render_prospect_newsletter_html(board: ProspectOpportunityBoard) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ConvexRidge Picks</title>
+<title>Daily Alpha Research — ConvexRidge Picks</title>
 <style>
 body {{ margin: 0; padding: 24px; font: 12pt/1.45 Arial, sans-serif; color: #172033; }}
 h1, h2 {{ color: #13294b; }}
@@ -129,7 +129,7 @@ th {{ background: #13294b; color: white; }}
 </head>
 <body data-board-id="{escape(output.board_id)}" data-total-qualifying="{output.total_qualifying}" data-canonical-candidate-ids="{escape(canonical_ids)}">
 <header>
-<div class="meta">Canonical board {escape(output.board_id)} · {output.total_qualifying} qualifying opportunities</div>
+<div class="meta">Daily Alpha Research · ConvexRidge · Canonical board {escape(output.board_id)} · {output.total_qualifying} qualifying opportunities</div>
 <h1>Top 3 ConvexRidge Picks</h1>
 <p>Highest-ranked governed research/model signals for immediate attention. The complete qualifying set remains available below.</p>
 </header>
