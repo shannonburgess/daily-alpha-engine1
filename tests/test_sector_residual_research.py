@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -9,8 +9,7 @@ from daily_alpha.sector_residual_research import (
     SectorResidualObservation,
 )
 
-
-NOW = datetime(2026, 8, 21, 20, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 21, 20, 0, tzinfo=UTC)
 
 
 def _observation(
