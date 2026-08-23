@@ -188,13 +188,18 @@ def fit_linear_baseline(
     rows = tuple(_feature_row(example, feature_names) for example in train_examples)
     targets = tuple(example.realized_r for example in train_examples)
 
-    means = tuple(sum(row[column] for row in rows) / len(rows) for column in range(len(feature_names)))
+    means = tuple(
+        sum(row[column] for row in rows) / len(rows) for column in range(len(feature_names))
+    )
     scales = tuple(
         _population_scale(rows, column=column, mean=means[column])
         for column in range(len(feature_names))
     )
     standardized = tuple(
-        tuple((row[column] - means[column]) / scales[column] for column in range(len(feature_names)))
+        tuple(
+            (row[column] - means[column]) / scales[column]
+            for column in range(len(feature_names))
+        )
         for row in rows
     )
     intercept = sum(targets) / len(targets)
@@ -252,7 +257,10 @@ def evaluate_linear_baseline(
 
     predictions = tuple(fitted.model.predict(example) for example in examples)
     actuals = tuple(example.realized_r for example in examples)
-    errors = tuple(prediction - actual for prediction, actual in zip(predictions, actuals, strict=True))
+    errors = tuple(
+        prediction - actual
+        for prediction, actual in zip(predictions, actuals, strict=True)
+    )
     mae = sum(abs(error) for error in errors) / len(errors)
     rmse = math.sqrt(sum(error * error for error in errors) / len(errors))
     actual_mean = sum(actuals) / len(actuals)
@@ -321,7 +329,10 @@ def _solve_ridge(
         [sum(row[i] * row[j] for row in rows) for j in range(width)]
         for i in range(width)
     ]
-    vector = [sum(row[i] * target for row, target in zip(rows, targets, strict=True)) for i in range(width)]
+    vector = [
+        sum(row[i] * target for row, target in zip(rows, targets, strict=True))
+        for i in range(width)
+    ]
     for index in range(width):
         matrix[index][index] += alpha
     return tuple(_gaussian_elimination(matrix, vector))
@@ -331,11 +342,17 @@ def _gaussian_elimination(matrix: list[list[float]], vector: list[float]) -> lis
     size = len(vector)
     augmented = [row[:] + [vector[index]] for index, row in enumerate(matrix)]
     for pivot_index in range(size):
-        pivot_row = max(range(pivot_index, size), key=lambda row: abs(augmented[row][pivot_index]))
+        pivot_row = max(
+            range(pivot_index, size),
+            key=lambda row: abs(augmented[row][pivot_index]),
+        )
         pivot = augmented[pivot_row][pivot_index]
         if abs(pivot) < 1e-15:
             raise ModelTrainingError("LINEAR_BASELINE_SINGULAR_SYSTEM")
-        augmented[pivot_index], augmented[pivot_row] = augmented[pivot_row], augmented[pivot_index]
+        augmented[pivot_index], augmented[pivot_row] = (
+            augmented[pivot_row],
+            augmented[pivot_index],
+        )
         pivot = augmented[pivot_index][pivot_index]
         augmented[pivot_index] = [value / pivot for value in augmented[pivot_index]]
         for row_index in range(size):
@@ -357,9 +374,9 @@ def _gaussian_elimination(matrix: list[list[float]], vector: list[float]) -> lis
 
 
 __all__ = [
+    "RIDGE_ALPHA_KEY",
     "LinearBaselineFit",
     "LinearBaselineModel",
-    "RIDGE_ALPHA_KEY",
     "RegressionEvaluation",
     "RegressionMetrics",
     "evaluate_linear_baseline",
