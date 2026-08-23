@@ -23,8 +23,31 @@ If fewer than three names qualify, the system presents only the names that actua
 - `opportunities`: the complete canonical qualifying set.
 - `filtered`: non-qualifying candidates with explicit reason lineage rather than silent deletion.
 - paginated pages: bounded views over the complete canonical set; pagination never changes `total_qualifying`.
+- filtered pages: deterministic query views over that same immutable set; filtering never rewrites discovery membership or rank.
 
 The same candidate cannot exist simultaneously in the qualifying and filtered sets. Duplicate symbols fail closed.
+
+## Pagination and filtering
+
+V1 filtering is a presentation/query capability, not a second qualification engine. `OpportunityBoardFilter` supports deterministic exact-match filtering by:
+
+- symbol;
+- lifecycle status;
+- qualifying bucket;
+- sector;
+- preferred/selected instrument expression.
+
+Filter inputs are normalized and bound to a deterministic `filter_id`. Non-qualifying buckets such as `DATA_ERROR` cannot be smuggled into a qualified-board query.
+
+Every page retains:
+
+- the immutable canonical `board_id`;
+- `total_qualifying`, which always counts the entire qualifying discovery set before filters;
+- `total_matched`, which counts the current query result;
+- original canonical ranks rather than re-ranking a filtered subset;
+- the deterministic `filter_id`, offset, limit and `has_more` state.
+
+The API projection uses this page contract directly. A user can therefore filter or paginate a 50-name board without turning the canonical 50 into a smaller hidden universe. Clearing the query returns the same complete canonical set.
 
 ## Qualification and ranking
 
@@ -71,7 +94,7 @@ Initial rollout is not ready unless all of the following are true:
 2. The complete canonical qualifying set is still available.
 3. If 50 qualify, ranks 1 through 50 remain accessible and only presentation depth differs.
 4. Fewer than three qualifying names results in fewer than three picks, not weaker standards.
-5. Pagination/filtering cannot silently truncate the canonical set.
+5. Pagination/filtering cannot silently truncate or mutate the canonical set; filtered views retain canonical `board_id`, rank and full `total_qualifying` lineage.
 6. Non-qualifying candidates retain explicit filter/rejection lineage.
 7. The prospect board cannot create portfolio, PAPER, execution or live-trading authority.
 8. Newsletter, dashboard and API consumers must consume this same canonical board rather than independently applying a Top-N truncation.
