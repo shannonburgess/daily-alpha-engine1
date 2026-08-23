@@ -1,5 +1,6 @@
 from daily_alpha.pine_bar_outcome_compare import BarOutcomeReport
 from daily_alpha.pine_historical_reference import HistoricalV24Evaluation
+from daily_alpha.pine_historical_reference_locked import LockedHistoricalV24Evaluation
 from daily_alpha.pine_parity_compare import ParityReport
 from daily_alpha.pine_parity_proof_gate import (
     V24ParityProofGate,
@@ -17,21 +18,36 @@ def _parity_report(reference_count: int, *, exact: bool = True) -> ParityReport:
     )
 
 
+def _bar_report(*, exact: bool = True) -> BarOutcomeReport:
+    return BarOutcomeReport(
+        reference_count=100,
+        python_count=100 if exact else 99,
+        exact_bar_count=100 if exact else 99,
+        mismatch_count=0 if exact else 1,
+        mismatches=(),
+    )
+
+
 def _historical_evaluation(
     reference_signal_count: int,
     *,
     exact: bool = True,
+) -> LockedHistoricalV24Evaluation:
+    return LockedHistoricalV24Evaluation(
+        reference_id="historical-reference-v1",
+        parameter_manifest_sha256="a" * 64,
+        signal_report=_parity_report(reference_signal_count, exact=exact),
+        bar_outcome_report=_bar_report(exact=exact),
+    )
+
+
+def _unlocked_historical_evaluation(
+    reference_signal_count: int,
 ) -> HistoricalV24Evaluation:
     return HistoricalV24Evaluation(
-        reference_id="historical-reference-v1",
-        signal_report=_parity_report(reference_signal_count, exact=exact),
-        bar_outcome_report=BarOutcomeReport(
-            reference_count=100,
-            python_count=100 if exact else 99,
-            exact_bar_count=100 if exact else 99,
-            mismatch_count=0 if exact else 1,
-            mismatches=(),
-        ),
+        reference_id="unlocked-history",
+        signal_report=_parity_report(reference_signal_count),
+        bar_outcome_report=_bar_report(),
     )
 
 
@@ -61,12 +77,26 @@ def test_exact_zero_signal_comparisons_are_not_parity_proof() -> None:
     )
 
     assert gate.historical_exact is True
+    assert gate.historical_parameter_manifest_locked is True
     assert gate.forward_exact is True
     assert gate.parity_evidence_complete is False
     assert gate.blockers == (
         "HISTORICAL_GENUINE_SIGNAL_EVIDENCE_EMPTY",
         "FORWARD_GENUINE_SIGNAL_EVIDENCE_EMPTY",
     )
+
+
+def test_unlocked_history_cannot_complete_the_proof_gate() -> None:
+    gate = evaluate_v24_parity_proof_gate(
+        historical_evaluation=_unlocked_historical_evaluation(3),
+        forward_report=_parity_report(2),
+        forward_monitor_deployed=True,
+    )
+
+    assert gate.historical_exact is True
+    assert gate.historical_parameter_manifest_locked is False
+    assert gate.parity_evidence_complete is False
+    assert gate.blockers == ("HISTORICAL_PARAMETER_MANIFEST_NOT_LOCKED",)
 
 
 def test_forward_monitor_runtime_proof_is_required_even_with_exact_events() -> None:
@@ -104,6 +134,7 @@ def test_nonempty_exact_historical_and_forward_evidence_complete_the_gate() -> N
     assert gate.parity_evidence_complete is True
     assert gate.blockers == ()
     assert gate.historical_reference_signal_count == 4
+    assert gate.historical_parameter_manifest_locked is True
     assert gate.forward_reference_signal_count == 2
     assert gate.promotion_authorized is False
     assert gate.trading_authorized is False
@@ -115,6 +146,7 @@ def test_proof_record_itself_cannot_smuggle_promotion_authority() -> None:
         V24ParityProofGate(
             historical_exact=True,
             historical_reference_signal_count=1,
+            historical_parameter_manifest_locked=True,
             forward_exact=True,
             forward_reference_signal_count=1,
             forward_monitor_deployed=True,
