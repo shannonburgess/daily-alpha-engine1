@@ -71,7 +71,6 @@
       "Action": [
         "logs:CreateLogGroup",
         "logs:DeleteLogGroup",
-        "logs:DescribeLogGroups",
         "logs:PutRetentionPolicy",
         "logs:DeleteRetentionPolicy",
         "logs:PutMetricFilter",
@@ -85,6 +84,12 @@
         "arn:aws:logs:us-east-2:490809405132:log-group:/aws/lambda/daily-alpha-staging-data-feed-ingestion",
         "arn:aws:logs:us-east-2:490809405132:log-group:/aws/lambda/daily-alpha-staging-data-feed-ingestion:*"
       ]
+    },
+    {
+      "Sid": "DescribeLogGroupsForStabilization",
+      "Effect": "Allow",
+      "Action": "logs:DescribeLogGroups",
+      "Resource": "*"
     },
     {
       "Sid": "ManageOnlyDataFeedAlarms",
