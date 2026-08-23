@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
+from .pine_forward_event_classification import partition_forward_events
 from .pine_forward_reference import ReceiptBoundForwardParityEvaluation
 from .pine_historical_reference import HistoricalV24Evaluation
 from .pine_historical_reference_locked import LockedHistoricalV24Evaluation
@@ -56,13 +57,7 @@ def evaluate_v24_parity_proof_gate(
     forward_evaluation: ReceiptBoundForwardParityEvaluation | None,
     forward_deployment_evidence: ForwardParityDeploymentEvidence | None,
 ) -> V24ParityProofGate:
-    """Evaluate SH24 proof using only receipt-bound forward comparisons.
-
-    A generic ParityReport is intentionally insufficient. Forward comparison must be constructed
-    from the exact sanitized persisted events in the validated staging deployment receipt and must
-    carry the same deployed commit and processor code identity. This prevents a disconnected report
-    or mismatched event set from completing the proof gate.
-    """
+    """Evaluate SH24 proof using only receipt-bound, non-E2E forward comparisons."""
     blockers: list[str] = []
 
     if historical_evaluation is None:
@@ -111,10 +106,10 @@ def evaluate_v24_parity_proof_gate(
                 != forward_deployment_evidence.processor_code_sha256
             ):
                 blockers.append("FORWARD_PARITY_PROCESSOR_CODE_MISMATCH")
-            if (
-                forward_evaluation.reference_snapshot.event_count_visible
-                != forward_deployment_evidence.sh24.event_count_visible
-            ):
+            genuine_count = partition_forward_events(
+                forward_deployment_evidence.sh24
+            ).reference_candidate_count
+            if forward_evaluation.reference_snapshot.event_count_visible != genuine_count:
                 blockers.append("FORWARD_PARITY_RECEIPT_EVENT_COUNT_MISMATCH")
         if not forward_exact:
             blockers.append("FORWARD_PARITY_MISMATCH")
