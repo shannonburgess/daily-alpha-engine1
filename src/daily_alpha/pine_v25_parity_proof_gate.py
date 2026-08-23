@@ -19,6 +19,8 @@ class V25ParityProofGate:
     forward_reference_signal_count: int
     forward_monitor_deployed: bool
     forward_deployment_commit_sha: str | None
+    forward_replay_inputs_locked: bool
+    forward_replay_evidence_id: str | None
     blockers: tuple[str, ...]
     parity_evidence_complete: bool
     promotion_authorized: bool = False
@@ -32,6 +34,8 @@ class V25ParityProofGate:
             raise ValueError("forward_reference_signal_count must be non-negative")
         if self.forward_monitor_deployed != bool(self.forward_deployment_commit_sha):
             raise ValueError("forward monitor deployment state must carry exact commit evidence")
+        if self.forward_replay_inputs_locked != bool(self.forward_replay_evidence_id):
+            raise ValueError("forward replay lock state must carry exact replay evidence identity")
         if self.promotion_authorized:
             raise ValueError("parity proof gate cannot authorize promotion")
         if self.trading_authorized or self.live_trading_enabled:
@@ -46,6 +50,8 @@ class V25ParityProofGate:
             and self.forward_reference_signal_count > 0
             and self.forward_monitor_deployed
             and self.forward_deployment_commit_sha
+            and self.forward_replay_inputs_locked
+            and self.forward_replay_evidence_id
         ):
             raise ValueError("complete parity evidence is inconsistent with required proof gates")
 
@@ -56,7 +62,7 @@ def evaluate_v25_parity_proof_gate(
     forward_evaluation: ReceiptBoundForwardParityEvaluation | None,
     forward_deployment_evidence: ForwardParityDeploymentEvidence | None,
 ) -> V25ParityProofGate:
-    """Evaluate SH25 proof using only receipt-bound non-E2E forward strategy events."""
+    """Evaluate SH25 proof using receipt-bound events and locked replay-input provenance."""
     blockers: list[str] = []
 
     if historical_evaluation is None:
@@ -87,14 +93,24 @@ def evaluate_v25_parity_proof_gate(
     if forward_evaluation is None:
         forward_exact = False
         forward_reference_signal_count = 0
+        forward_replay_inputs_locked = False
+        forward_replay_evidence_id = None
         blockers.append("FORWARD_PARITY_EVIDENCE_MISSING")
     else:
         forward_exact = forward_evaluation.exact
         forward_reference_signal_count = forward_evaluation.report.reference_count
+        forward_replay_inputs_locked = forward_evaluation.replay_inputs_locked
+        forward_replay_evidence_id = (
+            forward_evaluation.replay_provenance.evidence_id
+            if forward_evaluation.replay_provenance is not None
+            else None
+        )
         if forward_evaluation.model_id != "PAPER_SHADOW_V25":
             blockers.append("FORWARD_PARITY_BOOK_MISMATCH")
         if forward_evaluation.strategy_version != "2.5":
             blockers.append("FORWARD_PARITY_VERSION_MISMATCH")
+        if not forward_replay_inputs_locked:
+            blockers.append("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED")
         if forward_deployment_evidence is None:
             blockers.append("FORWARD_PARITY_EVALUATION_NOT_DEPLOYMENT_BOUND")
         else:
@@ -124,6 +140,8 @@ def evaluate_v25_parity_proof_gate(
         forward_reference_signal_count=forward_reference_signal_count,
         forward_monitor_deployed=forward_monitor_deployed,
         forward_deployment_commit_sha=forward_deployment_commit_sha,
+        forward_replay_inputs_locked=forward_replay_inputs_locked,
+        forward_replay_evidence_id=forward_replay_evidence_id,
         blockers=normalized_blockers,
         parity_evidence_complete=not normalized_blockers,
     )
