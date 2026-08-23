@@ -1,9 +1,7 @@
 import json
 from datetime import UTC, datetime
 
-from daily_alpha.prospect_staging_runtime import (
-    AwsProspectStagingRuntimePublisher,
-)
+from daily_alpha.prospect_staging_runtime import AwsProspectStagingRuntimePublisher
 
 
 NOW = datetime(2026, 8, 24, 13, 5, tzinfo=UTC)
