@@ -3,9 +3,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from daily_alpha.pine_v24_parity import (
-    PROCESS_ORDERS_ON_CLOSE,
     PINE_V24_MODEL_ID,
     PINE_V24_SOURCE_PATH,
+    PROCESS_ORDERS_ON_CLOSE,
     DailyBar,
     V24Parameters,
     run_v24_parity,
