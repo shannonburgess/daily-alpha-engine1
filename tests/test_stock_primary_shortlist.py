@@ -230,3 +230,35 @@ def test_company_price_floor_does_not_apply_to_etf_rows(tmp_path):
 
     assert [item.symbol for item in result.items] == ["ETF"]
     assert result.summary["excluded_company_price_floor"] == 1
+
+
+def test_active_buy_continuity_is_retained_without_orats(tmp_path):
+    previous = write_csv(
+        tmp_path / "OVTLYR_2026-08-20.csv",
+        ["AAA,Buy,2026-08-20,Technology,Software,Up,Stable,Yes,100,2500000"],
+    )
+    current = write_csv(
+        tmp_path / "OVTLYR_2026-08-21.csv",
+        ["AAA,Buy,2026-08-20,Technology,Software,Up,Stable,Yes,101,2500000"],
+    )
+
+    result = build_stock_primary_shortlist(
+        previous,
+        current,
+        as_of=NOW,
+        orats_source=None,
+        company_symbols=frozenset({"AAA"}),
+    )
+
+    assert [item.symbol for item in result.items] == ["AAA"]
+    assert result.items[0].ovtlyr_status == "ACTIVE_BUY"
+    assert result.items[0].display_label == "ACTIVE BUY"
+    assert (
+        result.items[0].classification_reason
+        == "BUY remains active without a higher-priority setup"
+    )
+    assert result.items[0].orats_status == "SOURCE_UNAVAILABLE"
+    assert result.items[0].orats_reason == "ORATS_NOT_CONFIGURED_STOCK_RETAINED"
+    assert result.summary["classification_counts"]["ACTIVE_BUY"] == 1
+    assert result.summary["trading_authorized"] is False
+    assert result.summary["live_trading_enabled"] is False
