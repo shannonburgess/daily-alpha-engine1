@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from .pine_forward_deployment_evidence import ForwardParityDeploymentEvidence
 from .pine_forward_event_classification import partition_forward_events
 from .pine_forward_reference import ReceiptBoundForwardParityEvaluation
+from .pine_v25_forward_locked_replay import LockedForwardV25Evaluation
 from .pine_v25_historical_reference import HistoricalV25Evaluation
 from .pine_v25_parity import PINE_V25_SOURCE_BLOB_SHA
 
@@ -60,10 +61,10 @@ class V25ParityProofGate:
 def evaluate_v25_parity_proof_gate(
     *,
     historical_evaluation: HistoricalV25Evaluation | None,
-    forward_evaluation: ReceiptBoundForwardParityEvaluation | None,
+    forward_evaluation: ReceiptBoundForwardParityEvaluation | LockedForwardV25Evaluation | None,
     forward_deployment_evidence: ForwardParityDeploymentEvidence | None,
 ) -> V25ParityProofGate:
-    """Evaluate SH25 proof using receipt-bound events and locked replay-input provenance."""
+    """Evaluate SH25 proof using receipt-bound events and verified replay-input provenance."""
     blockers: list[str] = []
 
     if historical_evaluation is None:
@@ -98,10 +99,10 @@ def evaluate_v25_parity_proof_gate(
     else:
         forward_exact = forward_evaluation.exact
         forward_reference_signal_count = forward_evaluation.report.reference_count
-        forward_replay_inputs_locked = forward_evaluation.replay_inputs_locked
+        forward_replay_inputs_locked = isinstance(forward_evaluation, LockedForwardV25Evaluation)
         forward_replay_evidence_id = (
             forward_evaluation.replay_provenance.evidence_id
-            if forward_evaluation.replay_provenance is not None
+            if forward_replay_inputs_locked
             else None
         )
         if forward_evaluation.model_id != "PAPER_SHADOW_V25":
@@ -110,11 +111,7 @@ def evaluate_v25_parity_proof_gate(
             blockers.append("FORWARD_PARITY_VERSION_MISMATCH")
         if not forward_replay_inputs_locked:
             blockers.append("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED")
-        elif (
-            forward_evaluation.replay_provenance is not None
-            and forward_evaluation.replay_provenance.strategy_source_blob_sha
-            != PINE_V25_SOURCE_BLOB_SHA
-        ):
+        elif forward_evaluation.replay_provenance.strategy_source_blob_sha != PINE_V25_SOURCE_BLOB_SHA:
             blockers.append("FORWARD_REPLAY_SOURCE_MISMATCH")
         if forward_deployment_evidence is None:
             blockers.append("FORWARD_PARITY_EVALUATION_NOT_DEPLOYMENT_BOUND")
