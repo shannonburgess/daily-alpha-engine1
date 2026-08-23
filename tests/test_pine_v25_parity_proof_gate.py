@@ -11,6 +11,7 @@ from daily_alpha.pine_forward_reference import (
     PersistedReferenceSnapshot,
     ReceiptBoundForwardParityEvaluation,
 )
+from daily_alpha.pine_forward_replay_provenance import ForwardReplayProvenance
 from daily_alpha.pine_parity_compare import ParityReport, ReferenceSignal
 from daily_alpha.pine_v25_historical_reference import HistoricalV25Evaluation
 from daily_alpha.pine_v25_parity_proof_gate import (
@@ -113,11 +114,29 @@ def _deployment_evidence(*, include_natural: bool = True, include_e2e: bool = Tr
     )
 
 
+def _replay_provenance(commit_sha: str = "c" * 40) -> ForwardReplayProvenance:
+    return ForwardReplayProvenance(
+        model_id="PAPER_SHADOW_V25",
+        strategy_version="2.5",
+        strategy_source_blob_sha="2b00cd7f8a8954032177a14baa1f34c1ce2ac3e5",
+        parameter_manifest_sha256="3" * 64,
+        market_evidence_sha256="4" * 64,
+        market_source_revision="point-in-time-market-revision",
+        python_engine_revision="pine_v25_parity.py:test-revision",
+        replay_start=datetime(2026, 8, 1, 20, tzinfo=UTC),
+        replay_end=NOW,
+        replay_bar_count=15,
+        deployment_commit_sha=commit_sha,
+        processor_code_sha256="code-hash",
+    )
+
+
 def _forward_evaluation(
     count: int,
     *,
     exact: bool = True,
     commit_sha: str = "c" * 40,
+    replay_inputs_locked: bool = True,
 ) -> ReceiptBoundForwardParityEvaluation:
     signals = tuple(
         ReferenceSignal(
@@ -147,6 +166,7 @@ def _forward_evaluation(
             signals=signals,
         ),
         report=_report(count, exact=exact),
+        replay_provenance=_replay_provenance(commit_sha) if replay_inputs_locked else None,
     )
 
 
@@ -191,6 +211,18 @@ def test_v25_monitor_deployment_receipt_is_required_for_forward_proof() -> None:
     assert "FORWARD_PARITY_EVALUATION_NOT_DEPLOYMENT_BOUND" in gate.blockers
 
 
+def test_v25_receipt_match_without_locked_replay_inputs_cannot_complete_proof() -> None:
+    gate = evaluate_v25_parity_proof_gate(
+        historical_evaluation=_history(3),
+        forward_evaluation=_forward_evaluation(1, replay_inputs_locked=False),
+        forward_deployment_evidence=_deployment_evidence(),
+    )
+    assert gate.parity_evidence_complete is False
+    assert gate.forward_replay_inputs_locked is False
+    assert gate.forward_replay_evidence_id is None
+    assert gate.blockers == ("FORWARD_REPLAY_INPUT_EVIDENCE_NOT_LOCKED",)
+
+
 def test_v25_receipt_raw_count_does_not_mistake_e2e_events_for_genuine_signals() -> None:
     deployment = _deployment_evidence(include_natural=True, include_e2e=True)
     assert deployment.sh25.event_count_visible == 4
@@ -202,6 +234,7 @@ def test_v25_receipt_raw_count_does_not_mistake_e2e_events_for_genuine_signals()
     )
     assert gate.parity_evidence_complete is True
     assert gate.forward_reference_signal_count == 1
+    assert gate.forward_replay_inputs_locked is True
     assert gate.blockers == ()
 
 
@@ -226,7 +259,7 @@ def test_v25_mismatch_blocks_evidence_completion_without_retuning() -> None:
     assert gate.blockers == ("HISTORICAL_PARITY_MISMATCH", "FORWARD_PARITY_MISMATCH")
 
 
-def test_v25_exact_nonempty_receipt_bound_evidence_completes_only_evidence_gate() -> None:
+def test_v25_exact_nonempty_receipt_and_replay_bound_evidence_completes_only_evidence_gate() -> None:
     gate = evaluate_v25_parity_proof_gate(
         historical_evaluation=_history(4),
         forward_evaluation=_forward_evaluation(1),
@@ -237,6 +270,8 @@ def test_v25_exact_nonempty_receipt_bound_evidence_completes_only_evidence_gate(
     assert gate.historical_reference_signal_count == 4
     assert gate.forward_reference_signal_count == 1
     assert gate.forward_deployment_commit_sha == "c" * 40
+    assert gate.forward_replay_inputs_locked is True
+    assert gate.forward_replay_evidence_id is not None
     assert gate.promotion_authorized is False
     assert gate.trading_authorized is False
     assert gate.live_trading_enabled is False
@@ -252,6 +287,8 @@ def test_v25_proof_record_cannot_smuggle_promotion_authority() -> None:
             forward_reference_signal_count=1,
             forward_monitor_deployed=True,
             forward_deployment_commit_sha="c" * 40,
+            forward_replay_inputs_locked=True,
+            forward_replay_evidence_id="d" * 64,
             blockers=(),
             parity_evidence_complete=True,
             promotion_authorized=True,
