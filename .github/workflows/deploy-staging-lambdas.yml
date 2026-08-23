@@ -14,6 +14,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 concurrency:
   group: daily-alpha-staging-lambda-deploy
@@ -29,6 +30,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -44,6 +47,14 @@ jobs:
         run: |
           ruff check .
           pytest -q
+
+      - name: Verify forward parity projection ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECTION_MINIMUM_COMMIT="32b4626a9b1138d4a1e9788f533d6a06ac5f929a"
+          git merge-base --is-ancestor "$PROJECTION_MINIMUM_COMMIT" "$GITHUB_SHA"
+          echo "PARITY_PROJECTION_ANCESTOR_VERIFIED=true" >> "$GITHUB_ENV"
 
       - name: Build Lambda deployment package
         run: |
@@ -136,6 +147,9 @@ jobs:
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
           aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
             --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,LastUpdateStatus:LastUpdateStatus}'
+          aws lambda get-function-configuration --function-name daily-alpha-pine-processor \
+            --query '{FunctionName:FunctionName,Handler:Handler,Runtime:Runtime,Version:Version,CodeSha256:CodeSha256,LastUpdateStatus:LastUpdateStatus}' \
+            > /tmp/pine-processor-config.json
 
       - name: Verify deployed shadow monitor contract
         shell: bash
@@ -235,3 +249,20 @@ jobs:
               "Staging readiness passed: autonomous paper execution remains live-disabled "
               "and fails closed before a paper fill."
           )
+
+      - name: Render sanitized forward parity deployment receipt
+        run: |
+          python scripts/render_forward_parity_deploy_receipt.py \
+            --monitor /tmp/shadow-monitor-result.json \
+            --processor-config /tmp/pine-processor-config.json \
+            --output-json /tmp/forward-parity-deploy-receipt.json \
+            --output-markdown /tmp/forward-parity-deploy-receipt.md
+          cat /tmp/forward-parity-deploy-receipt.json
+
+      - name: Publish forward parity deployment receipt to issue 213
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 213 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/forward-parity-deploy-receipt.md
