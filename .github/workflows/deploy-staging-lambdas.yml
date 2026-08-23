@@ -8,6 +8,7 @@ on:
     paths:
       - "src/daily_alpha/**"
       - "lambda_handlers/**"
+      - "scripts/render_forward_parity_deploy_receipt.py"
       - "pyproject.toml"
       - ".github/workflows/deploy-staging-lambdas.yml"
 
