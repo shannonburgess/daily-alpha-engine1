@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from .pine_v24_parity import V24BarResult
 
@@ -103,7 +104,7 @@ class BarOutcomeReport:
         return self.mismatch_count == 0 and self.reference_count == self.python_count
 
 
-def _python_outcome(result: V24BarResult) -> ReferenceBarOutcome:
+def _python_outcome(result: Any) -> ReferenceBarOutcome:
     actions = tuple(signal.action for signal in result.signals)
     if actions:
         kind = BarOutcomeKind.SIGNAL
@@ -124,20 +125,26 @@ def _python_outcome(result: V24BarResult) -> ReferenceBarOutcome:
     )
 
 
-def compare_v24_bar_outcomes(
+def compare_bar_outcomes(
     reference: Iterable[ReferenceBarOutcome],
-    python_results: Iterable[V24BarResult],
+    python_results: Iterable[Any],
 ) -> BarOutcomeReport:
-    """Compare explicit per-bar Pine outcomes to Python without inferring missing Pine data."""
+    """Compare explicit Pine bar outcomes for any parity engine with the shared result shape."""
     reference_items = tuple(reference)
     python_items = tuple(_python_outcome(result) for result in python_results)
 
-    def keyed(items: tuple[ReferenceBarOutcome, ...], name: str) -> dict[tuple[str, datetime], ReferenceBarOutcome]:
+    def keyed(
+        items: tuple[ReferenceBarOutcome, ...],
+        name: str,
+    ) -> dict[tuple[str, datetime], ReferenceBarOutcome]:
         output: dict[tuple[str, datetime], ReferenceBarOutcome] = {}
         for item in items:
             key = (item.symbol, item.bar_time)
             if key in output:
-                raise ValueError(f"duplicate {name} bar outcome for {item.symbol} {item.bar_time.isoformat()}")
+                raise ValueError(
+                    f"duplicate {name} bar outcome for "
+                    f"{item.symbol} {item.bar_time.isoformat()}"
+                )
             output[key] = item
         return output
 
@@ -231,11 +238,20 @@ def compare_v24_bar_outcomes(
     )
 
 
+def compare_v24_bar_outcomes(
+    reference: Iterable[ReferenceBarOutcome],
+    python_results: Iterable[V24BarResult],
+) -> BarOutcomeReport:
+    """Backward-compatible SH24 wrapper over the shared bar-outcome comparator."""
+    return compare_bar_outcomes(reference, python_results)
+
+
 __all__ = [
     "BarOutcomeKind",
     "BarOutcomeMismatch",
     "BarOutcomeMismatchKind",
     "BarOutcomeReport",
     "ReferenceBarOutcome",
+    "compare_bar_outcomes",
     "compare_v24_bar_outcomes",
 ]
