@@ -11,6 +11,36 @@ from typing import Any
 PROJECTION_MINIMUM_COMMIT = "32b4626a9b1138d4a1e9788f533d6a06ac5f929a"
 RECEIPT_SCHEMA = "DAILY_ALPHA_FORWARD_PARITY_DEPLOYMENT_RECEIPT_V1"
 EXPECTED_BOOKS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
+SANITIZED_EVENT_FIELDS = (
+    "signal_id",
+    "symbol",
+    "action",
+    "source",
+    "strategy",
+    "strategy_version",
+    "model_id",
+    "timeframe",
+    "price",
+    "bar_time",
+    "entry_type",
+    "runner_stage",
+    "position_fraction",
+    "earnings_gap_class",
+    "stock_stop_price",
+    "average_daily_dollar_volume",
+    "breakout_level",
+    "armed_age",
+    "exit_reason",
+    "forward_test_start",
+    "replay_max_price",
+    "received_at",
+    "disposition",
+    "reason",
+    "paper_execution_triggered",
+    "paper_ledger_updated",
+    "trading_authorized",
+    "live_trading_enabled",
+)
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -38,7 +68,23 @@ def _required_sha(value: Any, field: str) -> str:
     return text
 
 
-def _book_summary(raw_book: Any, account_id: str) -> dict[str, int | bool]:
+def _sanitize_event(raw_event: Any, account_id: str, index: int) -> dict[str, Any]:
+    event = _required_mapping(raw_event, f"{account_id}.events[{index}]")
+    signal_id = _required_text(event.get("signal_id"), f"{account_id}.events[{index}].signal_id")
+    sanitized = {
+        field: event[field]
+        for field in SANITIZED_EVENT_FIELDS
+        if field in event
+    }
+    sanitized["signal_id"] = signal_id
+    if sanitized.get("trading_authorized") is True:
+        raise ReceiptError(f"{account_id} event trading_authorized must remain false")
+    if sanitized.get("live_trading_enabled") is True:
+        raise ReceiptError(f"{account_id} event live_trading_enabled must remain false")
+    return sanitized
+
+
+def _book_summary(raw_book: Any, account_id: str) -> dict[str, Any]:
     book = _required_mapping(raw_book, account_id)
     events = book.get("events")
     if not isinstance(events, list):
@@ -59,6 +105,9 @@ def _book_summary(raw_book: Any, account_id: str) -> dict[str, int | bool]:
 
     return {
         "event_count_visible": visible,
+        "events": tuple(
+            _sanitize_event(event, account_id, index) for index, event in enumerate(events)
+        ),
         "open_count": int(book.get("open_count", len(open_positions))),
         "armed_count_visible": int(book.get("armed_count_visible", len(armed_signals))),
         "scan_truncated": False,
@@ -117,7 +166,10 @@ def build_receipt(
             "code_sha256": code_sha256,
             "last_update_status": processor_config["LastUpdateStatus"],
         },
-        "books": {account_id: _book_summary(books[account_id], account_id) for account_id in EXPECTED_BOOKS},
+        "books": {
+            account_id: _book_summary(books[account_id], account_id)
+            for account_id in EXPECTED_BOOKS
+        },
         "trading_authorized": False,
         "live_trading_enabled": False,
     }
@@ -130,7 +182,9 @@ def render_markdown(receipt: Mapping[str, Any]) -> str:
         "## Forward parity staging deployment receipt\n\n"
         "The deployed staging Pine processor passed the read-only SH24/SH25 monitor contract "
         "and the deployed commit was verified to contain the merged forward-parity projection. "
-        "This is deployment evidence only; it does not prove signal parity or authorize trading.\n\n"
+        "The receipt includes only the persisted event fields needed for book/forward-parity "
+        "inspection; webhook secrets and raw ingress are excluded. This is deployment evidence "
+        "only; it does not prove signal parity or authorize trading.\n\n"
         f"```json\n{encoded}\n```\n"
     )
 
