@@ -1,7 +1,12 @@
 import json
 from datetime import UTC, datetime
 
-from daily_alpha.prospect_staging_runtime import AwsProspectStagingRuntimePublisher
+import pytest
+
+from daily_alpha.prospect_staging_runtime import (
+    AwsProspectStagingRuntimePublisher,
+    ProspectStagingRuntimeError,
+)
 
 NOW = datetime(2026, 8, 24, 13, 5, tzinfo=UTC)
 
@@ -15,8 +20,13 @@ def _row(rank: int, *, status: str = "LEADER", orats_status: str = "ENRICHED"):
         "classification_reason": "Governed stock-primary research candidate.",
         "score": float(101 - rank),
         "sector": "Technology",
+        "industry": "Semiconductors",
         "sector_net_score": 10,
+        "trend": "UP",
+        "momentum": "RISING",
         "optionable": True,
+        "price": 100.0 + rank,
+        "average_volume": 2_500_000.0,
         "orats_status": orats_status,
         "orats_reason": (
             "ORATS_PROVIDER_ERROR_STOCK_RETAINED"
@@ -29,6 +39,23 @@ def _row(rank: int, *, status: str = "LEADER", orats_status: str = "ENRICHED"):
         "selected_spread_pct": 0.03 if orats_status == "ENRICHED" else None,
         "selected_volume": 200 if orats_status == "ENRICHED" else 0,
         "selected_open_interest": 100 if orats_status == "ENRICHED" else 0,
+    }
+
+
+def _classification(rank: int, *, status: str = "LEADER", reason: str | None = None):
+    return {
+        "symbol": f"T{rank:02d}",
+        "status": status,
+        "display_label": status.replace("_", " "),
+        "signal": "BUY" if status != "REMOVED" else "HOLD",
+        "previous_signal": "BUY",
+        "signal_date": "2026-08-24",
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "trend": "UP" if status != "REMOVED" else "DOWN",
+        "momentum": "WEAKENING" if status == "DETERIORATING" else "RISING",
+        "optionable": True,
+        "reason": reason or f"Lifecycle audit: {status}",
     }
 
 
@@ -56,10 +83,23 @@ class _S3:
         return {}
 
 
-def _publisher(rows):
+def _publisher(rows, *, classifications=None):
     s3 = _S3()
     s3.objects["ovtlyr/shortlist/latest/shortlist.json"] = (
         json.dumps(rows, sort_keys=True) + "\n"
+    ).encode()
+    lifecycle_rows = classifications
+    if lifecycle_rows is None:
+        lifecycle_rows = [
+            _classification(
+                int(str(row["symbol"])[1:]),
+                status=str(row.get("ovtlyr_status") or "UNCHANGED"),
+                reason=str(row.get("classification_reason") or ""),
+            )
+            for row in rows
+        ]
+    s3.objects["ovtlyr/shortlist/latest/classifications.json"] = (
+        json.dumps(lifecycle_rows, sort_keys=True) + "\n"
     ).encode()
     s3.objects["daily-alpha/outputs/latest/newsletter.html"] = (
         b"<!doctype html><html><head><title>Daily Alpha</title></head>"
@@ -86,6 +126,9 @@ def test_prepare_preserves_all_50_qualifiers_with_top3_plus_47():
     assert {item.symbol for item in prepared.board.opportunities} == {
         f"T{rank:02d}" for rank in range(1, 51)
     }
+    assert prepared.board.filtered == ()
+    assert "shortlist=" in prepared.board.source_revision
+    assert "classifications=" in prepared.board.source_revision
 
     for output in prepared.outputs:
         assert output.board_id == prepared.board.board_id
@@ -139,13 +182,15 @@ def test_orats_data_error_is_nonblocking_for_actionable_stock_research():
     assert "ORATS_NONBLOCKING_DATA_ERROR" in first.fallback_reason
 
 
-def test_non_actionable_lifecycle_is_explicitly_filtered_not_silently_dropped():
-    rows = [
-        _row(1, status="LEADER"),
-        _row(2, status="DETERIORATING"),
-        _row(3, status="REMOVED"),
+def test_complete_classification_source_adds_filtered_lifecycle_without_qualifying_names():
+    shortlist = [_row(1, status="LEADER")]
+    classifications = [
+        _classification(1, status="LEADER"),
+        _classification(2, status="DETERIORATING", reason="Existing BUY momentum is weakening"),
+        _classification(3, status="REMOVED", reason="Prior BUY is no longer rated BUY"),
+        _classification(4, status="ACTIVE_BUY", reason="No higher-priority setup"),
     ]
-    _, publisher = _publisher(rows)
+    _, publisher = _publisher(shortlist, classifications=classifications)
 
     prepared = publisher.prepare(
         history_prefix="daily-alpha/outputs/history/2026-08-24/manual-run",
@@ -153,8 +198,29 @@ def test_non_actionable_lifecycle_is_explicitly_filtered_not_silently_dropped():
     )
 
     assert [item.symbol for item in prepared.board.opportunities] == ["T01"]
-    assert {item.symbol for item in prepared.board.filtered} == {"T02", "T03"}
-    assert all(item.reason for item in prepared.board.filtered)
+    assert {item.symbol for item in prepared.board.filtered} == {"T02", "T03", "T04"}
+    filtered = {item.symbol: item for item in prepared.board.filtered}
+    assert filtered["T02"].lifecycle_status == "DETERIORATING"
+    assert "Existing BUY momentum is weakening" in filtered["T02"].reason
+    assert filtered["T03"].lifecycle_status == "REMOVED"
+    assert "Prior BUY is no longer rated BUY" in filtered["T03"].reason
+    assert filtered["T04"].lifecycle_status == "ACTIVE_BUY"
+    assert all(item.evidence_lineage == (prepared.board.source_revision,) for item in filtered.values())
+
+
+def test_missing_classification_audit_source_fails_closed():
+    rows = [_row(1)]
+    s3, publisher = _publisher(rows)
+    del s3.objects["ovtlyr/shortlist/latest/classifications.json"]
+
+    with pytest.raises(
+        ProspectStagingRuntimeError,
+        match="PROSPECT_S3_READ_FAILED:ovtlyr/shortlist/latest/classifications.json",
+    ):
+        publisher.prepare(
+            history_prefix="daily-alpha/outputs/history/2026-08-24/manual-run",
+            as_of=NOW,
+        )
 
 
 def test_delivery_true_completes_initial_rollout_gate_and_persists_receipt():

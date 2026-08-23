@@ -48,6 +48,18 @@ class CandidateAssessment:
     selected_delta: float | None = None
     selected_spread_pct: float | None = None
     unusual_options_activity: bool = False
+    confidence: float | None = None
+    display_label: str = ""
+    classification_reason: str = ""
+    industry: str = ""
+    theme: str = ""
+    trend: str = ""
+    momentum: str = ""
+    price: float | None = None
+    average_volume: float | None = None
+    catalyst_context: tuple[str, ...] = ()
+    risk_context: tuple[str, ...] = ()
+    invalidation: str = ""
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -100,6 +112,9 @@ def assess_candidate(
         sector_net_score=sector_net_score,
         contract=contract,
     )
+    risk_context: tuple[str, ...] = ()
+    if decision.fallback_reason:
+        risk_context = (decision.fallback_reason,)
     return CandidateAssessment(
         symbol=source.symbol,
         ovtlyr_status=classified.status.value,
@@ -119,6 +134,14 @@ def assess_candidate(
         unusual_options_activity=(
             contract is not None and contract.volume_to_open_interest >= 1.0
         ),
+        display_label=classified.display_label,
+        classification_reason=classified.reason,
+        industry=source.industry,
+        trend=source.trend,
+        momentum=source.momentum,
+        price=source.price,
+        average_volume=source.average_volume,
+        risk_context=risk_context,
     )
 
 
