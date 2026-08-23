@@ -1,24 +1,18 @@
-"""Point-in-time regression diagnostics for sector-residual momentum research.
-
-This module implements the regression feature families pre-registered in issue #156 without
-changing any production/PAPER decision path. The caller supplies the trailing calibration
-window explicitly; this code does not tune or optimize an alpha threshold.
-"""
+"""Point-in-time regression diagnostics for sector-residual momentum research."""
 
 from __future__ import annotations
 
+import math
+import statistics
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from math import isfinite
-from statistics import fmean
-
 
 _RESIDUAL_ZERO_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True, slots=True)
 class ResidualCalibrationPoint:
-    """One point-in-time periodic return observation used only for factor calibration."""
+    """One periodic return observation used only for factor calibration."""
 
     period_end: datetime
     known_at: datetime
@@ -31,14 +25,16 @@ class ResidualCalibrationPoint:
             raise ValueError("period_end and known_at must be timezone-aware")
         if self.known_at < self.period_end:
             raise ValueError("known_at cannot precede period_end")
-        values = (self.stock_return, self.market_return, self.sector_return)
-        if any(not isfinite(value) for value in values):
+        if any(
+            not math.isfinite(value)
+            for value in (self.stock_return, self.market_return, self.sector_return)
+        ):
             raise ValueError("calibration returns must be finite")
 
 
 @dataclass(frozen=True, slots=True)
 class ResidualRegressionObservation:
-    """Frozen candidate plus factor returns and a trailing calibration window."""
+    """Frozen candidate, horizon factor returns and trailing calibration window."""
 
     security_id: str
     ticker: str
@@ -68,7 +64,7 @@ class ResidualRegressionObservation:
             raise ValueError("known_at cannot precede as_of")
         if self.sector_proxy_leverage != 1.0:
             raise ValueError("regression signal decomposition requires a 1x sector proxy")
-        horizon_values = (
+        horizons = (
             self.stock_return_20d,
             self.stock_return_63d,
             self.stock_return_126d,
@@ -79,22 +75,21 @@ class ResidualRegressionObservation:
             self.sector_return_63d,
             self.sector_return_126d,
         )
-        if any(not isfinite(value) for value in horizon_values):
+        if any(not math.isfinite(value) for value in horizons):
             raise ValueError("horizon returns must be finite")
         if len(self.calibration_points) < 3:
             raise ValueError("at least three calibration points are required")
-        if tuple(sorted(self.calibration_points, key=lambda point: point.period_end)) != self.calibration_points:
+        ordered = tuple(sorted(self.calibration_points, key=lambda point: point.period_end))
+        if ordered != self.calibration_points:
             raise ValueError("calibration points must be sorted by period_end")
-        seen: set[datetime] = set()
-        for point in self.calibration_points:
-            if point.period_end in seen:
-                raise ValueError("duplicate calibration period_end")
-            seen.add(point.period_end)
+        period_ends = [point.period_end for point in self.calibration_points]
+        if len(set(period_ends)) != len(period_ends):
+            raise ValueError("duplicate calibration period_end")
 
 
 @dataclass(frozen=True, slots=True)
 class ResidualRegressionState:
-    """Research-only market and sector+market residual-momentum diagnostics."""
+    """Research-only market and sector+market residual diagnostics."""
 
     security_id: str
     ticker: str
@@ -127,8 +122,8 @@ def _utc(value: datetime, *, name: str) -> datetime:
 
 
 def _sample_beta(stock: list[float], factor: list[float]) -> float:
-    stock_mean = fmean(stock)
-    factor_mean = fmean(factor)
+    stock_mean = statistics.fmean(stock)
+    factor_mean = statistics.fmean(factor)
     denominator = sum((value - factor_mean) ** 2 for value in factor)
     if denominator <= 1e-18:
         raise ValueError("market calibration variance is singular")
@@ -142,33 +137,21 @@ def _sample_beta(stock: list[float], factor: list[float]) -> float:
 def _joint_betas(
     stock: list[float], market: list[float], sector: list[float]
 ) -> tuple[float, float]:
-    stock_mean = fmean(stock)
-    market_mean = fmean(market)
-    sector_mean = fmean(sector)
-    centered_stock = [value - stock_mean for value in stock]
-    centered_market = [value - market_mean for value in market]
-    centered_sector = [value - sector_mean for value in sector]
-
-    mm = sum(value * value for value in centered_market)
-    ss = sum(value * value for value in centered_sector)
-    ms = sum(
-        market_value * sector_value
-        for market_value, sector_value in zip(centered_market, centered_sector, strict=True)
-    )
-    my = sum(
-        market_value * stock_value
-        for market_value, stock_value in zip(centered_market, centered_stock, strict=True)
-    )
-    sy = sum(
-        sector_value * stock_value
-        for sector_value, stock_value in zip(centered_sector, centered_stock, strict=True)
-    )
+    stock_mean = statistics.fmean(stock)
+    market_mean = statistics.fmean(market)
+    sector_mean = statistics.fmean(sector)
+    y = [value - stock_mean for value in stock]
+    m = [value - market_mean for value in market]
+    s = [value - sector_mean for value in sector]
+    mm = sum(value * value for value in m)
+    ss = sum(value * value for value in s)
+    ms = sum(a * b for a, b in zip(m, s, strict=True))
+    my = sum(a * b for a, b in zip(m, y, strict=True))
+    sy = sum(a * b for a, b in zip(s, y, strict=True))
     determinant = mm * ss - ms * ms
     if determinant <= 1e-18:
         raise ValueError("market/sector calibration matrix is singular")
-    market_beta = (my * ss - sy * ms) / determinant
-    sector_beta = (sy * mm - my * ms) / determinant
-    return market_beta, sector_beta
+    return (my * ss - sy * ms) / determinant, (sy * mm - my * ms) / determinant
 
 
 class ResidualRegressionAnalyzer:
@@ -180,62 +163,76 @@ class ResidualRegressionAnalyzer:
         *,
         decision_at: datetime,
     ) -> ResidualRegressionState:
-        decision_at_utc = _utc(decision_at, name="decision_at")
-        if _utc(observation.as_of, name="as_of") > decision_at_utc:
+        decision = _utc(decision_at, name="decision_at")
+        if _utc(observation.as_of, name="as_of") > decision:
             raise ValueError("future residual-regression as_of")
-        if _utc(observation.known_at, name="known_at") > decision_at_utc:
+        if _utc(observation.known_at, name="known_at") > decision:
             raise ValueError("future residual-regression known_at")
         for point in observation.calibration_points:
-            if _utc(point.period_end, name="period_end") > decision_at_utc:
+            if _utc(point.period_end, name="period_end") > decision:
                 raise ValueError("future calibration period")
-            if _utc(point.known_at, name="known_at") > decision_at_utc:
+            if _utc(point.known_at, name="known_at") > decision:
                 raise ValueError("future calibration knowledge")
 
         stock = [point.stock_return for point in observation.calibration_points]
         market = [point.market_return for point in observation.calibration_points]
         sector = [point.sector_return for point in observation.calibration_points]
-
         market_beta = _sample_beta(stock, market)
         joint_market_beta, joint_sector_beta = _joint_betas(stock, market, sector)
 
-        stock_mean = fmean(stock)
-        market_mean = fmean(market)
-        sector_mean = fmean(sector)
+        stock_mean = statistics.fmean(stock)
+        market_mean = statistics.fmean(market)
+        sector_mean = statistics.fmean(sector)
         market_alpha = stock_mean - market_beta * market_mean
         joint_alpha = stock_mean - joint_market_beta * market_mean - joint_sector_beta * sector_mean
-        market_weekly_residuals = [
+        market_weekly = [
             stock_value - (market_alpha + market_beta * market_value)
             for stock_value, market_value in zip(stock, market, strict=True)
         ]
-        joint_weekly_residuals = [
+        joint_weekly = [
             stock_value
             - (joint_alpha + joint_market_beta * market_value + joint_sector_beta * sector_value)
             for stock_value, market_value, sector_value in zip(stock, market, sector, strict=True)
         ]
 
-        market_residuals = (
-            observation.stock_return_20d - market_beta * observation.market_return_20d,
-            observation.stock_return_63d - market_beta * observation.market_return_63d,
-            observation.stock_return_126d - market_beta * observation.market_return_126d,
+        market_residuals = tuple(
+            stock_return - market_beta * market_return
+            for stock_return, market_return in (
+                (observation.stock_return_20d, observation.market_return_20d),
+                (observation.stock_return_63d, observation.market_return_63d),
+                (observation.stock_return_126d, observation.market_return_126d),
+            )
         )
-        joint_residuals = (
-            observation.stock_return_20d
-            - joint_market_beta * observation.market_return_20d
-            - joint_sector_beta * observation.sector_return_20d,
-            observation.stock_return_63d
-            - joint_market_beta * observation.market_return_63d
-            - joint_sector_beta * observation.sector_return_63d,
-            observation.stock_return_126d
-            - joint_market_beta * observation.market_return_126d
-            - joint_sector_beta * observation.sector_return_126d,
+        joint_residuals = tuple(
+            stock_return - joint_market_beta * market_return - joint_sector_beta * sector_return
+            for stock_return, market_return, sector_return in (
+                (
+                    observation.stock_return_20d,
+                    observation.market_return_20d,
+                    observation.sector_return_20d,
+                ),
+                (
+                    observation.stock_return_63d,
+                    observation.market_return_63d,
+                    observation.sector_return_63d,
+                ),
+                (
+                    observation.stock_return_126d,
+                    observation.market_return_126d,
+                    observation.sector_return_126d,
+                ),
+            )
         )
+        positive = lambda values: sum(  # noqa: E731 - local research metric helper
+            value > _RESIDUAL_ZERO_TOLERANCE for value in values
+        ) / len(values)
 
         return ResidualRegressionState(
             security_id=observation.security_id,
             ticker=observation.ticker,
             sector=observation.sector,
             sector_proxy=observation.sector_proxy,
-            decision_at=decision_at_utc,
+            decision_at=decision,
             calibration_count=len(observation.calibration_points),
             market_beta=market_beta,
             joint_market_beta=joint_market_beta,
@@ -246,12 +243,6 @@ class ResidualRegressionAnalyzer:
             joint_residual_20d=joint_residuals[0],
             joint_residual_63d=joint_residuals[1],
             joint_residual_126d=joint_residuals[2],
-            market_residual_positive_fraction=(
-                sum(value > _RESIDUAL_ZERO_TOLERANCE for value in market_weekly_residuals)
-                / len(market_weekly_residuals)
-            ),
-            joint_residual_positive_fraction=(
-                sum(value > _RESIDUAL_ZERO_TOLERANCE for value in joint_weekly_residuals)
-                / len(joint_weekly_residuals)
-            ),
+            market_residual_positive_fraction=positive(market_weekly),
+            joint_residual_positive_fraction=positive(joint_weekly),
         )
