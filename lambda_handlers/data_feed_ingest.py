@@ -139,7 +139,7 @@ def _http_get(
 ) -> tuple[bytes, str]:
     request = Request(url, headers=headers, method="GET")
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+        with urlopen(request, timeout=timeout_seconds) as response:
             status = int(response.status)
             body = response.read()
             content_type = str(response.headers.get("Content-Type") or "application/json")
@@ -174,7 +174,7 @@ def _put_immutable(
             Metadata=metadata,
             IfNoneMatch="*",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - boto client error classes are runtime-only.
         response = getattr(exc, "response", {})
         code = None
         if isinstance(response, dict):
