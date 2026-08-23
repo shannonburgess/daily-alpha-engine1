@@ -1,0 +1,276 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Daily Alpha staging research-only ingestion for Massive, Tiingo and FRED. No PAPER or live execution authority.",
+  "Parameters": {
+    "RawEvidenceBucketName": {
+      "Type": "String",
+      "Default": "daily-alpha-staging-raw-490809405132-us-east-2"
+    }
+  },
+  "Resources": {
+    "DataFeedIngestionLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/daily-alpha-staging-data-feed-ingestion",
+        "RetentionInDays": 30,
+        "Tags": [
+          {"Key": "System", "Value": "DailyAlpha"},
+          {"Key": "Environment", "Value": "staging"},
+          {"Key": "Authority", "Value": "ResearchOnly"}
+        ]
+      }
+    },
+    "DataFeedIngestionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "DailyAlphaDataFeedIngestionStagingRole",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"Service": "lambda.amazonaws.com"},
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "DailyAlphaDataFeedIngestionRuntime",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "ReadOnlyPhase1FeedSecrets",
+                  "Effect": "Allow",
+                  "Action": "secretsmanager:GetSecretValue",
+                  "Resource": [
+                    {"Fn::Sub": "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:daily-alpha/data-feeds/staging/massive-*"},
+                    {"Fn::Sub": "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:daily-alpha/data-feeds/staging/tiingo-*"},
+                    {"Fn::Sub": "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:daily-alpha/data-feeds/staging/fred-*"}
+                  ]
+                },
+                {
+                  "Sid": "WriteOnlyPhase1FeedPrefixes",
+                  "Effect": "Allow",
+                  "Action": "s3:PutObject",
+                  "Resource": [
+                    {"Fn::Sub": "arn:${AWS::Partition}:s3:::${RawEvidenceBucketName}/data-feeds/staging/massive/*"},
+                    {"Fn::Sub": "arn:${AWS::Partition}:s3:::${RawEvidenceBucketName}/data-feeds/staging/tiingo/*"},
+                    {"Fn::Sub": "arn:${AWS::Partition}:s3:::${RawEvidenceBucketName}/data-feeds/staging/fred/*"}
+                  ]
+                },
+                {
+                  "Sid": "WriteDedicatedLambdaLogs",
+                  "Effect": "Allow",
+                  "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+                  "Resource": {"Fn::Sub": "${DataFeedIngestionLogGroup.Arn}:*"}
+                }
+              ]
+            }
+          }
+        ],
+        "Tags": [
+          {"Key": "System", "Value": "DailyAlpha"},
+          {"Key": "Environment", "Value": "staging"},
+          {"Key": "Authority", "Value": "ResearchOnly"}
+        ]
+      }
+    },
+    "DataFeedIngestionFunction": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": "DataFeedIngestionLogGroup",
+      "Properties": {
+        "FunctionName": "daily-alpha-staging-data-feed-ingestion",
+        "Description": "Research-only Massive/Tiingo/FRED staging ingestion. No PAPER/live authority.",
+        "Runtime": "python3.11",
+        "Handler": "index.lambda_handler",
+        "Role": {"Fn::GetAtt": ["DataFeedIngestionRole", "Arn"]},
+        "Timeout": 60,
+        "MemorySize": 256,
+        "ReservedConcurrentExecutions": 2,
+        "Environment": {
+          "Variables": {
+            "RAW_EVIDENCE_BUCKET": {"Ref": "RawEvidenceBucketName"},
+            "TRADING_AUTHORIZED": "false",
+            "LIVE_TRADING_ENABLED": "false"
+          }
+        },
+        "Code": {
+          "ZipFile": "__DATA_FEED_INGESTION_INLINE_CODE__"
+        },
+        "Tags": [
+          {"Key": "System", "Value": "DailyAlpha"},
+          {"Key": "Environment", "Value": "staging"},
+          {"Key": "Authority", "Value": "ResearchOnly"},
+          {"Key": "TradingAuthorized", "Value": "false"},
+          {"Key": "LiveTradingEnabled", "Value": "false"}
+        ]
+      }
+    },
+    "MassiveSchedule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Name": "daily-alpha-staging-data-feed-massive",
+        "Description": "Weekday post-close staging canary ingestion for Massive.",
+        "ScheduleExpression": "cron(20 22 ? * MON-FRI *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {"Fn::GetAtt": ["DataFeedIngestionFunction", "Arn"]},
+            "Id": "MassiveIngestion",
+            "Input": "{\"provider\":\"massive\",\"targets\":[\"SPY\",\"DINO\"],\"trigger\":\"eventbridge\"}"
+          }
+        ]
+      }
+    },
+    "TiingoSchedule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Name": "daily-alpha-staging-data-feed-tiingo",
+        "Description": "Weekday post-close staging canary ingestion for Tiingo.",
+        "ScheduleExpression": "cron(35 22 ? * MON-FRI *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {"Fn::GetAtt": ["DataFeedIngestionFunction", "Arn"]},
+            "Id": "TiingoIngestion",
+            "Input": "{\"provider\":\"tiingo\",\"targets\":[\"SPY\",\"DINO\"],\"trigger\":\"eventbridge\"}"
+          }
+        ]
+      }
+    },
+    "FredSchedule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Name": "daily-alpha-staging-data-feed-fred",
+        "Description": "Weekday staging canary ingestion for core FRED regime series.",
+        "ScheduleExpression": "cron(5 14 ? * MON-FRI *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {"Fn::GetAtt": ["DataFeedIngestionFunction", "Arn"]},
+            "Id": "FredIngestion",
+            "Input": "{\"provider\":\"fred\",\"targets\":[\"DFF\",\"DGS10\",\"VIXCLS\"],\"trigger\":\"eventbridge\"}"
+          }
+        ]
+      }
+    },
+    "AllowMassiveEventBridge": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {"Ref": "DataFeedIngestionFunction"},
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {"Fn::GetAtt": ["MassiveSchedule", "Arn"]}
+      }
+    },
+    "AllowTiingoEventBridge": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {"Ref": "DataFeedIngestionFunction"},
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {"Fn::GetAtt": ["TiingoSchedule", "Arn"]}
+      }
+    },
+    "AllowFredEventBridge": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {"Ref": "DataFeedIngestionFunction"},
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {"Fn::GetAtt": ["FredSchedule", "Arn"]}
+      }
+    },
+    "IngestionSuccessMetric": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": {"Ref": "DataFeedIngestionLogGroup"},
+        "FilterPattern": "{ $.event = \"DATA_FEED_INGEST_SUCCESS\" }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": "DailyAlpha/StagingDataFeeds",
+            "MetricName": "IngestionSuccess",
+            "MetricValue": "1"
+          }
+        ]
+      }
+    },
+    "IngestionFailureMetric": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": {"Ref": "DataFeedIngestionLogGroup"},
+        "FilterPattern": "{ $.event = \"DATA_FEED_INGEST_FAILURE\" }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": "DailyAlpha/StagingDataFeeds",
+            "MetricName": "IngestionFailure",
+            "MetricValue": "1"
+          }
+        ]
+      }
+    },
+    "IngestionFailureAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "DailyAlphaStagingDataFeedIngestionFailure",
+        "AlarmDescription": "Any fail-closed Phase 1 staging feed ingestion failure.",
+        "Namespace": "DailyAlpha/StagingDataFeeds",
+        "MetricName": "IngestionFailure",
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "IngestionLambdaErrorAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "DailyAlphaStagingDataFeedLambdaErrors",
+        "AlarmDescription": "Lambda invocation errors for Phase 1 staging feed ingestion.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Dimensions": [
+          {"Name": "FunctionName", "Value": {"Ref": "DataFeedIngestionFunction"}}
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "IngestionThrottleAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "DailyAlphaStagingDataFeedLambdaThrottles",
+        "AlarmDescription": "Reserved-concurrency throttles for Phase 1 staging feed ingestion.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Throttles",
+        "Dimensions": [
+          {"Name": "FunctionName", "Value": {"Ref": "DataFeedIngestionFunction"}}
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    }
+  },
+  "Outputs": {
+    "FunctionName": {"Value": {"Ref": "DataFeedIngestionFunction"}},
+    "ExecutionRoleArn": {"Value": {"Fn::GetAtt": ["DataFeedIngestionRole", "Arn"]}},
+    "LogGroupName": {"Value": {"Ref": "DataFeedIngestionLogGroup"}},
+    "MassiveRuleName": {"Value": {"Ref": "MassiveSchedule"}},
+    "TiingoRuleName": {"Value": {"Ref": "TiingoSchedule"}},
+    "FredRuleName": {"Value": {"Ref": "FredSchedule"}},
+    "TradingAuthorized": {"Value": "false"},
+    "LiveTradingEnabled": {"Value": "false"}
+  }
+}

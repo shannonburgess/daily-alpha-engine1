@@ -1,0 +1,260 @@
+name: Deploy Phase 1 staging data-feed ingestion
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: daily-alpha-staging-data-feed-ingestion-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-prove:
+    name: Deploy and prove research-only Phase 1 ingestion
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run repo quality gates
+        run: |
+          ruff check .
+          pytest -q
+
+      - name: Render repo-backed CloudFormation template
+        run: |
+          python scripts/render_data_feed_ingestion_template.py \
+            --template infra/aws/staging/data-feed-ingestion.template.json \
+            --source staging_lambda_handlers/data_feed_ingest.py \
+            --output /tmp/data-feed-ingestion.rendered.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          template = json.loads(Path('/tmp/data-feed-ingestion.rendered.json').read_text())
+          code = template['Resources']['DataFeedIngestionFunction']['Properties']['Code']['ZipFile']
+          assert '__DATA_FEED_INGESTION_INLINE_CODE__' not in code
+          assert 'trading_authorized' in code
+          assert 'live_trading_enabled' in code
+          print('Repo-backed inline Lambda source rendered successfully.')
+          PY
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-data-feed-ingestion-deploy
+          aws-region: us-east-2
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Validate CloudFormation template
+        run: aws cloudformation validate-template --template-body file:///tmp/data-feed-ingestion.rendered.json
+
+      - name: Deploy isolated research-only ingestion stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy \
+            --stack-name daily-alpha-staging-data-feed-ingestion \
+            --template-file /tmp/data-feed-ingestion.rendered.json \
+            --role-arn arn:aws:iam::490809405132:role/DailyAlphaCloudFormationStagingRole \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+
+      - name: Verify function safety configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws lambda get-function-configuration \
+            --function-name daily-alpha-staging-data-feed-ingestion \
+            --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Role:Role,Environment:Environment.Variables,LastUpdateStatus:LastUpdateStatus}' \
+            --output json > /tmp/function-config.json
+          cat /tmp/function-config.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          cfg = json.loads(Path('/tmp/function-config.json').read_text())
+          assert cfg['FunctionName'] == 'daily-alpha-staging-data-feed-ingestion'
+          assert cfg['Runtime'] == 'python3.11'
+          assert cfg['Handler'] == 'index.lambda_handler'
+          assert cfg['Role'].endswith('/DailyAlphaDataFeedIngestionStagingRole')
+          env = cfg['Environment']
+          assert env['TRADING_AUTHORIZED'] == 'false'
+          assert env['LIVE_TRADING_ENABLED'] == 'false'
+          assert not any('KEY' in key or 'TOKEN' in key or 'SECRET' in key for key in env)
+          PY
+
+      - name: Verify EventBridge schedules
+        shell: bash
+        run: |
+          set -euo pipefail
+          for rule in \
+            daily-alpha-staging-data-feed-massive \
+            daily-alpha-staging-data-feed-tiingo \
+            daily-alpha-staging-data-feed-fred
+          do
+            aws events describe-rule --name "$rule" --output json
+            state="$(aws events describe-rule --name "$rule" --query State --output text)"
+            test "$state" = "ENABLED"
+            target_count="$(aws events list-targets-by-rule --rule "$rule" --query 'length(Targets)' --output text)"
+            test "$target_count" = "1"
+          done
+
+      - name: Invoke all three Phase 1 feeds
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A payloads
+          payloads[massive]='{"provider":"massive","targets":["SPY","DINO"],"trigger":"github-staging-proof"}'
+          payloads[tiingo]='{"provider":"tiingo","targets":["SPY","DINO"],"trigger":"github-staging-proof"}'
+          payloads[fred]='{"provider":"fred","targets":["DFF","DGS10","VIXCLS"],"trigger":"github-staging-proof"}'
+          for provider in massive tiingo fred; do
+            printf '%s' "${payloads[$provider]}" > "/tmp/${provider}-request.json"
+            aws lambda invoke \
+              --function-name daily-alpha-staging-data-feed-ingestion \
+              --cli-binary-format raw-in-base64-out \
+              --payload "file:///tmp/${provider}-request.json" \
+              "/tmp/${provider}-result.json"
+            cat "/tmp/${provider}-result.json"
+          done
+
+      - name: Validate research-only invocation receipts
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          expected = {'massive': 2, 'tiingo': 2, 'fred': 3}
+          for provider, count in expected.items():
+              result = json.loads(Path(f'/tmp/{provider}-result.json').read_text())
+              assert result['ok'] is True
+              assert result['service'] == 'daily-alpha-staging-data-feed-ingestion'
+              assert result['provider'] == provider.upper()
+              assert result['target_count'] == count
+              assert result['trading_authorized'] is False
+              assert result['live_trading_enabled'] is False
+              assert len(result['records']) == count
+              for record in result['records']:
+                  assert record['provider'] == provider.upper()
+                  assert record['trading_authorized'] is False
+                  assert record['live_trading_enabled'] is False
+                  assert record['raw_s3_key'].startswith(f'data-feeds/staging/{provider}/raw/')
+                  assert len(record['raw_sha256']) == 64
+          print('All Phase 1 invocation receipts passed the research-only contract.')
+
+      - name: Validate CloudWatch success logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          start_ms="$(( ($(date +%s) - 300) * 1000 ))"
+          matched=0
+          for attempt in 1 2 3 4 5 6; do
+            aws logs filter-log-events \
+              --log-group-name /aws/lambda/daily-alpha-staging-data-feed-ingestion \
+              --start-time "$start_ms" \
+              --filter-pattern '"DATA_FEED_INGEST_SUCCESS"' \
+              --output json > /tmp/success-logs.json
+            matched="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('/tmp/success-logs.json').read_text())
+          messages = [item.get('message', '') for item in data.get('events', [])]
+          providers = {p for p in ('MASSIVE', 'TIINGO', 'FRED') if any(p in m for m in messages)}
+          print(len(providers))
+          PY
+            )"
+            if [ "$matched" = "3" ]; then break; fi
+            sleep 5
+          done
+          test "$matched" = "3"
+          echo "CloudWatch contains success evidence for Massive, Tiingo, and FRED."
+
+      - name: Verify CloudWatch alarms exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudwatch describe-alarms \
+            --alarm-names \
+              DailyAlphaStagingDataFeedIngestionFailure \
+              DailyAlphaStagingDataFeedLambdaErrors \
+              DailyAlphaStagingDataFeedLambdaThrottles \
+            --query 'MetricAlarms[].{Name:AlarmName,State:StateValue,Metric:MetricName}' \
+            --output json > /tmp/alarms.json
+          cat /tmp/alarms.json
+          test "$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(len(json.loads(Path('/tmp/alarms.json').read_text())))
+          PY
+          )" = "3"
+
+      - name: Render deployment proof receipt
+        shell: python
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          results = {
+              provider: json.loads(Path(f'/tmp/{provider}-result.json').read_text())
+              for provider in ('massive', 'tiingo', 'fred')
+          }
+          receipt = {
+              'schema': 'DAILY_ALPHA_PHASE1_DATA_FEED_STAGING_PROOF_V1',
+              'commit': os.environ['GITHUB_SHA'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'stack': 'daily-alpha-staging-data-feed-ingestion',
+              'function': 'daily-alpha-staging-data-feed-ingestion',
+              'providers': {provider: result['target_count'] for provider, result in results.items()},
+              'eventbridge_schedules_enabled': True,
+              'cloudwatch_validation': True,
+              'trading_authorized': False,
+              'live_trading_enabled': False,
+          }
+          Path('/tmp/data-feed-staging-proof.json').write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + '\n'
+          )
+          lines = [
+              '## Phase 1 staging data-feed proof',
+              '',
+              f"- commit: `{receipt['commit']}`",
+              f"- workflow run: `{receipt['workflow_run_id']}`",
+              '- Massive: PASS (SPY + DINO)',
+              '- Tiingo: PASS (SPY + DINO)',
+              '- FRED: PASS (DFF + DGS10 + VIXCLS)',
+              '- EventBridge schedules enabled: yes',
+              '- CloudWatch validation: PASS',
+              '- `trading_authorized=false`',
+              '- `live_trading_enabled=false`',
+              '',
+              '**STAGING_PROVEN for Phase 1 ingestion. No PAPER/live connection.**',
+          ]
+          Path('/tmp/data-feed-staging-proof.md').write_text('\n'.join(lines) + '\n')
+          print(json.dumps(receipt, indent=2, sort_keys=True))
+
+      - name: Publish staging proof receipt to issue 354
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 354 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/data-feed-staging-proof.md
