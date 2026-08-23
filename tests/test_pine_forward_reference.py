@@ -2,8 +2,23 @@ from datetime import UTC, datetime
 
 import pytest
 
-from daily_alpha.pine_forward_reference import parse_shadow_book_reference_snapshot
-from daily_alpha.pine_v24_parity import PINE_V24_MODEL_ID, PINE_V24_STRATEGY_VERSION
+from daily_alpha.pine_forward_deployment_evidence import (
+    FORWARD_PARITY_DEPLOYMENT_RECEIPT_SCHEMA,
+    PROJECTION_MINIMUM_COMMIT,
+    parse_forward_parity_deployment_receipt,
+)
+from daily_alpha.pine_forward_reference import (
+    evaluate_forward_deployment_reference,
+    parse_forward_deployment_reference_snapshot,
+    parse_shadow_book_reference_snapshot,
+)
+from daily_alpha.pine_v24_parity import (
+    PINE_V24_MODEL_ID,
+    PINE_V24_STRATEGY_VERSION,
+    ParitySignal,
+)
+
+NOW = datetime(2026, 8, 21, 20, tzinfo=UTC)
 
 
 def _event(**overrides):
@@ -17,12 +32,13 @@ def _event(**overrides):
         "model_id": PINE_V24_MODEL_ID,
         "timeframe": "1D",
         "price": 95.25,
-        "bar_time": datetime(2026, 8, 21, 20, tzinfo=UTC).isoformat(),
+        "bar_time": NOW.isoformat(),
         "entry_type": "NORMAL_BREAKOUT",
         "runner_stage": None,
         "disposition": "NO_TRADE",
         "reason": "PORTFOLIO_CONTEXT_REQUIRED",
         "paper_execution_triggered": False,
+        "paper_ledger_updated": False,
         "trading_authorized": False,
         "live_trading_enabled": False,
     }
@@ -46,6 +62,48 @@ def _parse(book):
         expected_model_id=PINE_V24_MODEL_ID,
         expected_strategy_version=PINE_V24_STRATEGY_VERSION,
     )
+
+
+def _receipt_book(events):
+    return {
+        "events": events,
+        "event_count_visible": len(events),
+        "event_count_scanned": len(events),
+        "event_history_omitted": 0,
+        "event_limit": 100,
+        "scan_pages": 1,
+        "scan_items_evaluated": len(events) + 3,
+        "open_count": 0,
+        "armed_count_visible": 0,
+        "scan_truncated": False,
+    }
+
+
+def _deployment():
+    receipt = {
+        "schema": FORWARD_PARITY_DEPLOYMENT_RECEIPT_SCHEMA,
+        "repository": "shannonburgess/daily-alpha-engine1",
+        "commit_sha": "c" * 40,
+        "workflow_run_id": "32650000000",
+        "workflow_run_attempt": "1",
+        "projection_minimum_commit": PROJECTION_MINIMUM_COMMIT,
+        "projection_ancestor_verified": True,
+        "processor": {
+            "function_name": "daily-alpha-pine-processor",
+            "handler": "lambda_handlers.pine_processor.lambda_handler",
+            "runtime": "python3.11",
+            "version": "43",
+            "code_sha256": "code-hash",
+            "last_update_status": "Successful",
+        },
+        "books": {
+            "PAPER_SHADOW_V24": _receipt_book([_event(timeframe="D")]),
+            "PAPER_SHADOW_V25": _receipt_book([]),
+        },
+        "trading_authorized": False,
+        "live_trading_enabled": False,
+    }
+    return parse_forward_parity_deployment_receipt(receipt)
 
 
 def test_genuine_pine_event_remains_reference_even_when_paper_layer_says_no_trade():
@@ -112,3 +170,55 @@ def test_duplicate_signal_id_is_rejected_and_complete_empty_capture_is_explicit(
     assert empty.complete is True
     assert empty.signals == ()
     assert empty.event_count_visible == 0
+
+
+def test_deployment_receipt_book_is_the_forward_reference_source() -> None:
+    deployment = _deployment()
+    snapshot = parse_forward_deployment_reference_snapshot(
+        deployment.sh24,
+        expected_model_id=PINE_V24_MODEL_ID,
+        expected_strategy_version=PINE_V24_STRATEGY_VERSION,
+    )
+
+    assert snapshot.event_count_visible == deployment.sh24.event_count_visible == 1
+    assert snapshot.signals[0].source_id == deployment.sh24.events[0].signal_id
+    assert snapshot.signals[0].action == "ENTRY_LONG"
+
+
+def test_daily_timeframe_alias_is_preserved_in_receipt_but_normalized_for_parity() -> None:
+    deployment = _deployment()
+    assert deployment.sh24.events[0].to_dict()["timeframe"] == "D"
+
+    snapshot = parse_forward_deployment_reference_snapshot(
+        deployment.sh24,
+        expected_model_id=PINE_V24_MODEL_ID,
+        expected_strategy_version=PINE_V24_STRATEGY_VERSION,
+    )
+    assert snapshot.signals[0].source_id == "DINO-20260821-ENTRY_LONG"
+
+
+def test_forward_evaluation_is_bound_to_exact_deployment_commit_and_event_set() -> None:
+    deployment = _deployment()
+    python_signal = ParitySignal(
+        symbol="DINO",
+        bar_index=100,
+        bar_time=NOW,
+        action="ENTRY_LONG",
+        price=95.25,
+        entry_type="NORMAL_BREAKOUT",
+        quantity_units=2,
+    )
+
+    evaluation = evaluate_forward_deployment_reference(
+        deployment,
+        expected_model_id=PINE_V24_MODEL_ID,
+        expected_strategy_version=PINE_V24_STRATEGY_VERSION,
+        python_signals=(python_signal,),
+    )
+
+    assert evaluation.exact is True
+    assert evaluation.deployment_commit_sha == "c" * 40
+    assert evaluation.processor_code_sha256 == "code-hash"
+    assert evaluation.report.reference_count == deployment.sh24.event_count_visible
+    assert evaluation.trading_authorized is False
+    assert evaluation.live_trading_enabled is False
