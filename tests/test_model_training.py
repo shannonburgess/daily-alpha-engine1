@@ -3,14 +3,14 @@ import datetime as dt
 import pytest
 
 from daily_alpha.model_training import (
-    build_walk_forward_fold,
-    evaluate_oos_realized_r,
     ModelTrainingError,
     ResearchModelCandidateAssessment,
     TrainingDatasetSnapshot,
     TrainingExample,
     WalkForwardFold,
     WalkForwardWindow,
+    build_walk_forward_fold,
+    evaluate_oos_realized_r,
 )
 
 
