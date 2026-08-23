@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-import lambda_handlers.data_feed_ingest as ingest
+import staging_lambda_handlers.data_feed_ingest as ingest
 
 
 class _Secrets:
