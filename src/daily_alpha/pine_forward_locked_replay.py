@@ -50,6 +50,8 @@ class LockedForwardV24Evaluation:
             raise ValueError("locked forward evaluation is not SH24 CONTROL")
         if self.evaluation.strategy_version != PINE_V24_STRATEGY_VERSION:
             raise ValueError("locked forward evaluation is not v2.4")
+        if provenance.strategy_source_blob_sha != PINE_V24_SOURCE_BLOB_SHA:
+            raise ValueError("locked forward replay provenance crossed the frozen Pine source")
         if self.parameter_manifest.model_id != PINE_V24_MODEL_ID:
             raise ValueError("locked forward parameter manifest crossed the SH24 book")
         if self.parameter_manifest.strategy_version != PINE_V24_STRATEGY_VERSION:
