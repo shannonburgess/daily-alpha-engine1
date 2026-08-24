@@ -126,7 +126,7 @@ jobs:
           import os
           print(json.dumps({
               'operation': 'PUBLISH_STAGING_REPORT',
-              'session': 'PROSPECT_V1_PROOF',
+              'session': 'MANUAL',
               'run_id': os.environ['PROOF_RUN_ID'],
           }))
           PY
@@ -145,6 +145,7 @@ jobs:
           print(json.dumps({
               'service': result.get('service'),
               'status': result.get('status'),
+              'error_code': result.get('error_code'),
               'prospect_v1_runtime_enabled': result.get('prospect_v1_runtime_enabled'),
               'prospect_initial_rollout_ready': (result.get('prospect_initial_rollout') or {}).get('ready'),
               'live_trading_enabled': result.get('live_trading_enabled'),
