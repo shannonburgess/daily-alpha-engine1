@@ -24,3 +24,7 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: pytest -q
+      - name: Record deterministic engineering metrics
+        run: |
+          daily-alpha-engineering-metrics --format markdown | tee engineering-metrics.md
+          cat engineering-metrics.md >> "$GITHUB_STEP_SUMMARY"
