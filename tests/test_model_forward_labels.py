@@ -122,8 +122,8 @@ def test_historical_backfill_is_forbidden_for_prospective_labels() -> None:
         captured_at=OUTCOME_CAPTURED_AT,
         capture_mode="HISTORICAL_BACKFILL",
     )
-    historical["requested_start_date"] = "2026-01-01"
-    historical["requested_end_date"] = "2026-01-31"
+    historical["requested_start_date"] = "2025-12-01"
+    historical["requested_end_date"] = "2025-12-31"
 
     with pytest.raises(
         ModelTrainingError,
@@ -176,14 +176,16 @@ def test_fred_cannot_be_used_as_realized_market_return_evidence() -> None:
         provider="FRED",
         target="MU",
     )
-    fred["raw_s3_key"] = "data-feeds/staging/fred/raw/2026/01/08/req-01-MU.json"
 
-    with pytest.raises(ModelTrainingError, match="FEED_RAW_SHA256_MISMATCH"):
+    with pytest.raises(
+        ModelTrainingError,
+        match="FORWARD_LABEL_OUTCOME_PROVIDER_NOT_MARKET_DATA",
+    ):
         build_prospective_realized_r_label(
             entry_raw_body=ENTRY_RAW,
             entry_receipt=_receipt(raw=ENTRY_RAW, captured_at=ENTRY_CAPTURED_AT),
             outcome_raw_body=fred_raw,
-            outcome_receipt={**fred, "raw_sha256": hashlib.sha256(fred_raw).hexdigest(), "raw_bytes": len(fred_raw)},
+            outcome_receipt=fred,
             inputs=_inputs(),
         )
 
