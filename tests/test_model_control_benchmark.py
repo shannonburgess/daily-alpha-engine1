@@ -3,13 +3,12 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
 from daily_alpha.model_control_benchmark import (
+    SH24_CONTROL_IDENTITY,
+    SH25_CHALLENGER_IDENTITY,
     ControlRole,
     FrozenControlEvaluation,
     MetricDelta,
-    SH24_CONTROL_IDENTITY,
-    SH25_CHALLENGER_IDENTITY,
     compare_against_frozen_controls,
 )
 from daily_alpha.model_fit_protocol import FinalTestEvaluation, SelectionMetric, ValidationSelection
