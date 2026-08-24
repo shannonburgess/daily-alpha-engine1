@@ -340,12 +340,12 @@ def _sha(payload: dict[str, object]) -> str:
 
 
 __all__ = [
+    "SH24_CONTROL_IDENTITY",
+    "SH25_CHALLENGER_IDENTITY",
     "ControlRole",
     "FrozenControlEvaluation",
     "FrozenControlIdentity",
     "MetricDelta",
     "ResearchControlBenchmark",
-    "SH24_CONTROL_IDENTITY",
-    "SH25_CHALLENGER_IDENTITY",
     "compare_against_frozen_controls",
 ]
