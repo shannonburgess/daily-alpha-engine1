@@ -16,6 +16,13 @@ else:
     from nyse_session_calendar import core_session_for
 
 SHADOW_ACCOUNTS = ("PAPER_SHADOW_V24", "PAPER_SHADOW_V25")
+EXPECTED_STRATEGY_VERSIONS = {
+    "PAPER_SHADOW_V24": "2.4",
+    "PAPER_SHADOW_V25": "2.5",
+}
+EXPECTED_STRATEGY = "DA_TURTLE_ADAPTIVE_TREND"
+EXPECTED_STRATEGY_SOURCE = "TRADINGVIEW_PINE"
+DAILY_TIMEFRAMES = {"1D", "D"}
 NEW_YORK = ZoneInfo("America/New_York")
 MAX_RENDERED_EVENTS_PER_ACCOUNT = 10
 TEST_SIGNAL_MARKERS = ("E2E", "CONNECTIVITY", "SYSTEM-ROUNDTRIP", "STAGING-READINESS")
@@ -58,6 +65,13 @@ def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
         "symbol": event.get("symbol"),
         "action": event.get("action"),
         "model_id": event.get("model_id"),
+        "source": event.get("source"),
+        "strategy": event.get("strategy"),
+        "strategy_version": event.get("strategy_version"),
+        "timeframe": event.get("timeframe"),
+        "bar_time": event.get("bar_time"),
+        "entry_type": event.get("entry_type"),
+        "runner_stage": event.get("runner_stage"),
         "received_at": event.get("received_at"),
         "evaluated_at": event.get("evaluated_at"),
         "disposition": event.get("disposition"),
@@ -69,6 +83,42 @@ def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
 
 def _is_nonnegative_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _strategy_event_lineage_violations(
+    account: str,
+    event: dict[str, Any],
+) -> list[str]:
+    """Validate exact lineage for genuine current-session strategy evidence only."""
+    violations: list[str] = []
+    signal_id = str(event.get("signal_id") or "").strip()
+    if not signal_id:
+        violations.append(f"{account}:STRATEGY_EVENT_SIGNAL_ID_MISSING")
+    if not str(event.get("symbol") or "").strip():
+        violations.append(f"{account}:STRATEGY_EVENT_SYMBOL_MISSING")
+    if not str(event.get("action") or "").strip():
+        violations.append(f"{account}:STRATEGY_EVENT_ACTION_MISSING")
+
+    if event.get("model_id") != account:
+        violations.append(f"{account}:STRATEGY_EVENT_MODEL_ID_MISSING_OR_MISMATCH")
+    if event.get("source") != EXPECTED_STRATEGY_SOURCE:
+        violations.append(f"{account}:STRATEGY_EVENT_SOURCE_MISSING_OR_MISMATCH")
+    if event.get("strategy") != EXPECTED_STRATEGY:
+        violations.append(f"{account}:STRATEGY_EVENT_STRATEGY_MISSING_OR_MISMATCH")
+    if event.get("strategy_version") != EXPECTED_STRATEGY_VERSIONS[account]:
+        violations.append(f"{account}:STRATEGY_EVENT_VERSION_MISSING_OR_MISMATCH")
+    if str(event.get("timeframe") or "").upper() not in DAILY_TIMEFRAMES:
+        violations.append(f"{account}:STRATEGY_EVENT_TIMEFRAME_MISSING_OR_MISMATCH")
+
+    bar_time = _parse_time(event.get("bar_time"))
+    received_at = _parse_time(event.get("received_at"))
+    if bar_time is None:
+        violations.append(f"{account}:STRATEGY_EVENT_BAR_TIME_MISSING_OR_INVALID")
+    if received_at is None:
+        violations.append(f"{account}:STRATEGY_EVENT_RECEIVED_AT_MISSING_OR_INVALID")
+    if bar_time is not None and received_at is not None and bar_time > received_at:
+        violations.append(f"{account}:STRATEGY_EVENT_BAR_TIME_AFTER_RECEIPT")
+    return violations
 
 
 def _safety_violations(state: dict[str, Any]) -> list[str]:
@@ -185,7 +235,6 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
     violations = _safety_violations(state)
     if market_session.calendar_status != "VERIFIED":
         violations.append("MARKET_SESSION_CALENDAR_COVERAGE_UNAVAILABLE")
-    violations = sorted(set(violations))
 
     books = state.get("books") if isinstance(state.get("books"), dict) else {}
     accounts: dict[str, Any] = {}
@@ -209,6 +258,14 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
         )
         test_events = [event for event in session_events if _is_test_event(event)]
         strategy_events = [event for event in session_events if not _is_test_event(event)]
+        lineage_violations = sorted(
+            {
+                violation
+                for event in strategy_events
+                for violation in _strategy_event_lineage_violations(account, event)
+            }
+        )
+        violations.extend(lineage_violations)
         strategy_fills = [
             event for event in strategy_events if event.get("disposition") == "EXECUTED_PAPER"
         ]
@@ -249,12 +306,14 @@ def summarize(state: dict[str, Any], *, now: datetime | None = None) -> dict[str
             "session_test_events": [_compact_event(event) for event in test_events],
             "session_receipts": receipts,
             "reason_counts": dict(sorted(reasons.items())),
+            "strategy_lineage_violations": lineage_violations,
             "latest_event_at": latest.isoformat() if latest else None,
             "event_evidence_truncated": bool(book.get("scan_truncated"))
             if isinstance(book, dict)
             else True,
         }
 
+    violations = sorted(set(violations))
     if violations:
         diagnosis = "SAFETY_OR_EVIDENCE_VIOLATION"
     elif total_strategy_fills:
@@ -319,7 +378,10 @@ def _render_events(lines: list[str], title: str, events: list[dict[str, Any]]) -
             f"`{event.get('signal_id')}` "
             f"{event.get('symbol') or '?'} {event.get('action') or '?'} -> "
             f"`{event.get('disposition') or '?'}` / "
-            f"`{event.get('reason') or '?'}`"
+            f"`{event.get('reason') or '?'}` "
+            f"[source=`{event.get('source') or '?'}`, "
+            f"v=`{event.get('strategy_version') or '?'}`, "
+            f"bar=`{event.get('bar_time') or '?'}`]"
         )
 
 
