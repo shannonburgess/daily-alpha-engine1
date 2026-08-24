@@ -70,8 +70,11 @@ jobs:
 
           assert report['ok'] is True
           assert report['service'] == 'daily-alpha-report'
-          assert report['publish_enabled'] is False
-          assert report['event_received'] is True
+          assert report['publish_enabled'] is True
+          assert report['newsletter_email_supported'] is True
+          assert report['prospect_v1_launch_gate_supported'] is True
+          assert isinstance(report['prospect_v1_runtime_enabled'], bool)
+          assert report['live_trading_enabled'] is False
 
           assert paper['ok'] is True
           assert paper['service'] == 'daily-alpha-paper-trader'
