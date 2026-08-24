@@ -18,6 +18,11 @@ SECRET_NAMES = {
     "tiingo": "daily-alpha/data-feeds/staging/tiingo",
     "fred": "daily-alpha/data-feeds/staging/fred",
 }
+SECRET_JSON_KEYS = {
+    "massive": ("MASSIVE_API_KEY", "api_key", "key", "apiKey"),
+    "tiingo": ("TIINGO_API_TOKEN", "token", "api_key", "key", "apiKey"),
+    "fred": ("FRED_API_KEY", "api_key", "key", "apiKey"),
+}
 DEFAULT_TARGETS = {
     "massive": ("SPY", "DINO"),
     "tiingo": ("SPY", "DINO"),
@@ -47,7 +52,7 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _safe_secret_value(secret_string: str) -> str:
+def _safe_secret_value(secret_string: str, provider: str | None = None) -> str:
     text = str(secret_string or "").strip()
     if not text:
         raise DataFeedIngestionError("SECRET_VALUE_EMPTY")
@@ -57,8 +62,14 @@ def _safe_secret_value(secret_string: str) -> str:
         return text
     if not isinstance(payload, dict):
         raise DataFeedIngestionError("SECRET_JSON_OBJECT_REQUIRED")
+    if provider is None:
+        keys = ("api_key", "token", "key", "apiKey")
+    else:
+        if provider not in SECRET_JSON_KEYS:
+            raise DataFeedIngestionError("SECRET_PROVIDER_UNSUPPORTED")
+        keys = SECRET_JSON_KEYS[provider]
     values: list[str] = []
-    for key in ("api_key", "token", "key", "apiKey"):
+    for key in keys:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             values.append(value.strip())
@@ -76,7 +87,7 @@ def _load_secret(provider: str, client=None) -> str:
     )
     if "SecretString" not in response:
         raise DataFeedIngestionError("BINARY_SECRET_NOT_SUPPORTED")
-    return _safe_secret_value(response["SecretString"])
+    return _safe_secret_value(response["SecretString"], provider)
 
 
 def _targets(provider: str, event: dict[str, Any]) -> tuple[str, ...]:
@@ -293,9 +304,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     as_of = _now()
     capture_mode, start_date, end_date = _capture_window(event, as_of)
     request_id = str(getattr(context, "aws_request_id", "") or "manual").strip()
-    secret = _load_secret(provider)
     records: list[dict[str, Any]] = []
     try:
+        secret = _load_secret(provider)
         for ordinal, target in enumerate(targets, start=1):
             body, content_type = _http_get(
                 *_request_spec(

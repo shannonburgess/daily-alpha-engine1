@@ -141,10 +141,17 @@ jobs:
         run: |
           import json
           from pathlib import Path
+
           expected = {'massive': 2, 'tiingo': 2, 'fred': 3}
           for provider, count in expected.items():
               result = json.loads(Path(f'/tmp/{provider}-result.json').read_text())
-              assert result['ok'] is True
+              if result.get('ok') is not True:
+                  error_code = (
+                      result.get('errorMessage')
+                      or result.get('errorType')
+                      or 'UNKNOWN_PROVIDER_INVOCATION_ERROR'
+                  )
+                  raise SystemExit(f'{provider.upper()}_INVOCATION_FAILED:{error_code}')
               assert result['service'] == 'daily-alpha-staging-data-feed-ingestion'
               assert result['provider'] == provider.upper()
               assert result['target_count'] == count
