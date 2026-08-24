@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
@@ -23,6 +23,11 @@ DEFAULT_TARGETS = {
     "tiingo": ("SPY", "DINO"),
     "fred": ("DFF", "DGS10", "VIXCLS"),
 }
+CAPTURE_MODE_CURRENT = "CURRENT_WINDOW"
+CAPTURE_MODE_HISTORICAL = "HISTORICAL_BACKFILL"
+CAPTURE_MODES = frozenset({CAPTURE_MODE_CURRENT, CAPTURE_MODE_HISTORICAL})
+MAX_HISTORICAL_BACKFILL_DAYS = 31
+KNOWN_AT_BASIS = "CAPTURED_AT_ONLY"
 _TARGET_RE = re.compile(r"^[A-Z0-9.^_-]{1,32}$")
 
 
@@ -89,23 +94,67 @@ def _targets(provider: str, event: dict[str, Any]) -> tuple[str, ...]:
     return values
 
 
+def _parse_iso_date(value: Any, code: str) -> date:
+    if not isinstance(value, str) or not value.strip():
+        raise DataFeedIngestionError(f"{code}_REQUIRED")
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError as exc:
+        raise DataFeedIngestionError(f"{code}_INVALID") from exc
+
+
+def _capture_window(event: dict[str, Any], as_of: datetime) -> tuple[str, date, date]:
+    mode = str(event.get("capture_mode") or CAPTURE_MODE_CURRENT).strip().upper()
+    if mode not in CAPTURE_MODES:
+        raise DataFeedIngestionError("CAPTURE_MODE_UNSUPPORTED")
+
+    if mode == CAPTURE_MODE_CURRENT:
+        if event.get("start_date") is not None or event.get("end_date") is not None:
+            raise DataFeedIngestionError("CURRENT_WINDOW_DATE_OVERRIDE_NOT_ALLOWED")
+        end_date = as_of.date()
+        return mode, end_date - timedelta(days=7), end_date
+
+    start_date = _parse_iso_date(event.get("start_date"), "BACKFILL_START_DATE")
+    end_date = _parse_iso_date(event.get("end_date"), "BACKFILL_END_DATE")
+    if start_date > end_date:
+        raise DataFeedIngestionError("BACKFILL_DATE_RANGE_INVALID")
+    if end_date > as_of.date():
+        raise DataFeedIngestionError("BACKFILL_END_DATE_IN_FUTURE")
+    span_days = (end_date - start_date).days + 1
+    if span_days > MAX_HISTORICAL_BACKFILL_DAYS:
+        raise DataFeedIngestionError("BACKFILL_DATE_RANGE_TOO_LARGE")
+    return mode, start_date, end_date
+
+
 def _request_spec(
     provider: str,
     target: str,
     api_key: str,
     as_of: datetime,
+    *,
+    capture_mode: str = CAPTURE_MODE_CURRENT,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> tuple[str, dict[str, str]]:
-    end_date = as_of.date()
-    start_date = end_date - timedelta(days=7)
+    mode = str(capture_mode or "").strip().upper()
+    if mode not in CAPTURE_MODES:
+        raise DataFeedIngestionError("CAPTURE_MODE_UNSUPPORTED")
+    if start_date is None and end_date is None:
+        _, start_date, end_date = _capture_window({}, as_of)
+    elif start_date is None or end_date is None:
+        raise DataFeedIngestionError("REQUEST_DATE_RANGE_INCOMPLETE")
+
     headers = {
         "Accept": "application/json",
         "User-Agent": "daily-alpha-staging-ingestion/1.0",
     }
     if provider == "massive":
         path_target = quote(target, safe=".-")
+        limit = 50 if mode == CAPTURE_MODE_HISTORICAL else 20
         url = (
             f"https://api.massive.com/v2/aggs/ticker/{path_target}/range/1/day/"
-            f"{start_date.isoformat()}/{end_date.isoformat()}?adjusted=true&sort=asc&limit=20"
+            f"{start_date.isoformat()}/{end_date.isoformat()}?"
+            f"adjusted=true&sort=asc&limit={limit}"
         )
         headers["Authorization"] = f"Bearer {api_key}"
         return url, headers
@@ -120,16 +169,27 @@ def _request_spec(
         )
         headers["Authorization"] = f"Token {api_key}"
         return f"https://api.tiingo.com/tiingo/daily/{path_target}/prices?{query}", headers
-    query = urlencode(
-        {
-            "series_id": target,
-            "api_key": api_key,
-            "file_type": "json",
-            "sort_order": "desc",
-            "limit": 5,
-        }
+
+    params: dict[str, str | int] = {
+        "series_id": target,
+        "api_key": api_key,
+        "file_type": "json",
+    }
+    if mode == CAPTURE_MODE_HISTORICAL:
+        params.update(
+            {
+                "observation_start": start_date.isoformat(),
+                "observation_end": end_date.isoformat(),
+                "sort_order": "asc",
+                "limit": 1000,
+            }
+        )
+    else:
+        params.update({"sort_order": "desc", "limit": 5})
+    return (
+        f"https://api.stlouisfed.org/fred/series/observations?{urlencode(params)}",
+        headers,
     )
-    return f"https://api.stlouisfed.org/fred/series/observations?{query}", headers
 
 
 def _http_get(
@@ -204,12 +264,23 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         raise DataFeedIngestionError("RAW_EVIDENCE_BUCKET_REQUIRED")
     targets = _targets(provider, event)
     as_of = _now()
+    capture_mode, start_date, end_date = _capture_window(event, as_of)
     request_id = str(getattr(context, "aws_request_id", "") or "manual").strip()
     secret = _load_secret(provider)
     records: list[dict[str, Any]] = []
     try:
         for ordinal, target in enumerate(targets, start=1):
-            body, content_type = _http_get(*_request_spec(provider, target, secret, as_of))
+            body, content_type = _http_get(
+                *_request_spec(
+                    provider,
+                    target,
+                    secret,
+                    as_of,
+                    capture_mode=capture_mode,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            )
             digest = hashlib.sha256(body).hexdigest()
             date_path = as_of.strftime("%Y/%m/%d")
             safe_target = target.replace(".", "_").replace("^", "_")
@@ -220,6 +291,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "provider": provider,
                 "target": target,
                 "sha256": digest,
+                "capture-mode": capture_mode,
+                "known-at-basis": KNOWN_AT_BASIS,
+                "historical-known-at-backdating-authorized": "false",
                 "trading-authorized": "false",
                 "live-trading-enabled": "false",
             }
@@ -235,6 +309,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "provider": provider.upper(),
                 "target": target,
                 "captured_at": as_of.isoformat(),
+                "capture_mode": capture_mode,
+                "requested_start_date": start_date.isoformat(),
+                "requested_end_date": end_date.isoformat(),
+                "known_at_basis": KNOWN_AT_BASIS,
+                "historical_known_at_backdating_authorized": False,
                 "raw_s3_key": raw_key,
                 "raw_sha256": digest,
                 "raw_bytes": len(body),
@@ -254,6 +333,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "DATA_FEED_INGEST_SUCCESS",
                 provider=provider.upper(),
                 target=target,
+                capture_mode=capture_mode,
+                requested_start_date=start_date.isoformat(),
+                requested_end_date=end_date.isoformat(),
                 raw_s3_key=raw_key,
                 receipt_s3_key=receipt_key,
                 raw_bytes=len(body),
@@ -262,6 +344,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         _log(
             "DATA_FEED_INGEST_FAILURE",
             provider=provider.upper(),
+            capture_mode=capture_mode,
             error_code=str(exc),
             request_id=request_id,
         )
@@ -271,8 +354,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "ok": True,
         "service": "daily-alpha-staging-data-feed-ingestion",
         "provider": provider.upper(),
+        "capture_mode": capture_mode,
+        "requested_start_date": start_date.isoformat(),
+        "requested_end_date": end_date.isoformat(),
         "target_count": len(targets),
         "records": records,
+        "known_at_basis": KNOWN_AT_BASIS,
+        "historical_known_at_backdating_authorized": False,
         "trading_authorized": False,
         "live_trading_enabled": False,
     }
