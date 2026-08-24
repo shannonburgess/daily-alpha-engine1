@@ -15,7 +15,6 @@ from daily_alpha.model_control_benchmark import (
 from daily_alpha.model_fit_protocol import FinalTestEvaluation, SelectionMetric, ValidationSelection
 from daily_alpha.model_training import ModelTrainingError, OutOfSampleMetrics
 
-
 TEST_IDS = ("test-001", "test-002")
 EVIDENCE_SHA = "e" * 64
 ARTIFACT_SHA = "a" * 64
