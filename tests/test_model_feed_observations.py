@@ -108,10 +108,11 @@ def test_feature_order_does_not_change_batch_identity() -> None:
         ({"raw_sha256": "0" * 64}, RAW, "FEED_RAW_SHA256_MISMATCH"),
         ({"raw_bytes": len(RAW) + 1}, RAW, "FEED_RAW_BYTE_COUNT_MISMATCH"),
         (
-            {"raw_s3_key": "data-feeds/staging/tiingo/raw/2026/08/24/x.json"},
+            {"raw_s3_key": "data-feeds/staging/tiingo/raw/2026/08/24/x-DINO.json"},
             RAW,
             "FEED_RECEIPT_RAW_KEY_PROVIDER_MISMATCH",
         ),
+        ({"target": "SPY"}, RAW, "FEED_RECEIPT_RAW_KEY_TARGET_MISMATCH"),
         ({"schema": "OTHER"}, RAW, "FEED_RECEIPT_SCHEMA_INVALID"),
         ({"provider": "UNKNOWN"}, RAW, "FEED_RECEIPT_PROVIDER_INVALID"),
         ({"trading_authorized": True}, RAW, "FEED_RECEIPT_TRADING_AUTHORITY_INVALID"),
@@ -132,6 +133,41 @@ def test_raw_body_change_cannot_reuse_receipt_identity() -> None:
         validate_immutable_feed_evidence(
             raw_body=RAW + b"\n",
             receipt=_receipt(),
+        )
+
+
+def test_direct_evidence_construction_cannot_fabricate_identity_or_target() -> None:
+    evidence = validate_immutable_feed_evidence(raw_body=RAW, receipt=_receipt())
+
+    forged_id = "0" * 64
+    with pytest.raises(ModelTrainingError, match="FEED_EVIDENCE_ID_MISMATCH"):
+        replace(
+            evidence,
+            evidence_id=forged_id,
+            source_revision=f"feed-receipt-v1:{forged_id}",
+        )
+
+    with pytest.raises(ModelTrainingError, match="FEED_RECEIPT_RAW_KEY_TARGET_MISMATCH"):
+        replace(evidence, target="SPY")
+
+
+def test_direct_batch_construction_cannot_cross_wire_observation_lineage() -> None:
+    batch = build_point_in_time_feed_observations(
+        raw_body=RAW,
+        receipt=_receipt(),
+        facts=[_fact()],
+    )
+    observation = batch.observations[0]
+
+    with pytest.raises(ModelTrainingError, match="FEED_OBSERVATION_EVIDENCE_ID_MISMATCH"):
+        replace(batch, observations=(replace(observation, evidence_id="f" * 64),))
+
+    with pytest.raises(ModelTrainingError, match="FEED_OBSERVATION_KNOWN_AT_MISMATCH"):
+        replace(
+            batch,
+            observations=(
+                replace(observation, known_at=CAPTURED_AT - timedelta(seconds=1)),
+            ),
         )
 
 
