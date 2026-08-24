@@ -16,9 +16,9 @@ import hashlib
 import json
 import subprocess
 from collections import defaultdict
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Iterable, Sequence
 
 _SCHEMA = "DAILY_ALPHA_ENGINEERING_METRICS_V1"
 
@@ -248,8 +248,10 @@ def render_markdown(report: EngineeringMetricsReport) -> str:
     rows.extend(
         [
             "",
-            "> Documentation is excluded from the developed-line total. Raw data and generated/base64 "
-            "payloads are excluded from this metric.",
+            (
+                "> Documentation is excluded from the developed-line total. Raw data and "
+                "generated/base64 payloads are excluded from this metric."
+            ),
             "",
             "`trading_authorized=false` · `live_trading_enabled=false`",
         ]
