@@ -237,7 +237,7 @@ def _parse_datetime(value: Any, code: str) -> datetime:
     if not isinstance(value, str) or not value.strip():
         raise ModelTrainingError(f"{code}_REQUIRED")
     try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.strip())
     except ValueError as exc:
         raise ModelTrainingError(f"{code}_INVALID") from exc
     _require_aware(parsed, code)
