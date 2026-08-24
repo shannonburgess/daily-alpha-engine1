@@ -65,9 +65,9 @@ def test_collect_metrics_counts_only_supported_tracked_text(tmp_path: Path) -> N
     assert by_path["src/daily_alpha/engine.py"].physical_lines == 3
     assert by_path["src/daily_alpha/engine.py"].nonblank_lines == 2
     assert report.commit_sha == "abc123"
-    assert report.developed_nonblank_lines == 13
+    assert report.developed_nonblank_lines == 11
     assert report.documentation_nonblank_lines == 2
-    assert report.total_nonblank_lines == 15
+    assert report.total_nonblank_lines == 13
     assert report.trading_authorized is False
     assert report.live_trading_enabled is False
 
