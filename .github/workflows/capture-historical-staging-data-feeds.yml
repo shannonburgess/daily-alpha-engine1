@@ -1,0 +1,263 @@
+name: Capture bounded historical staging feed evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Provider to capture
+        required: true
+        type: choice
+        options:
+          - massive
+          - tiingo
+          - fred
+      targets:
+        description: Comma-separated targets (max 20; e.g. SPY,DINO or DFF,DGS10,VIXCLS)
+        required: true
+        type: string
+      start_date:
+        description: Inclusive start date (YYYY-MM-DD)
+        required: true
+        type: string
+      end_date:
+        description: Inclusive end date (YYYY-MM-DD; max 31 calendar days per run)
+        required: true
+        type: string
+      confirm:
+        description: Type CAPTURE to confirm a provider API backfill call
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-alpha-staging-data-feed-ingestion-deploy
+  cancel-in-progress: false
+
+jobs:
+  capture-historical-evidence:
+    name: Capture immutable historical research evidence
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact repository state
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require authoritative main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "main"
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run repo quality gates
+        run: |
+          ruff check .
+          pytest -q
+
+      - name: Validate bounded backfill request locally
+        shell: python
+        env:
+          INPUT_PROVIDER: ${{ inputs.provider }}
+          INPUT_TARGETS: ${{ inputs.targets }}
+          INPUT_START_DATE: ${{ inputs.start_date }}
+          INPUT_END_DATE: ${{ inputs.end_date }}
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          import json
+          import os
+          import re
+          from datetime import UTC, date, datetime
+          from pathlib import Path
+
+          if os.environ['INPUT_CONFIRM'].strip() != 'CAPTURE':
+              raise SystemExit('BACKFILL_CONFIRMATION_REQUIRED')
+
+          provider = os.environ['INPUT_PROVIDER'].strip().lower()
+          if provider not in {'massive', 'tiingo', 'fred'}:
+              raise SystemExit('BACKFILL_PROVIDER_INVALID')
+
+          targets = tuple(
+              item.strip().upper()
+              for item in os.environ['INPUT_TARGETS'].split(',')
+              if item.strip()
+          )
+          if not targets or len(targets) > 20:
+              raise SystemExit('BACKFILL_TARGET_COUNT_OUT_OF_RANGE')
+          if len(set(targets)) != len(targets):
+              raise SystemExit('BACKFILL_TARGETS_MUST_BE_UNIQUE')
+          target_re = re.compile(r'^[A-Z0-9.^_-]{1,32}$')
+          if any(not target_re.fullmatch(item) for item in targets):
+              raise SystemExit('BACKFILL_TARGET_INVALID')
+
+          try:
+              start_date = date.fromisoformat(os.environ['INPUT_START_DATE'].strip())
+              end_date = date.fromisoformat(os.environ['INPUT_END_DATE'].strip())
+          except ValueError as exc:
+              raise SystemExit('BACKFILL_DATE_INVALID') from exc
+          if start_date > end_date:
+              raise SystemExit('BACKFILL_DATE_RANGE_INVALID')
+          if end_date > datetime.now(UTC).date():
+              raise SystemExit('BACKFILL_END_DATE_IN_FUTURE')
+          if (end_date - start_date).days + 1 > 31:
+              raise SystemExit('BACKFILL_DATE_RANGE_TOO_LARGE')
+
+          payload = {
+              'provider': provider,
+              'targets': list(targets),
+              'capture_mode': 'HISTORICAL_BACKFILL',
+              'start_date': start_date.isoformat(),
+              'end_date': end_date.isoformat(),
+              'trigger': 'github-historical-backfill',
+          }
+          Path('/tmp/historical-backfill-request.json').write_text(
+              json.dumps(payload, sort_keys=True) + '\n'
+          )
+          print(
+              json.dumps(
+                  {
+                      'provider': provider.upper(),
+                      'target_count': len(targets),
+                      'start_date': start_date.isoformat(),
+                      'end_date': end_date.isoformat(),
+                      'capture_mode': 'HISTORICAL_BACKFILL',
+                      'historical_known_at_backdating_authorized': False,
+                      'trading_authorized': False,
+                      'live_trading_enabled': False,
+                  },
+                  sort_keys=True,
+              )
+          )
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::490809405132:role/DailyAlphaGitHubStagingDeployRole
+          role-session-name: daily-alpha-historical-feed-capture
+          aws-region: us-east-2
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Require deployed backfill-aware ingestion contract before provider call
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"smoke_test":true}' > /tmp/backfill-smoke-request.json
+          aws lambda invoke \
+            --function-name daily-alpha-staging-data-feed-ingestion \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/backfill-smoke-request.json \
+            /tmp/backfill-smoke-result.json >/tmp/backfill-smoke-meta.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path('/tmp/backfill-smoke-meta.json').read_text())
+          if meta.get('FunctionError'):
+              raise SystemExit('BACKFILL_SMOKE_LAMBDA_FUNCTION_ERROR')
+          result = json.loads(Path('/tmp/backfill-smoke-result.json').read_text())
+          assert result['ok'] is True
+          assert result['service'] == 'daily-alpha-staging-data-feed-ingestion'
+          assert result['historical_backfill_supported'] is True
+          assert 'HISTORICAL_BACKFILL' in result['capture_modes']
+          assert result['max_historical_backfill_days'] == 31
+          assert result['known_at_basis'] == 'CAPTURED_AT_ONLY'
+          assert result['historical_known_at_backdating_authorized'] is False
+          assert result['trading_authorized'] is False
+          assert result['live_trading_enabled'] is False
+          print('Deployed ingestion contract supports bounded historical capture without historical known-at backdating.')
+          PY
+
+      - name: Capture requested historical evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws lambda invoke \
+            --function-name daily-alpha-staging-data-feed-ingestion \
+            --cli-binary-format raw-in-base64-out \
+            --payload file:///tmp/historical-backfill-request.json \
+            /tmp/historical-backfill-result.json >/tmp/historical-backfill-meta.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path('/tmp/historical-backfill-meta.json').read_text())
+          if meta.get('FunctionError'):
+              raise SystemExit('HISTORICAL_BACKFILL_LAMBDA_FUNCTION_ERROR')
+          result = json.loads(Path('/tmp/historical-backfill-result.json').read_text())
+          request = json.loads(Path('/tmp/historical-backfill-request.json').read_text())
+          assert result['ok'] is True
+          assert result['service'] == 'daily-alpha-staging-data-feed-ingestion'
+          assert result['provider'] == request['provider'].upper()
+          assert result['capture_mode'] == 'HISTORICAL_BACKFILL'
+          assert result['requested_start_date'] == request['start_date']
+          assert result['requested_end_date'] == request['end_date']
+          assert result['target_count'] == len(request['targets'])
+          assert result['known_at_basis'] == 'CAPTURED_AT_ONLY'
+          assert result['historical_known_at_backdating_authorized'] is False
+          assert result['trading_authorized'] is False
+          assert result['live_trading_enabled'] is False
+          assert len(result['records']) == len(request['targets'])
+          for record in result['records']:
+              assert record['capture_mode'] == 'HISTORICAL_BACKFILL'
+              assert record['requested_start_date'] == request['start_date']
+              assert record['requested_end_date'] == request['end_date']
+              assert record['known_at_basis'] == 'CAPTURED_AT_ONLY'
+              assert record['historical_known_at_backdating_authorized'] is False
+              assert record['trading_authorized'] is False
+              assert record['live_trading_enabled'] is False
+              assert record['raw_s3_key'].startswith(
+                  f"data-feeds/staging/{request['provider']}/raw/"
+              )
+              assert len(record['raw_sha256']) == 64
+
+          sanitized = {
+              'schema': 'DAILY_ALPHA_HISTORICAL_FEED_CAPTURE_RECEIPT_V1',
+              'provider': result['provider'],
+              'capture_mode': result['capture_mode'],
+              'requested_start_date': result['requested_start_date'],
+              'requested_end_date': result['requested_end_date'],
+              'target_count': result['target_count'],
+              'raw_s3_keys': [item['raw_s3_key'] for item in result['records']],
+              'raw_sha256': [item['raw_sha256'] for item in result['records']],
+              'known_at_basis': 'CAPTURED_AT_ONLY',
+              'historical_known_at_backdating_authorized': False,
+              'trading_authorized': False,
+              'live_trading_enabled': False,
+          }
+          Path('/tmp/historical-backfill-sanitized.json').write_text(
+              json.dumps(sanitized, indent=2, sort_keys=True) + '\n'
+          )
+          print(json.dumps(sanitized, indent=2, sort_keys=True))
+          PY
+
+      - name: Summarize evidence boundary
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Historical feed capture complete
+
+          The requested raw provider evidence was captured immutably in staging.
+
+          **Evidence boundary:** `known_at` remains the receipt `captured_at` time only. The requested historical date range does **not** authorize historical `known_at` backdating and does not by itself make the capture eligible for historical model decisions.
+
+          `trading_authorized=false` and `live_trading_enabled=false` remain unchanged.
+          EOF
