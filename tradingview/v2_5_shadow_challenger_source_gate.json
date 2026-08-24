@@ -1,0 +1,94 @@
+{
+  "schema_version": "2026-08-19-v3",
+  "model_id": "PAPER_SHADOW_V25",
+  "strategy_version": "2.5",
+  "tradingview_shorttitle": "DA-T20/10-ARM25",
+  "shadow_shorttitle": "DA-T20/10-SH25",
+  "source_status": "EXACT_TRADINGVIEW_SOURCE_CAPTURED_USER_EXPORT",
+  "source_capture_sha256": "0845f41a36cda1b33c8308249afc15e2fc70369791db0113b1f47118d935419b",
+  "shadow_transform_sha256": "77d7d3491cad0f74c273d9c8995bcaf54683bcc72927c844f243a43cf8b93718",
+  "shadow_archive_path": "tradingview/da_turtle_20_10_v2_5_shadow_challenger.pine.gz.b64",
+  "shadow_archive_encoding": "gzip+base64",
+  "shadow_source_status": "ARCHIVED_EXACT_TRANSFORM_AND_COMPILED_IN_TRADINGVIEW",
+  "activation_ready": false,
+  "reason": "The exact DA-T20/10-ARM25 Pine source was supplied by the user, transformed only with the synchronized shadow start and replay metadata contract, archived byte-exact by SHA-256, loaded as DA-T20/10-SH25, compiled successfully in TradingView, and confirmed FLAT with forward-test/webhook toggles OFF. Activation remains fail-closed until the #185 -> #186 -> #207 processor path is deployed to staging, the persisted DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19 configuration is reverified after deployment, the exposed webhook secret is rotated/configured without disclosure, and one real paper-only staging E2E proof passes.",
+  "audited_parameters": {
+    "entry_channel": 20,
+    "legacy_exit_channel": 10,
+    "breakout_confirmation": "Close",
+    "atr_length": 10,
+    "fast_trend_factor": 2.0,
+    "slow_trend_factor": 4.0,
+    "trend_efficiency_lookback": 20,
+    "require_recent_bullish_trend_flip": false,
+    "max_bars_since_bullish_flip": 5,
+    "completed_bull_bars_before_entry": 2,
+    "failed_breakout_bars": 3,
+    "adx_required": true,
+    "di_length": 14,
+    "adx_smoothing": 14,
+    "minimum_adx": 25.0,
+    "minimum_trend_efficiency_required": true,
+    "minimum_trend_efficiency": 0.2,
+    "minimum_underlying_price_required": true,
+    "minimum_stock_etf_price": 25.0,
+    "persistent_armed_breakout": true,
+    "maximum_bars_to_keep_breakout_armed": 10,
+    "maximum_entry_distance_above_breakout_atr": 1.0,
+    "invalidate_below_breakout_atr": 0.5,
+    "runner_management": true,
+    "add_1_atr": 1.0,
+    "add_2_atr": 2.0,
+    "harvest_atr": 3.0,
+    "structural_runner_exit": true,
+    "structural_exit_lookback": 20,
+    "structural_exit_confirmation_bars": 1,
+    "break_even_after_harvest": false,
+    "legacy_adaptive_bear_flip_exit": false,
+    "legacy_10_bar_turtle_exit": false,
+    "webhook_attachment_default": false,
+    "webhook_secret_default": ""
+  },
+  "verified_source_logic": {
+    "breakout_arms_on_price_event_before_trend_quality_confirmation": true,
+    "armed_state_not_invalidated_only_because_trend_or_adx_not_ready": true,
+    "armed_entry_requires_price_at_or_above_breakout": true,
+    "armed_entry_requires_price_at_or_below_plus_1_atr_no_chase_ceiling": true,
+    "structural_runner_exit_enabled": true
+  },
+  "verified_activation_prerequisites": {
+    "v24_loaded_compiled_flat": true,
+    "v25_loaded_compiled_flat": true,
+    "common_forward_test_start": "2026-08-19",
+    "staging_forward_start_configured": true,
+    "v24_forward_test_enabled": false,
+    "v25_forward_test_enabled": false,
+    "v24_webhook_enabled": false,
+    "v25_webhook_enabled": false
+  },
+  "required_shadow_contract": {
+    "forward_test_start": "YYYY-MM-DD shared with PAPER_SHADOW_V24 and backend DAILY_ALPHA_SHADOW_FORWARD_START",
+    "entry_replay_max_price": "explicit finite ceiling derived from the audited 1.0 ATR no-chase envelope; never guessed or widened by backend",
+    "lifecycle_fields": [
+      "model_id",
+      "forward_test_start"
+    ],
+    "entry_only_fields": [
+      "replay_max_price"
+    ]
+  },
+  "remaining_activation_gates": [
+    "deploy canonical shadow-routing processor chain to staging only",
+    "reverify DAILY_ALPHA_SHADOW_FORWARD_START=2026-08-19 after staging deployment",
+    "rotate/configure compromised webhook secret without exposing it",
+    "complete real TradingView-to-staging paper E2E proof with fresh market/ORATS/risk evidence",
+    "verify isolated PAPER_SHADOW_V24 and PAPER_SHADOW_V25 audit receipts",
+    "explicitly approve ongoing shadow alert activation"
+  ],
+  "safety": {
+    "trading_authorized": false,
+    "live_trading_enabled": false,
+    "webhook_activation_authorized": false,
+    "aws_production_deployment_authorized": false
+  }
+}
