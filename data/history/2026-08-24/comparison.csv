@@ -1,0 +1,1238 @@
+symbol,status,display_label,signal,previous_signal,signal_date,sector,industry,trend,momentum,optionable,reason
+A,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Materials,Aluminum,NEUTRAL,MOVING DOWN,,No active BUY transition
+AAL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Industrials,Airlines,DOWNTREND,MOVING DOWN,,No active BUY transition
+AAOI,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 10, 2026",Information Technology,Communication Equipment,NEUTRAL,MOVING DOWN,,Existing BUY momentum is weakening
+AAP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Discretionary,Auto Parts,DOWNTREND,MOVING DOWN,,No active BUY transition
+AAPL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Information Technology,Consumer Electronics,DOWNTREND,MOVING DOWN,,No active BUY transition
+ABBV,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ABNB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Discretionary,Travel Services,UPTREND,MOVING DOWN,,No active BUY transition
+ABT,LEADER,🚀 LEADER,BUY,BUY,"Jul 17, 2026",Health Care,Medical Devices,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ACAD,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 07, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+ACGL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Financials,Insurance - Diversified,NEUTRAL,MOVING DOWN,,No active BUY transition
+ACHC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Health Care,Medical Care Facilities,DOWNTREND,MOVING DOWN,,No active BUY transition
+ACI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Consumer Staples,Grocery Stores,DOWNTREND,MOVING DOWN,,No active BUY transition
+ACIW,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Information Technology,Software - Infrastructure,DOWNTREND,MOVING DOWN,,No active BUY transition
+ACM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Industrials,Engineering & Construction,DOWNTREND,MOVING DOWN,,No active BUY transition
+ACMR,UNCHANGED,UNCHANGED,,SELL,"Jul 07, 2026",Information Technology,Semiconductor Equipment & Materials,,,,Previously inactive symbol is absent
+ACN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Information Technology Services,UPTREND,MOVING DOWN,,No active BUY transition
+ADBE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+ADC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+ADEA,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Software - Application,DOWNTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+ADI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING UP,,No active BUY transition
+ADM,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Consumer Staples,Farm Products,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ADP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+ADPT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,No active BUY transition
+ADSK,LEADER,🚀 LEADER,BUY,BUY,"Jul 17, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AEE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+AEHR,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Information Technology,Semiconductor Equipment & Materials,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AEM,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AEO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Consumer Discretionary,Apparel Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+AEP,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+AES,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Utilities,Utilities - Diversified,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+AESI,UNCHANGED,UNCHANGED,,,,Energy,Oil & Gas Equipment & Services,NEUTRAL,,,No active BUY transition
+AEVA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Information Technology,Software - Infrastructure,NEUTRAL,MOVING DOWN,,No active BUY transition
+AFL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Financials,Insurance - Life,DOWNTREND,MOVING DOWN,,No active BUY transition
+AFRM,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Financials,Credit Services,UPTREND,MOVING UP,,No active BUY transition
+AG,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Materials,Silver,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AGI,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AGIO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+AGNC,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Real Estate,REIT - Mortgage,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AHR,UNCHANGED,UNCHANGED,,,,Real Estate,REIT - Healthcare Facilities,UPTREND,,,No active BUY transition
+AI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+AIG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Financials,Insurance - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+AJG,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Financials,Insurance Brokers,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+AKAM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Infrastructure,DOWNTREND,MOVING DOWN,,No active BUY transition
+AKR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+ALAB,UNCHANGED,UNCHANGED,,,,Information Technology,Semiconductors,DOWNTREND,,,No active BUY transition
+ALB,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Materials,Specialty Chemicals,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ALC,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+ALGM,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 07, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+ALH,UNCHANGED,UNCHANGED,,,,Consumer Discretionary,Furnishings Fixtures & Appliances,DOWNTREND,,,No active BUY transition
+ALHC,UNCHANGED,UNCHANGED,,,,Health Care,Healthcare Plans,DOWNTREND,,,No active BUY transition
+ALK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Industrials,Airlines,DOWNTREND,MOVING DOWN,,No active BUY transition
+ALKS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Health Care,Drug Manufacturers - Specialty & Generic,DOWNTREND,MOVING DOWN,,No active BUY transition
+ALKT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,No active BUY transition
+ALL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Financials,Insurance - Property & Casualty,NEUTRAL,MOVING DOWN,,No active BUY transition
+ALLE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Industrials,Security & Protection Services,UPTREND,MOVING DOWN,,No active BUY transition
+ALLY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 07, 2026",Financials,Credit Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+ALNY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+AM,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AMAT,UNCHANGED,UNCHANGED,SELL,SELL,"Jun 29, 2026",Information Technology,Semiconductor Equipment & Materials,DOWNTREND,MOVING DOWN,,No active BUY transition
+AMBA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Semiconductor Equipment & Materials,DOWNTREND,MOVING DOWN,,No active BUY transition
+AMCR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Discretionary,Packaging & Containers,UPTREND,MOVING UP,,No active BUY transition
+AME,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Specialty Industrial Machinery,NEUTRAL,MOVING DOWN,,No active BUY transition
+AMGN,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AMH,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Real Estate,REIT - Residential,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AMKR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Information Technology,Semiconductor Equipment & Materials,DOWNTREND,MOVING UP,,No active BUY transition
+AMLX,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Health Care,Drug Manufacturers - Specialty & Generic,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AMPL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+AMPX,UNCHANGED,UNCHANGED,,,,Industrials,Electrical Equipment & Parts,DOWNTREND,,,No active BUY transition
+AMRX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Health Care,Drug Manufacturers - Specialty & Generic,UPTREND,MOVING DOWN,,No active BUY transition
+AMT,LEADER,🚀 LEADER,BUY,BUY,"Jul 31, 2026",Real Estate,REIT - Specialty,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AMTM,UNCHANGED,UNCHANGED,,,,Industrials,Specialty Business Services,DOWNTREND,,,No active BUY transition
+AMX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 02, 2026",Communication Services,Telecom Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+AMZN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Consumer Discretionary,Internet Retail,UPTREND,MOVING DOWN,,No active BUY transition
+ANET,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Computer Hardware,UPTREND,MOVING DOWN,,No active BUY transition
+AON,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Financials,Insurance Brokers,NEUTRAL,MOVING DOWN,,No active BUY transition
+AOS,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Industrials,Specialty Industrial Machinery,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+APA,LEADER,🚀 LEADER,BUY,BUY,"Jul 22, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+APG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Engineering & Construction,NEUTRAL,MOVING DOWN,,No active BUY transition
+APGE,UNCHANGED,UNCHANGED,,,,Health Care,Biotechnology,UPTREND,,,No active BUY transition
+APH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Electronic Components,DOWNTREND,MOVING DOWN,,No active BUY transition
+APLE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Real Estate,REIT - Hotel & Motel,NEUTRAL,MOVING UP,,No active BUY transition
+APO,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+APP,UNCHANGED,UNCHANGED,,,,Communication Services,Advertising Agencies,DOWNTREND,,,No active BUY transition
+APPS,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 06, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+AR,LEADER,🚀 LEADER,BUY,BUY,"Jul 31, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ARCC,LEADER,🚀 LEADER,BUY,BUY,"Jul 14, 2026",Financials,Asset Management,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ARE,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Real Estate,REIT - Office,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+ARES,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+ARLO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Industrials,Building Products & Equipment,DOWNTREND,MOVING DOWN,,No active BUY transition
+ARMK,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 13, 2026",Industrials,Specialty Business Services,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+AROC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Energy,Oil & Gas Equipment & Services,DOWNTREND,MOVING UP,,No active BUY transition
+ARQT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Health Care,Biotechnology,DOWNTREND,MOVING DOWN,,No active BUY transition
+ARR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Real Estate,REIT - Mortgage,DOWNTREND,MOVING DOWN,,No active BUY transition
+ARWR,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ASB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+ASML,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Information Technology,Semiconductor Equipment & Materials,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ASO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Specialty Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+ASST,UNCHANGED,UNCHANGED,,,,Financials,Asset Management,UPTREND,,,No active BUY transition
+ASTS,UNCHANGED,UNCHANGED,,,,Information Technology,Communication Equipment,NEUTRAL,,,No active BUY transition
+ASX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+ATEN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Information Technology,Software - Infrastructure,DOWNTREND,MOVING UP,,No active BUY transition
+ATI,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 06, 2026",Industrials,Metal Fabrication,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+ATKR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Industrials,Electrical Equipment & Parts,UPTREND,MOVING DOWN,,No active BUY transition
+ATO,UNCHANGED,UNCHANGED,SELL,,"Jul 31, 2026",Utilities,Utilities - Regulated Gas,DOWNTREND,MOVING DOWN,,No active BUY transition
+AU,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AUB,UNCHANGED,UNCHANGED,SELL,,"Jul 10, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+AUPH,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AVAH,UNCHANGED,UNCHANGED,,,,Health Care,Medical Care Facilities,UPTREND,,,No active BUY transition
+AVAV,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Industrials,Aerospace & Defense,NEUTRAL,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+AVGO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+AVPT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+AVT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Electronics & Computer Distribution,NEUTRAL,MOVING DOWN,,No active BUY transition
+AVTR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING UP,,No active BUY transition
+AWK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Utilities,Utilities - Regulated Water,UPTREND,MOVING DOWN,,No active BUY transition
+AXGN,LEADER,🚀 LEADER,BUY,BUY,"Aug 04, 2026",Health Care,Medical Devices,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+AXP,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Financials,Credit Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+AXTA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Materials,Specialty Chemicals,UPTREND,MOVING DOWN,,No active BUY transition
+AXTI,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 07, 2026",Information Technology,Semiconductor Equipment & Materials,NEUTRAL,MOVING DOWN,,Existing BUY momentum is weakening
+AZN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Health Care,Drug Manufacturers - General,DOWNTREND,MOVING UP,,No active BUY transition
+B,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+BABA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Consumer Discretionary,Internet Retail,NEUTRAL,MOVING DOWN,,No active BUY transition
+BAC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,No active BUY transition
+BAH,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Industrials,Consulting Services,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+BALL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Consumer Discretionary,Packaging & Containers,NEUTRAL,MOVING DOWN,,No active BUY transition
+BAM,UNCHANGED,UNCHANGED,,,,Financials,Asset Management,UPTREND,,,No active BUY transition
+BANC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+BAND,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 21, 2026",Information Technology,Software - Infrastructure,DOWNTREND,MOVING UP,,No active BUY transition
+BAX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING DOWN,,No active BUY transition
+BBIO,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+BBNX,UNCHANGED,UNCHANGED,,,,Health Care,Medical Devices,UPTREND,,,No active BUY transition
+BBWI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Consumer Discretionary,Specialty Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+BBY,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Consumer Discretionary,Specialty Retail,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BCE,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Communication Services,Telecom Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BCS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Financials,Banks - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+BDX,LEADER,🚀 LEADER,BUY,BUY,"Jun 29, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Industrials,Electrical Equipment & Parts,DOWNTREND,MOVING DOWN,,No active BUY transition
+BEAM,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+BEKE,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Real Estate,Real Estate Services,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+BEN,LEADER,🚀 LEADER,BUY,BUY,"Aug 03, 2026",Financials,Asset Management,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BEP,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Utilities,Utilities - Renewable,NEUTRAL,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+BEPC,UNCHANGED,UNCHANGED,,,,Utilities,Utilities - Renewable,DOWNTREND,,,No active BUY transition
+BF/B,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Consumer Staples,Beverages - Wineries & Distilleries,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BG,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 20, 2026",Consumer Staples,Farm Products,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+BGC,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Financials,Capital Markets,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+BHP,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Materials,Other Industrial Metals & Mining,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BIIB,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BILI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Communication Services,Internet Content & Information,DOWNTREND,MOVING DOWN,,No active BUY transition
+BILL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+BJ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Consumer Staples,Discount Stores,NEUTRAL,MOVING UP,,No active BUY transition
+BKD,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Health Care,Medical Care Facilities,DOWNTREND,MOVING DOWN,,No active BUY transition
+BKNG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Consumer Discretionary,Travel Services,UPTREND,MOVING DOWN,,No active BUY transition
+BKR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING DOWN,,No active BUY transition
+BKSY,UNCHANGED,UNCHANGED,,,,Industrials,Specialty Business Services,NEUTRAL,,,No active BUY transition
+BL,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+BLDR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 09, 2026",Industrials,Building Products & Equipment,DOWNTREND,MOVING UP,,No active BUY transition
+BLFS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING DOWN,,No active BUY transition
+BLMN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Consumer Discretionary,Restaurants,UPTREND,MOVING DOWN,,No active BUY transition
+BLZE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+BMNR,UNCHANGED,UNCHANGED,,,,Financials,Capital Markets,UPTREND,,,No active BUY transition
+BMRN,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BMY,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Financials,Asset Management,DOWNTREND,MOVING DOWN,,No active BUY transition
+BNL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Real Estate,REIT - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+BNS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,No active BUY transition
+BNTX,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BNY,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+BOX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+BP,LEADER,🚀 LEADER,BUY,BUY,"Jul 16, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BR,LEADER,🚀 LEADER,BUY,BUY,"Jul 10, 2026",Information Technology,Information Technology Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BRBR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Consumer Staples,Packaged Foods,DOWNTREND,MOVING DOWN,,No active BUY transition
+BRK/B,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Financials,Insurance - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+BRKR,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Health Care,Medical Devices,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+BRO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 21, 2026",Financials,Insurance Brokers,UPTREND,MOVING DOWN,,No active BUY transition
+BROS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 07, 2026",Consumer Discretionary,Restaurants,DOWNTREND,MOVING UP,,No active BUY transition
+BRX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+BRZE,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BSX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Health Care,Medical Devices,UPTREND,MOVING DOWN,,No active BUY transition
+BSY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,No active BUY transition
+BTI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Consumer Staples,Tobacco,DOWNTREND,MOVING DOWN,,No active BUY transition
+BTSG,UNCHANGED,UNCHANGED,,,,Health Care,Health Information Services,DOWNTREND,,,No active BUY transition
+BTU,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Energy,Thermal Coal,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BUD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Consumer Staples,Beverages - Brewers,DOWNTREND,MOVING DOWN,,No active BUY transition
+BV,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Industrials,Specialty Business Services,DOWNTREND,MOVING UP,,No active BUY transition
+BWA,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Consumer Discretionary,Auto Parts,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+BWIN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Financials,Insurance Brokers,UPTREND,MOVING DOWN,,No active BUY transition
+BX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+BXP,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Real Estate,REIT - Office,NEUTRAL,MOVING DOWN,,No active BUY transition
+BXSL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Financials,Asset Management,UPTREND,MOVING UP,,No active BUY transition
+BYND,UNCHANGED,UNCHANGED,,,,Consumer Staples,Packaged Foods,DOWNTREND,,,No active BUY transition
+BZ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Communication Services,Internet Content & Information,UPTREND,MOVING UP,,No active BUY transition
+C,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+CADL,UNCHANGED,UNCHANGED,,,,Health Care,Biotechnology,UPTREND,,,No active BUY transition
+CAG,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CAH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Health Care,Medical Distribution,UPTREND,MOVING DOWN,,No active BUY transition
+CAI,UNCHANGED,UNCHANGED,,,,Health Care,Biotechnology,UPTREND,,,No active BUY transition
+CAKE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Restaurants,UPTREND,MOVING DOWN,,No active BUY transition
+CALX,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CALY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Consumer Discretionary,Leisure,DOWNTREND,MOVING DOWN,,No active BUY transition
+CART,UNCHANGED,UNCHANGED,,,,Consumer Discretionary,Internet Retail,UPTREND,,,No active BUY transition
+CAT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Industrials,Farm & Heavy Construction Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+CAVA,UNCHANGED,UNCHANGED,,,,Consumer Discretionary,Restaurants,UPTREND,,,No active BUY transition
+CB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Financials,Insurance - Property & Casualty,DOWNTREND,MOVING DOWN,,No active BUY transition
+CBOE,UNCHANGED,UNCHANGED,SELL,,"Aug 11, 2026",Financials,Financial Data & Stock Exchanges,UPTREND,MOVING DOWN,,No active BUY transition
+CBRE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Real Estate,Real Estate Services,UPTREND,MOVING DOWN,,No active BUY transition
+CBSH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+CBZ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Industrials,Specialty Business Services,UPTREND,MOVING DOWN,,No active BUY transition
+CCEP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Consumer Staples,Beverages - Non-Alcoholic,UPTREND,MOVING DOWN,,No active BUY transition
+CCJ,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Energy,Uranium,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CCK,UNCHANGED,UNCHANGED,,SELL,"Aug 10, 2026",Consumer Discretionary,Packaging & Containers,,,,Previously inactive symbol is absent
+CCL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Consumer Discretionary,Travel Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+CDE,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CDNA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING DOWN,,No active BUY transition
+CDW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Information Technology,Information Technology Services,NEUTRAL,MOVING DOWN,,No active BUY transition
+CE,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 21, 2026",Materials,Chemicals,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+CEG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Utilities,Utilities - Independent Power Producers,UPTREND,MOVING DOWN,,No active BUY transition
+CELC,NEW_BUY,NEW BUY,BUY,SELL,"Aug 24, 2026",Health Care,Biotechnology,NEUTRAL,MOVING UP,,BUY triggered since the previous file
+CELH,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Consumer Staples,Beverages - Non-Alcoholic,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CENX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Materials,Aluminum,DOWNTREND,MOVING DOWN,,No active BUY transition
+CF,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Materials,Agricultural Inputs,UPTREND,MOVING UP,,No active BUY transition
+CFG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+CG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+CGNX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Scientific & Technical Instruments,DOWNTREND,MOVING DOWN,,No active BUY transition
+CHD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Staples,Household & Personal Products,NEUTRAL,MOVING DOWN,,No active BUY transition
+CHKP,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 20, 2026",Information Technology,Software - Infrastructure,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+CHRW,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Industrials,Integrated Freight & Logistics,DOWNTREND,MOVING DOWN,,No active BUY transition
+CHTR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Communication Services,Telecom Services,UPTREND,MOVING DOWN,,No active BUY transition
+CHWY,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Consumer Discretionary,Internet Retail,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CHYM,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Application,UPTREND,,,No active BUY transition
+CI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Health Care,Healthcare Plans,DOWNTREND,MOVING UP,,No active BUY transition
+CIEN,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Communication Equipment,DOWNTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+CIFR,UNCHANGED,UNCHANGED,,,,Information Technology,Information Technology Services,DOWNTREND,,,No active BUY transition
+CL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Staples,Household & Personal Products,DOWNTREND,MOVING DOWN,,No active BUY transition
+CLBK,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+CLBT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Information Technology,Software - Infrastructure,DOWNTREND,MOVING UP,,No active BUY transition
+CLF,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Materials,Steel,NEUTRAL,MOVING DOWN,,No active BUY transition
+CLMT,UNCHANGED,UNCHANGED,,,,Materials,Specialty Chemicals,UPTREND,,,No active BUY transition
+CLS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Information Technology,Electronic Components,DOWNTREND,MOVING DOWN,,No active BUY transition
+CLSK,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Financials,Capital Markets,DOWNTREND,MOVING DOWN,,No active BUY transition
+CLX,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Consumer Staples,Household & Personal Products,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+CLYM,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 07, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+CMC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Metal Fabrication,DOWNTREND,MOVING DOWN,,No active BUY transition
+CMCSA,LEADER,🚀 LEADER,BUY,BUY,"Jul 30, 2026",Communication Services,Telecom Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CME,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Financials,Financial Data & Stock Exchanges,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+CMG,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Consumer Discretionary,Restaurants,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+CMS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+CNC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Health Care,Healthcare Plans,UPTREND,MOVING DOWN,,No active BUY transition
+CNH,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Industrials,Farm & Heavy Construction Machinery,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+CNI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Industrials,Railroads,UPTREND,MOVING DOWN,,No active BUY transition
+CNK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Communication Services,Entertainment,UPTREND,MOVING DOWN,,No active BUY transition
+CNM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Industrials,Industrial Distribution,DOWNTREND,MOVING DOWN,,No active BUY transition
+CNP,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+CNQ,LEADER,🚀 LEADER,BUY,BUY,"Jul 20, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CNX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING DOWN,,No active BUY transition
+CNXC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Information Technology Services,UPTREND,MOVING UP,,No active BUY transition
+COF,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Credit Services,UPTREND,MOVING DOWN,,No active BUY transition
+COGT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Health Care,Biotechnology,DOWNTREND,MOVING DOWN,,No active BUY transition
+COHR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Scientific & Technical Instruments,DOWNTREND,MOVING DOWN,,No active BUY transition
+COHU,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Information Technology,Semiconductor Equipment & Materials,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+COIN,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Financials,Financial Data & Stock Exchanges,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+COLB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+COLD,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Real Estate,REIT - Industrial,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+COMP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Real Estate,Real Estate Services,UPTREND,MOVING DOWN,,No active BUY transition
+COO,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+COP,LEADER,🚀 LEADER,BUY,BUY,"Jul 17, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+COR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Health Care,Medical Distribution,UPTREND,MOVING DOWN,,No active BUY transition
+CORT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+CORZ,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,DOWNTREND,,,No active BUY transition
+COST,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Consumer Staples,Discount Stores,NEUTRAL,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+CP,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Industrials,Railroads,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CPB,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CPNG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Consumer Discretionary,Internet Retail,DOWNTREND,MOVING UP,,No active BUY transition
+CPRT,LEADER,🚀 LEADER,BUY,BUY,"Jul 30, 2026",Industrials,Specialty Business Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CRBG,UNCHANGED,UNCHANGED,,,,Financials,Asset Management,UPTREND,,,No active BUY transition
+CRCL,UNCHANGED,UNCHANGED,,,,Financials,Capital Markets,UPTREND,,,No active BUY transition
+CRGY,LEADER,🚀 LEADER,BUY,BUY,"Aug 04, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CRH,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Materials,Building Materials,DOWNTREND,MOVING DOWN,,No active BUY transition
+CRI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Apparel Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+CRK,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CRM,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CRNX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+CROX,UNCHANGED,UNCHANGED,,SELL,"Jul 30, 2026",Consumer Discretionary,Footwear & Accessories,,,,Previously inactive symbol is absent
+CRSP,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CRSR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Information Technology,Computer Hardware,UPTREND,MOVING DOWN,,No active BUY transition
+CRWD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+CRWV,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,NEUTRAL,,,No active BUY transition
+CSCO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Communication Equipment,DOWNTREND,MOVING DOWN,,No active BUY transition
+CSGP,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Real Estate,Real Estate Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CSIQ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Solar,DOWNTREND,MOVING DOWN,,No active BUY transition
+CSTM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Materials,Aluminum,DOWNTREND,MOVING DOWN,,No active BUY transition
+CSX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Industrials,Railroads,UPTREND,MOVING DOWN,,No active BUY transition
+CTAS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Industrials,Specialty Business Services,UPTREND,MOVING DOWN,,No active BUY transition
+CTRE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Real Estate,REIT - Healthcare Facilities,DOWNTREND,MOVING DOWN,,No active BUY transition
+CTRI,UNCHANGED,UNCHANGED,,,,Utilities,Utilities - Regulated Gas,DOWNTREND,,,No active BUY transition
+CTSH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Information Technology Services,UPTREND,MOVING DOWN,,No active BUY transition
+CTVA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Materials,Agricultural Inputs,NEUTRAL,MOVING UP,,No active BUY transition
+CUBE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Real Estate,REIT - Industrial,DOWNTREND,MOVING DOWN,,No active BUY transition
+CURB,UNCHANGED,UNCHANGED,,,,Real Estate,REIT - Retail,DOWNTREND,,,No active BUY transition
+CUZ,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Real Estate,REIT - Office,DOWNTREND,MOVING DOWN,,No active BUY transition
+CVBF,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+CVE,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CVNA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Consumer Discretionary,Auto & Truck Dealerships,UPTREND,MOVING DOWN,,No active BUY transition
+CVS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Health Care,Healthcare Plans,DOWNTREND,MOVING DOWN,,No active BUY transition
+CVX,LEADER,🚀 LEADER,BUY,BUY,"Jul 16, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CWEN,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Utilities,Utilities - Renewable,DOWNTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+CWK,LEADER,🚀 LEADER,BUY,BUY,"Jul 31, 2026",Real Estate,Real Estate Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+CX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Materials,Building Materials,DOWNTREND,MOVING DOWN,,No active BUY transition
+CXW,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 09, 2026",Industrials,Security & Protection Services,UPTREND,MOVING DOWN,,No active BUY transition
+CYTK,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+CZR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Consumer Discretionary,Resorts & Casinos,NEUTRAL,MOVING DOWN,,No active BUY transition
+D,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+DAL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Industrials,Airlines,DOWNTREND,MOVING DOWN,,No active BUY transition
+DAN,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Consumer Discretionary,Auto Parts,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DAR,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DASH,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Consumer Discretionary,Internet Retail,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+DB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+DBRG,LEADER,🚀 LEADER,BUY,BUY,"Jul 24, 2026",Financials,Asset Management,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DBX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+DD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Materials,Specialty Chemicals,DOWNTREND,MOVING DOWN,,No active BUY transition
+DDOG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Information Technology,Software - Application,DOWNTREND,MOVING DOWN,,No active BUY transition
+DE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Industrials,Farm & Heavy Construction Machinery,UPTREND,MOVING UP,,No active BUY transition
+DECK,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Consumer Discretionary,Footwear & Accessories,DOWNTREND,MOVING DOWN,,No active BUY transition
+DEI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Real Estate,REIT - Office,DOWNTREND,MOVING UP,,No active BUY transition
+DELL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Computer Hardware,UPTREND,MOVING DOWN,,No active BUY transition
+DEO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Staples,Beverages - Wineries & Distilleries,UPTREND,MOVING DOWN,,No active BUY transition
+DFNS,UNCHANGED,UNCHANGED,,,,Industrials,Aerospace & Defense,DOWNTREND,,,No active BUY transition
+DFTX,UNCHANGED,UNCHANGED,,,,Health Care,Biotechnology,UPTREND,,,No active BUY transition
+DG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Staples,Discount Stores,NEUTRAL,MOVING DOWN,,No active BUY transition
+DGX,UNCHANGED,UNCHANGED,SELL,,"Aug 18, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING DOWN,,No active BUY transition
+DHI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Consumer Discretionary,Residential Construction,DOWNTREND,MOVING DOWN,,No active BUY transition
+DHR,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DHT,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DINO,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Energy,Oil & Gas Refining & Marketing,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DIS,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Communication Services,Entertainment,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DK,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Energy,Oil & Gas Refining & Marketing,UPTREND,MOVING DOWN,,No active BUY transition
+DKNG,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Consumer Discretionary,Gambling,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DKS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Consumer Discretionary,Specialty Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+DLO,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,NEUTRAL,,,No active BUY transition
+DLR,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Real Estate,REIT - Specialty,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+DLTR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Consumer Staples,Discount Stores,UPTREND,MOVING UP,,No active BUY transition
+DNLI,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DNOW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Industrials,Industrial Distribution,UPTREND,MOVING DOWN,,No active BUY transition
+DOC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Real Estate,REIT - Healthcare Facilities,NEUTRAL,MOVING UP,,No active BUY transition
+DOCN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Infrastructure,DOWNTREND,MOVING DOWN,,No active BUY transition
+DOCS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Health Care,Health Information Services,UPTREND,MOVING DOWN,,No active BUY transition
+DOCU,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DOV,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+DOW,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Materials,Chemicals,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DOX,LEADER,🚀 LEADER,BUY,BUY,"Jul 30, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DRH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Real Estate,REIT - Hotel & Motel,UPTREND,MOVING UP,,No active BUY transition
+DRI,LEADER,🚀 LEADER,BUY,BUY,"Jul 30, 2026",Consumer Discretionary,Restaurants,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,No active BUY transition
+DTE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+DUK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+DUOL,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DUOT,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DV,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Communication Services,Advertising Agencies,UPTREND,MOVING DOWN,,No active BUY transition
+DVN,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DX,UNCHANGED,UNCHANGED,,,,Real Estate,REIT - Mortgage,UPTREND,,,No active BUY transition
+DXC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Information Technology Services,UPTREND,MOVING DOWN,,No active BUY transition
+DXCM,LEADER,🚀 LEADER,BUY,BUY,"Jul 30, 2026",Health Care,Medical Devices,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+DXYZ,UNCHANGED,UNCHANGED,,,,Financials,Asset Management,UPTREND,,,No active BUY transition
+DYN,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+EBAY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Consumer Discretionary,Internet Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+EBC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+EC,LEADER,🚀 LEADER,BUY,BUY,"Jul 31, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ECL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Materials,Specialty Chemicals,UPTREND,MOVING UP,,No active BUY transition
+ECVT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Materials,Specialty Chemicals,DOWNTREND,MOVING UP,,No active BUY transition
+ED,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+EFC,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Real Estate,REIT - Mortgage,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EFX,LEADER,🚀 LEADER,BUY,BUY,"Jul 07, 2026",Industrials,Consulting Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EGO,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EIX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING UP,,No active BUY transition
+EL,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Consumer Staples,Household & Personal Products,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ELAN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Health Care,Drug Manufacturers - Specialty & Generic,DOWNTREND,MOVING UP,,No active BUY transition
+ELF,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Consumer Staples,Household & Personal Products,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ELS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Real Estate,REIT - Residential,UPTREND,MOVING DOWN,,No active BUY transition
+ELV,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Health Care,Healthcare Plans,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EMBJ,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 04, 2026",Industrials,Aerospace & Defense,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+EMN,LEADER,🚀 LEADER,BUY,BUY,"Aug 04, 2026",Materials,Specialty Chemicals,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EMR,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Industrials,Specialty Industrial Machinery,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ENB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Energy,Oil & Gas Midstream,DOWNTREND,MOVING DOWN,,No active BUY transition
+ENOV,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Health Care,Medical Devices,NEUTRAL,MOVING DOWN,,No active BUY transition
+ENTG,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 10, 2026",Information Technology,Semiconductor Equipment & Materials,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+EOG,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EPAM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Information Technology,Information Technology Services,UPTREND,MOVING UP,,No active BUY transition
+EPD,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+EPRT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING UP,,No active BUY transition
+EQH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+EQNR,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EQR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 21, 2026",Real Estate,REIT - Residential,DOWNTREND,,,No active BUY transition
+EQT,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EQX,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ERAS,UNCHANGED,UNCHANGED,,,,Health Care,Biotechnology,NEUTRAL,,,No active BUY transition
+ERO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Materials,Copper,UPTREND,MOVING UP,,No active BUY transition
+ES,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+ESI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 07, 2026",Materials,Specialty Chemicals,DOWNTREND,MOVING DOWN,,No active BUY transition
+ESTC,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 04, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+ET,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ETN,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Industrials,Specialty Industrial Machinery,NEUTRAL,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+ETR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+ETSY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Consumer Discretionary,Internet Retail,NEUTRAL,MOVING UP,,No active BUY transition
+EVRG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+EW,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Health Care,Medical Devices,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EWTX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+EXC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+EXE,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EXEL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 20, 2026",Health Care,Biotechnology,NEUTRAL,MOVING UP,,No active BUY transition
+EXLS,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Information Technology,Information Technology Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EXPD,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Industrials,Integrated Freight & Logistics,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+EXPE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Discretionary,Travel Services,UPTREND,MOVING DOWN,,No active BUY transition
+EXR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Real Estate,REIT - Industrial,DOWNTREND,MOVING DOWN,,No active BUY transition
+EYE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Discretionary,Specialty Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+EZPW,UNCHANGED,UNCHANGED,SELL,,"Jul 15, 2026",Financials,Credit Services,NEUTRAL,MOVING UP,,No active BUY transition
+F,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Consumer Discretionary,Auto Manufacturers,NEUTRAL,MOVING DOWN,,No active BUY transition
+FA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Industrials,Specialty Business Services,UPTREND,MOVING DOWN,,No active BUY transition
+FANG,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FAST,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Jul 29, 2026",Industrials,Industrial Distribution,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+FBIN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Industrials,Building Products & Equipment,DOWNTREND,MOVING DOWN,,No active BUY transition
+FBP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+FBRX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+FCEL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Industrials,Electrical Equipment & Parts,DOWNTREND,MOVING UP,,No active BUY transition
+FCX,LEADER,🚀 LEADER,BUY,BUY,"Aug 03, 2026",Materials,Copper,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FDX,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 11, 2026",Industrials,Integrated Freight & Logistics,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+FE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+FHB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 09, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+FHN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+FIBK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+FIG,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Application,UPTREND,,,No active BUY transition
+FIGR,UNCHANGED,UNCHANGED,,,,Financials,Capital Markets,UPTREND,,,No active BUY transition
+FIGS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Discretionary,Apparel Manufacturing,UPTREND,MOVING DOWN,,No active BUY transition
+FIS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Information Technology,Information Technology Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+FISV,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Information Technology Services,DOWNTREND,MOVING UP,,No active BUY transition
+FITB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+FIVN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+FLG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+FLR,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Industrials,Engineering & Construction,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FLS,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Jul 31, 2026",Industrials,Specialty Industrial Machinery,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+FLUT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Consumer Discretionary,Gambling,NEUTRAL,MOVING UP,,No active BUY transition
+FLY,UNCHANGED,UNCHANGED,,,,Industrials,Aerospace & Defense,NEUTRAL,,,No active BUY transition
+FLYW,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FNB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+FND,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Home Improvement Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+FNF,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Financials,Insurance - Specialty,DOWNTREND,MOVING DOWN,,No active BUY transition
+FORM,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 12, 2026",Information Technology,Semiconductor Equipment & Materials,NEUTRAL,MOVING DOWN,,Existing BUY momentum is weakening
+FOUR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Information Technology,Software - Infrastructure,NEUTRAL,MOVING UP,,No active BUY transition
+FOX,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Jul 30, 2026",Communication Services,Entertainment,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+FOXA,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Jul 30, 2026",Communication Services,Entertainment,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+FR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Real Estate,REIT - Industrial,DOWNTREND,MOVING DOWN,,No active BUY transition
+FRO,LEADER,🚀 LEADER,BUY,BUY,"Jul 24, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FROG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+FRPT,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FRSH,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FSK,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 07, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+FSLR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Solar,DOWNTREND,MOVING DOWN,,No active BUY transition
+FSLY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+FSM,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FTAI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+FTI,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FTNT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Software - Infrastructure,NEUTRAL,MOVING DOWN,,No active BUY transition
+FTRE,UNCHANGED,UNCHANGED,,,,Health Care,Biotechnology,NEUTRAL,,,No active BUY transition
+FTV,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Scientific & Technical Instruments,DOWNTREND,MOVING DOWN,,No active BUY transition
+FUBO,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Communication Services,Broadcasting,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FULT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+FUN,UNCHANGED,UNCHANGED,SELL,SELL,"Jun 29, 2026",Consumer Discretionary,Leisure,DOWNTREND,MOVING DOWN,,No active BUY transition
+FUTU,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Financials,Capital Markets,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FWONK,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Communication Services,Entertainment,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+FWRG,UNCHANGED,UNCHANGED,,,,Consumer Discretionary,Restaurants,UPTREND,,,No active BUY transition
+G,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Information Technology,Information Technology Services,UPTREND,MOVING UP,,No active BUY transition
+GAP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Consumer Discretionary,Apparel Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+GBCI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+GBDC,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+GD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Aerospace & Defense,UPTREND,MOVING DOWN,,No active BUY transition
+GDDY,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GDS,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 12, 2026",Information Technology,Information Technology Services,NEUTRAL,MOVING DOWN,,Existing BUY momentum is weakening
+GE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+GEHC,UNCHANGED,UNCHANGED,,,,Health Care,Medical Devices,UPTREND,,,No active BUY transition
+GEN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+GEO,UNCHANGED,UNCHANGED,SELL,SELL,"Jun 30, 2026",Industrials,Security & Protection Services,UPTREND,MOVING DOWN,,No active BUY transition
+GEV,UNCHANGED,UNCHANGED,,,,Industrials,Specialty Industrial Machinery,DOWNTREND,,,No active BUY transition
+GFI,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GFL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Industrials,Waste Management,UPTREND,MOVING DOWN,,No active BUY transition
+GFS,UNCHANGED,UNCHANGED,SELL,SELL,"Jun 29, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+GGG,LEADER,🚀 LEADER,BUY,BUY,"Jul 24, 2026",Industrials,Specialty Industrial Machinery,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,No active BUY transition
+GIL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Consumer Discretionary,Apparel Manufacturing,UPTREND,MOVING DOWN,,No active BUY transition
+GILD,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GIS,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GLBE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Discretionary,Internet Retail,UPTREND,MOVING UP,,No active BUY transition
+GLNG,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GLOB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Information Technology,Information Technology Services,UPTREND,MOVING DOWN,,No active BUY transition
+GLPI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Real Estate,REIT - Specialty,DOWNTREND,MOVING DOWN,,No active BUY transition
+GLUE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Health Care,Biotechnology,DOWNTREND,MOVING DOWN,,No active BUY transition
+GLW,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Electronic Components,DOWNTREND,MOVING UP,,Prior BUY is missing or no longer rated BUY
+GLXY,UNCHANGED,UNCHANGED,,,,Financials,Capital Markets,NEUTRAL,,,No active BUY transition
+GM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Consumer Discretionary,Auto Manufacturers,UPTREND,MOVING DOWN,,No active BUY transition
+GMAB,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GME,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 21, 2026",Consumer Discretionary,Specialty Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+GMED,LEADER,🚀 LEADER,BUY,BUY,"Jul 31, 2026",Health Care,Medical Devices,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GNRC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+GNTX,UNCHANGED,UNCHANGED,SELL,SELL,"Jun 29, 2026",Consumer Discretionary,Auto Parts,DOWNTREND,MOVING DOWN,,No active BUY transition
+GO,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Consumer Staples,Grocery Stores,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+GOOG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Communication Services,Internet Content & Information,DOWNTREND,MOVING DOWN,,No active BUY transition
+GOOGL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Communication Services,Internet Content & Information,DOWNTREND,MOVING DOWN,,No active BUY transition
+GPC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Consumer Discretionary,Auto Parts,UPTREND,MOVING DOWN,,No active BUY transition
+GPGI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Industrials,Metal Fabrication,DOWNTREND,MOVING UP,,No active BUY transition
+GPK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Packaging & Containers,UPTREND,MOVING DOWN,,No active BUY transition
+GPN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+GPRE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Materials,Chemicals,NEUTRAL,MOVING UP,,No active BUY transition
+GRND,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Information Technology,Software - Application,NEUTRAL,MOVING UP,,No active BUY transition
+GRPN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Communication Services,Internet Content & Information,DOWNTREND,MOVING DOWN,,No active BUY transition
+GS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Financials,Capital Markets,NEUTRAL,MOVING DOWN,,No active BUY transition
+GSK,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+GTES,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+GTLB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+GWRE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+GXO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Industrials,Integrated Freight & Logistics,DOWNTREND,MOVING DOWN,,No active BUY transition
+HAL,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HALO,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HAPN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+HAS,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Consumer Discretionary,Leisure,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+HAYW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Industrials,Electrical Equipment & Parts,DOWNTREND,MOVING DOWN,,No active BUY transition
+HBAN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+HBM,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Materials,Copper,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HCA,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Health Care,Medical Care Facilities,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+HD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Home Improvement Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+HDB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Financials,Banks - Regional,DOWNTREND,MOVING UP,,No active BUY transition
+HE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+HESM,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Energy,Oil & Gas Midstream,DOWNTREND,MOVING DOWN,,No active BUY transition
+HGV,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 02, 2026",Consumer Discretionary,Resorts & Casinos,DOWNTREND,MOVING UP,,No active BUY transition
+HIG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Financials,Insurance - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+HIMS,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Health Care,Drug Manufacturers - Specialty & Generic,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+HIW,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Real Estate,REIT - Office,NEUTRAL,MOVING DOWN,,No active BUY transition
+HL,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Materials,Other Precious Metals & Mining,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HLF,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+HLIT,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 17, 2026",Information Technology,Communication Equipment,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+HLT,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Consumer Discretionary,Lodging,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HLX,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HMC,LEADER,🚀 LEADER,BUY,BUY,"Jun 30, 2026",Consumer Discretionary,Auto Manufacturers,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HMY,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HNGE,UNCHANGED,UNCHANGED,,,,Health Care,Health Information Services,UPTREND,,,No active BUY transition
+HOG,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Consumer Discretionary,Recreational Vehicles,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HOMB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+HON,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Industrials,Conglomerates,DOWNTREND,MOVING DOWN,,No active BUY transition
+HOOD,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Financials,Capital Markets,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+HOPE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+HP,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Energy,Oil & Gas Drilling,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HPE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Communication Equipment,UPTREND,MOVING DOWN,,No active BUY transition
+HPQ,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Computer Hardware,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+HR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Real Estate,REIT - Healthcare Facilities,DOWNTREND,MOVING DOWN,,No active BUY transition
+HRB,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Consumer Discretionary,Personal Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HRL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 07, 2026",Consumer Staples,Packaged Foods,DOWNTREND,MOVING DOWN,,No active BUY transition
+HSBC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,No active BUY transition
+HSIC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Health Care,Medical Distribution,UPTREND,MOVING DOWN,,No active BUY transition
+HST,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Real Estate,REIT - Hotel & Motel,DOWNTREND,MOVING DOWN,,No active BUY transition
+HSY,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Consumer Staples,Confectioners,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HTFL,UNCHANGED,UNCHANGED,,,,Health Care,Health Information Services,UPTREND,,,No active BUY transition
+HTGC,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Financials,Asset Management,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HTHT,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Consumer Discretionary,Lodging,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+HUBG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Industrials,Integrated Freight & Logistics,DOWNTREND,MOVING DOWN,,No active BUY transition
+HUBS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,No active BUY transition
+HUM,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 17, 2026",Health Care,Healthcare Plans,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+HUN,UNCHANGED,UNCHANGED,,SELL,"Aug 03, 2026",Materials,Chemicals,,,,Previously inactive symbol is absent
+HWM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+HXL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+HYMC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Materials,Gold,UPTREND,MOVING DOWN,,No active BUY transition
+IAG,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+IBKR,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Financials,Capital Markets,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+IBM,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Information Technology,Information Technology Services,DOWNTREND,MOVING UP,,No active BUY transition
+IBN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Financials,Banks - Regional,NEUTRAL,MOVING DOWN,,No active BUY transition
+ICE,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Financials,Financial Data & Stock Exchanges,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+IE,UNCHANGED,UNCHANGED,,,,Materials,Copper,UPTREND,,,No active BUY transition
+IFF,LEADER,🚀 LEADER,BUY,BUY,"Jul 31, 2026",Materials,Specialty Chemicals,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ILMN,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+IMAX,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Communication Services,Entertainment,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+IMMX,UNCHANGED,UNCHANGED,,,,Health Care,Biotechnology,UPTREND,,,No active BUY transition
+IMNM,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+IMVT,REMOVED,❌ REMOVED,,BUY,"Aug 13, 2026",Health Care,Biotechnology,,,,Prior BUY is missing or no longer rated BUY
+INCY,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+INFY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Information Technology Services,UPTREND,MOVING DOWN,,No active BUY transition
+ING,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,No active BUY transition
+INSM,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+INTC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+INTU,LEADER,🚀 LEADER,BUY,BUY,"Jul 20, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+INVH,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Real Estate,REIT - Residential,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+IONQ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Computer Hardware,UPTREND,MOVING DOWN,,No active BUY transition
+IONS,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 21, 2026",Health Care,Biotechnology,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+IOT,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+IP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Consumer Discretionary,Packaging & Containers,UPTREND,MOVING DOWN,,No active BUY transition
+IPST,UNCHANGED,UNCHANGED,,,,Financials,Capital Markets,,,,Previously inactive symbol is absent
+IQV,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,No active BUY transition
+IR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+IRDM,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 06, 2026",Communication Services,Telecom Services,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+IRM,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Real Estate,REIT - Specialty,DOWNTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+IRT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Real Estate,REIT - Residential,DOWNTREND,MOVING DOWN,,No active BUY transition
+ISRG,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 12, 2026",Health Care,Medical Instruments & Supplies,NEUTRAL,MOVING DOWN,,Existing BUY momentum is weakening
+IT,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Information Technology,Information Technology Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ITGR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Health Care,Medical Devices,UPTREND,MOVING DOWN,,No active BUY transition
+ITW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Industrials,Specialty Industrial Machinery,UPTREND,MOVING DOWN,,No active BUY transition
+IVZ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+JBL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Electronic Components,DOWNTREND,MOVING DOWN,,No active BUY transition
+JCI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Industrials,Building Products & Equipment,DOWNTREND,MOVING DOWN,,No active BUY transition
+JD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Consumer Discretionary,Internet Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+JEF,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Financials,Capital Markets,DOWNTREND,MOVING DOWN,,No active BUY transition
+JHX,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Materials,Building Materials,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+JKHY,UNCHANGED,UNCHANGED,,SELL,"Aug 03, 2026",Information Technology,Information Technology Services,,,,Previously inactive symbol is absent
+JNJ,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+JPM,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,No active BUY transition
+KBR,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Industrials,Engineering & Construction,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+KC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Information Technology,Software - Application,NEUTRAL,MOVING UP,,No active BUY transition
+KD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Information Technology,Information Technology Services,DOWNTREND,MOVING UP,,No active BUY transition
+KDP,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Consumer Staples,Beverages - Non-Alcoholic,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+KEP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+KEY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+KEYS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Scientific & Technical Instruments,DOWNTREND,MOVING DOWN,,No active BUY transition
+KGC,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+KGS,UNCHANGED,UNCHANGED,,,,Energy,Oil & Gas Equipment & Services,DOWNTREND,,,No active BUY transition
+KHC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Consumer Staples,Packaged Foods,NEUTRAL,MOVING UP,,No active BUY transition
+KIM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+KKR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+KLAC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 02, 2026",Information Technology,Semiconductor Equipment & Materials,DOWNTREND,MOVING DOWN,,No active BUY transition
+KMB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Consumer Staples,Household & Personal Products,NEUTRAL,MOVING DOWN,,No active BUY transition
+KMI,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Energy,Oil & Gas Midstream,DOWNTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+KMT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Industrials,Tools & Accessories,DOWNTREND,MOVING DOWN,,No active BUY transition
+KMX,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Consumer Discretionary,Auto & Truck Dealerships,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+KNTK,EMERGING,🔥 EMERGING,BUY,,"Aug 12, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+KNX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Industrials,Trucking,DOWNTREND,MOVING UP,,No active BUY transition
+KO,LEADER,🚀 LEADER,BUY,BUY,"Jul 30, 2026",Consumer Staples,Beverages - Non-Alcoholic,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+KRG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+KRMN,UNCHANGED,UNCHANGED,,,,Industrials,Aerospace & Defense,NEUTRAL,,,No active BUY transition
+KSS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Discretionary,Department Stores,DOWNTREND,MOVING DOWN,,No active BUY transition
+KT,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Communication Services,Telecom Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+KTOS,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 06, 2026",Industrials,Aerospace & Defense,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+KURA,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+KVUE,UNCHANGED,UNCHANGED,,,,Consumer Staples,Household & Personal Products,NEUTRAL,,,No active BUY transition
+KVYO,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Application,UPTREND,,,No active BUY transition
+LASR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+LAZ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Capital Markets,UPTREND,MOVING DOWN,,No active BUY transition
+LBRDK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Communication Services,Telecom Services,UPTREND,MOVING DOWN,,No active BUY transition
+LBTYA,NEW_BUY,NEW BUY,BUY,,"Aug 24, 2026",Communication Services,Telecom Services,NEUTRAL,MOVING UP,,BUY triggered since the previous file
+LBTYK,NEW_BUY,NEW BUY,BUY,,"Aug 24, 2026",Communication Services,Telecom Services,NEUTRAL,MOVING UP,,BUY triggered since the previous file
+LDOS,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Information Technology,Information Technology Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+LEN,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Consumer Discretionary,Residential Construction,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+LEVI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Consumer Discretionary,Apparel Manufacturing,DOWNTREND,MOVING DOWN,,No active BUY transition
+LFST,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 11, 2026",Health Care,Medical Care Facilities,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+LGN,UNCHANGED,UNCHANGED,,,,Industrials,Engineering & Construction,DOWNTREND,,,No active BUY transition
+LHX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+LI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Consumer Discretionary,Auto Manufacturers,DOWNTREND,MOVING UP,,No active BUY transition
+LIN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Materials,Specialty Chemicals,DOWNTREND,MOVING UP,,No active BUY transition
+LITE,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 07, 2026",Information Technology,Communication Equipment,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+LKQ,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Consumer Discretionary,Auto Parts,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+LLY,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+LMND,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Financials,Insurance - Property & Casualty,DOWNTREND,MOVING UP,,No active BUY transition
+LMT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Industrials,Aerospace & Defense,UPTREND,MOVING DOWN,,No active BUY transition
+LNC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Financials,Insurance - Life,UPTREND,MOVING DOWN,,No active BUY transition
+LNG,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+LNT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+LNTH,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Health Care,Drug Manufacturers - Specialty & Generic,DOWNTREND,MOVING DOWN,,No active BUY transition
+LOGI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Computer Hardware,DOWNTREND,MOVING DOWN,,No active BUY transition
+LOW,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 06, 2026",Consumer Discretionary,Home Improvement Retail,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+LPTH,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Information Technology,Electronic Components,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+LPX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Industrials,Building Products & Equipment,DOWNTREND,MOVING DOWN,,No active BUY transition
+LQDA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Health Care,Drug Manufacturers - Specialty & Generic,DOWNTREND,MOVING DOWN,,No active BUY transition
+LRCX,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 17, 2026",Information Technology,Semiconductor Equipment & Materials,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+LRN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Consumer Staples,Education & Training Services,DOWNTREND,MOVING UP,,No active BUY transition
+LTH,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 18, 2026",Consumer Discretionary,Leisure,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+LULU,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Consumer Discretionary,Apparel Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+LUNR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Industrials,Aerospace & Defense,NEUTRAL,MOVING DOWN,,No active BUY transition
+LUV,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Industrials,Airlines,DOWNTREND,MOVING DOWN,,No active BUY transition
+LVS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Consumer Discretionary,Resorts & Casinos,DOWNTREND,MOVING UP,,No active BUY transition
+LW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING DOWN,,No active BUY transition
+LYB,LEADER,🚀 LEADER,BUY,BUY,"Jul 22, 2026",Materials,Specialty Chemicals,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+LYFT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+LYV,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Communication Services,Entertainment,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+M,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Discretionary,Department Stores,DOWNTREND,MOVING DOWN,,No active BUY transition
+MA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Financials,Credit Services,UPTREND,MOVING DOWN,,No active BUY transition
+MAA,UNCHANGED,UNCHANGED,,SELL,"Jul 14, 2026",Real Estate,REIT - Residential,,,,Previously inactive symbol is absent
+MAC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+MAN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Industrials,Staffing & Employment Services,UPTREND,MOVING DOWN,,No active BUY transition
+MAR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Consumer Discretionary,Lodging,DOWNTREND,MOVING UP,,No active BUY transition
+MARA,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 02, 2026",Financials,Capital Markets,DOWNTREND,MOVING UP,,No active BUY transition
+MAS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Industrials,Building Products & Equipment,DOWNTREND,MOVING DOWN,,No active BUY transition
+MAT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Discretionary,Leisure,NEUTRAL,MOVING DOWN,,No active BUY transition
+MCD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Restaurants,DOWNTREND,MOVING UP,,No active BUY transition
+MDB,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+MDLZ,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Consumer Staples,Confectioners,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MDU,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 02, 2026",Utilities,Utilities - Regulated Gas,DOWNTREND,MOVING DOWN,,No active BUY transition
+MET,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Financials,Insurance - Life,UPTREND,MOVING DOWN,,No active BUY transition
+META,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Communication Services,Internet Content & Information,DOWNTREND,MOVING DOWN,,No active BUY transition
+METC,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Materials,Coking Coal,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MFC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Financials,Insurance - Life,NEUTRAL,MOVING DOWN,,No active BUY transition
+MFG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+MGA,LEADER,🚀 LEADER,BUY,BUY,"Jul 17, 2026",Consumer Discretionary,Auto Parts,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MGNI,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 05, 2026",Communication Services,Advertising Agencies,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+MGY,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MIAX,UNCHANGED,UNCHANGED,,,,Financials,Capital Markets,DOWNTREND,,,No active BUY transition
+MIR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 02, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+MKC,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MKSI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Information Technology,Scientific & Technical Instruments,DOWNTREND,MOVING UP,,No active BUY transition
+MKTX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Capital Markets,UPTREND,MOVING DOWN,,No active BUY transition
+MLI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Metal Fabrication,DOWNTREND,MOVING DOWN,,No active BUY transition
+MLTX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Health Care,Biotechnology,DOWNTREND,MOVING DOWN,,No active BUY transition
+MMM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Conglomerates,UPTREND,MOVING DOWN,,No active BUY transition
+MMSI,UNCHANGED,UNCHANGED,,SELL,"Aug 20, 2026",Health Care,Medical Instruments & Supplies,,,,Previously inactive symbol is absent
+MNDY,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MNRO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Consumer Discretionary,Auto Parts,DOWNTREND,MOVING DOWN,,No active BUY transition
+MNTN,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Application,UPTREND,,,No active BUY transition
+MO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Consumer Staples,Tobacco,DOWNTREND,MOVING DOWN,,No active BUY transition
+MOH,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Health Care,Healthcare Plans,DOWNTREND,MOVING UP,,No active BUY transition
+MOS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Materials,Agricultural Inputs,UPTREND,MOVING UP,,No active BUY transition
+MP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Materials,Other Industrial Metals & Mining,UPTREND,MOVING DOWN,,No active BUY transition
+MPC,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Energy,Oil & Gas Refining & Marketing,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MPLX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING DOWN,,No active BUY transition
+MQ,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,DOWNTREND,,,No active BUY transition
+MRAM,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 17, 2026",Information Technology,Semiconductors,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+MRK,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MRNA,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MRP,UNCHANGED,UNCHANGED,,,,Real Estate,REIT - Residential,UPTREND,,,No active BUY transition
+MRSH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Financials,Insurance Brokers,UPTREND,MOVING DOWN,,No active BUY transition
+MRVL,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Information Technology,Semiconductors,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Capital Markets,NEUTRAL,MOVING DOWN,,No active BUY transition
+MSFT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+MSTR,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Materials,Steel,UPTREND,MOVING DOWN,,No active BUY transition
+MTB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+MTCH,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Communication Services,Internet Content & Information,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MTDR,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MTG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Financials,Insurance - Specialty,UPTREND,MOVING DOWN,,No active BUY transition
+MTSI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+MTZ,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Industrials,Engineering & Construction,DOWNTREND,MOVING UP,,No active BUY transition
+MU,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Information Technology,Semiconductors,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+MUFG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,No active BUY transition
+MUR,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+MWA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+MXL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING UP,,No active BUY transition
+NBIX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Health Care,Drug Manufacturers - Specialty & Generic,DOWNTREND,MOVING DOWN,,No active BUY transition
+NCLH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Consumer Discretionary,Travel Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+NCNO,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NDAQ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Financials,Financial Data & Stock Exchanges,UPTREND,MOVING DOWN,,No active BUY transition
+NE,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 11, 2026",Energy,Oil & Gas Drilling,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+NEE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+NEM,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NEO,LEADER,🚀 LEADER,BUY,BUY,"Aug 04, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NEOG,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Health Care,Medical Devices,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+NESR,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 06, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+NET,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+NFLX,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Communication Services,Entertainment,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Utilities,Utilities - Regulated Gas,DOWNTREND,MOVING DOWN,,No active BUY transition
+NIQ,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Application,UPTREND,,,No active BUY transition
+NKE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Consumer Discretionary,Footwear & Accessories,DOWNTREND,MOVING DOWN,,No active BUY transition
+NLY,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 17, 2026",Real Estate,REIT - Mortgage,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+NMAX,UNCHANGED,UNCHANGED,,,,Communication Services,Broadcasting,UPTREND,,,No active BUY transition
+NMRK,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Real Estate,Real Estate Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NN,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,UPTREND,,,No active BUY transition
+NNE,UNCHANGED,UNCHANGED,,,,Industrials,Specialty Industrial Machinery,NEUTRAL,,,No active BUY transition
+NNN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+NOG,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NOMD,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+NOV,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Jul 21, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+NOW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+NRG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Utilities,Utilities - Independent Power Producers,DOWNTREND,MOVING DOWN,,No active BUY transition
+NRIX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+NSC,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Industrials,Railroads,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+NTAP,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 05, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+NTLA,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NTNX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+NTR,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Materials,Agricultural Inputs,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NTRA,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NTRS,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 13, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+NTSK,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,UPTREND,,,No active BUY transition
+NTST,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING UP,,No active BUY transition
+NU,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 17, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+NUE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Materials,Steel,DOWNTREND,MOVING DOWN,,No active BUY transition
+NVCR,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 14, 2026",Health Care,Medical Devices,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+NVDA,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Semiconductors,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+NVO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Health Care,Drug Manufacturers - General,DOWNTREND,MOVING DOWN,,No active BUY transition
+NVS,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+NVST,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING DOWN,,No active BUY transition
+NVT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Electrical Equipment & Parts,NEUTRAL,MOVING DOWN,,No active BUY transition
+NVTS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Semiconductors,NEUTRAL,MOVING DOWN,,No active BUY transition
+NWG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+NWS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Communication Services,Entertainment,UPTREND,MOVING UP,,No active BUY transition
+NWSA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Communication Services,Entertainment,UPTREND,MOVING UP,,No active BUY transition
+NXE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Energy,Uranium,UPTREND,MOVING DOWN,,No active BUY transition
+NXT,UNCHANGED,UNCHANGED,,,,Information Technology,Solar,DOWNTREND,,,No active BUY transition
+NYT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Communication Services,Publishing,DOWNTREND,MOVING DOWN,,No active BUY transition
+O,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+OBDC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+OCUL,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ODFL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Industrials,Trucking,DOWNTREND,MOVING DOWN,,No active BUY transition
+OGE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+OHI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Real Estate,REIT - Healthcare Facilities,DOWNTREND,MOVING DOWN,,No active BUY transition
+OII,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 17, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+OKE,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+OKLO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Utilities,Utilities - Independent Power Producers,DOWNTREND,MOVING DOWN,,No active BUY transition
+OKTA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Infrastructure,NEUTRAL,MOVING DOWN,,No active BUY transition
+OLLI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Staples,Discount Stores,UPTREND,MOVING DOWN,,No active BUY transition
+OLMA,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+OLN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Materials,Chemicals,DOWNTREND,MOVING UP,,No active BUY transition
+OMC,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Communication Services,Advertising Agencies,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+OMDA,UNCHANGED,UNCHANGED,,,,Health Care,Health Information Services,UPTREND,,,No active BUY transition
+OMER,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ONB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 24, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+ONON,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Discretionary,Footwear & Accessories,DOWNTREND,MOVING DOWN,,No active BUY transition
+ONTO,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 12, 2026",Information Technology,Semiconductor Equipment & Materials,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+OPCH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Health Care,Medical Care Facilities,UPTREND,MOVING DOWN,,No active BUY transition
+OPLN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Consumer Discretionary,Auto & Truck Dealerships,DOWNTREND,MOVING DOWN,,No active BUY transition
+ORCL,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 10, 2026",Information Technology,Software - Infrastructure,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+ORI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Financials,Insurance - Property & Casualty,DOWNTREND,MOVING DOWN,,No active BUY transition
+ORIC,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ORLY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Consumer Discretionary,Auto Parts,NEUTRAL,MOVING DOWN,,No active BUY transition
+OSCR,UNCHANGED,UNCHANGED,,,,Health Care,Healthcare Plans,UPTREND,,,No active BUY transition
+OTEX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+OTF,UNCHANGED,UNCHANGED,,,,Financials,Asset Management,UPTREND,,,No active BUY transition
+OTIS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+OUST,UNCHANGED,UNCHANGED,,,,Information Technology,Electronic Components,DOWNTREND,,,No active BUY transition
+OUT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 21, 2026",Real Estate,REIT - Specialty,DOWNTREND,MOVING DOWN,,No active BUY transition
+OVV,LEADER,🚀 LEADER,BUY,BUY,"Jul 14, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+OWL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+OXY,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+P,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 04, 2026",Information Technology,Computer Hardware,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+PAA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,No active BUY transition
+PAAS,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PAGP,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PANW,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+PARR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Energy,Oil & Gas Refining & Marketing,UPTREND,MOVING DOWN,,No active BUY transition
+PATH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,No active BUY transition
+PAX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+PAY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+PAYX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+PBF,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Energy,Oil & Gas Refining & Marketing,UPTREND,MOVING DOWN,,No active BUY transition
+PBI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Industrials,Integrated Freight & Logistics,DOWNTREND,MOVING DOWN,,No active BUY transition
+PBR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING DOWN,,No active BUY transition
+PCAR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Industrials,Farm & Heavy Construction Machinery,UPTREND,MOVING DOWN,,No active BUY transition
+PCG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Utilities,Utilities - Regulated Electric,UPTREND,MOVING DOWN,,No active BUY transition
+PCOR,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+PD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+PDD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Consumer Discretionary,Internet Retail,UPTREND,MOVING UP,,No active BUY transition
+PDI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Financials,Closed-End Fund - Debt,DOWNTREND,MOVING DOWN,,No active BUY transition
+PEB,UNCHANGED,UNCHANGED,SELL,SELL,"Jun 29, 2026",Real Estate,REIT - Hotel & Motel,NEUTRAL,MOVING UP,,No active BUY transition
+PEG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 09, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+PEGA,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PENG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Information Technology Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+PEP,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Consumer Staples,Beverages - Non-Alcoholic,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PFE,LEADER,🚀 LEADER,BUY,BUY,"Jul 23, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PFG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Financials,Asset Management,NEUTRAL,MOVING DOWN,,No active BUY transition
+PFGC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Consumer Staples,Food Distribution,DOWNTREND,MOVING DOWN,,No active BUY transition
+PG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Consumer Staples,Household & Personal Products,DOWNTREND,MOVING DOWN,,No active BUY transition
+PGNY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Health Care,Healthcare Plans,DOWNTREND,MOVING UP,,No active BUY transition
+PGR,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Financials,Insurance - Property & Casualty,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+PGY,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+PHG,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Health Care,Medical Devices,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PHM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Residential Construction,NEUTRAL,MOVING DOWN,,No active BUY transition
+PINS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Communication Services,Internet Content & Information,UPTREND,MOVING DOWN,,No active BUY transition
+PK,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Real Estate,REIT - Hotel & Motel,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+PLAY,UNCHANGED,UNCHANGED,SELL,,"Aug 10, 2026",Communication Services,Entertainment,DOWNTREND,MOVING DOWN,,No active BUY transition
+PLD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Real Estate,REIT - Industrial,DOWNTREND,MOVING DOWN,,No active BUY transition
+PLNT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Consumer Discretionary,Leisure,NEUTRAL,MOVING UP,,No active BUY transition
+PLTR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+PM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Consumer Staples,Tobacco,UPTREND,MOVING DOWN,,No active BUY transition
+PNC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+PNFP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Financials,Banks - Regional,UPTREND,MOVING DOWN,,No active BUY transition
+PNR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+PNW,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+PODD,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Health Care,Medical Devices,DOWNTREND,MOVING UP,,No active BUY transition
+POR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 20, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING UP,,No active BUY transition
+PPC,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PPG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Materials,Specialty Chemicals,DOWNTREND,MOVING DOWN,,No active BUY transition
+PPL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+PPTA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Materials,Other Precious Metals & Mining,UPTREND,MOVING UP,,No active BUY transition
+PR,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PRCH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Financials,Insurance - Property & Casualty,UPTREND,MOVING DOWN,,No active BUY transition
+PRCT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Health Care,Medical Devices,UPTREND,MOVING DOWN,,No active BUY transition
+PRGO,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Health Care,Drug Manufacturers - Specialty & Generic,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PRM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Materials,Specialty Chemicals,DOWNTREND,MOVING DOWN,,No active BUY transition
+PRMB,UNCHANGED,UNCHANGED,,,,Consumer Staples,Beverages - Non-Alcoholic,DOWNTREND,,,No active BUY transition
+PRU,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Financials,Insurance - Life,UPTREND,MOVING DOWN,,No active BUY transition
+PRVA,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Health Care,Health Information Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+PSA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Real Estate,REIT - Industrial,UPTREND,MOVING DOWN,,No active BUY transition
+PSKY,UNCHANGED,UNCHANGED,,,,Communication Services,Entertainment,UPTREND,,,No active BUY transition
+PSN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 21, 2026",Information Technology,Information Technology Services,DOWNTREND,MOVING UP,,No active BUY transition
+PSNL,UNCHANGED,UNCHANGED,,,,Health Care,Diagnostics & Research,UPTREND,,,No active BUY transition
+PSX,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Energy,Oil & Gas Refining & Marketing,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PTC,LEADER,🚀 LEADER,BUY,BUY,"Jul 30, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PTCT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+PTEN,LEADER,🚀 LEADER,BUY,BUY,"Aug 04, 2026",Energy,Oil & Gas Drilling,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+PTRN,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Application,DOWNTREND,,,No active BUY transition
+PTY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Financials,Closed-End Fund - Debt,DOWNTREND,MOVING DOWN,,No active BUY transition
+PUK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Financials,Insurance - Life,DOWNTREND,MOVING DOWN,,No active BUY transition
+PUMP,UNCHANGED,UNCHANGED,,,,Energy,Oil & Gas Equipment & Services,DOWNTREND,,,No active BUY transition
+PWP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Financials,Capital Markets,NEUTRAL,MOVING DOWN,,No active BUY transition
+PWR,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 06, 2026",Industrials,Engineering & Construction,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+PYPL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Financials,Credit Services,UPTREND,MOVING DOWN,,No active BUY transition
+PZZA,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Consumer Discretionary,Restaurants,DOWNTREND,MOVING DOWN,,No active BUY transition
+QBTS,UNCHANGED,UNCHANGED,,,,Information Technology,Computer Hardware,UPTREND,,,No active BUY transition
+QDEL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Health Care,Medical Devices,DOWNTREND,MOVING DOWN,,No active BUY transition
+QFIN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 09, 2026",Financials,Credit Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+QGEN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING DOWN,,No active BUY transition
+QMCO,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Information Technology,Computer Hardware,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+QRVO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Semiconductors,UPTREND,MOVING DOWN,,No active BUY transition
+QSR,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Consumer Discretionary,Restaurants,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+QTTB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+QXO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Industrials,Industrial Distribution,DOWNTREND,MOVING DOWN,,No active BUY transition
+RAL,UNCHANGED,UNCHANGED,,,,Information Technology,Electronic Components,DOWNTREND,,,No active BUY transition
+RARE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+RBA,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Industrials,Specialty Business Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+RBLX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 20, 2026",Communication Services,Electronic Gaming & Multimedia,DOWNTREND,MOVING UP,,No active BUY transition
+RBRK,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,UPTREND,,,No active BUY transition
+RCI,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Communication Services,Telecom Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RCL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Consumer Discretionary,Travel Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+RCUS,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RDDT,UNCHANGED,UNCHANGED,,,,Communication Services,Internet Content & Information,DOWNTREND,,,No active BUY transition
+RDN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Financials,Insurance - Specialty,DOWNTREND,MOVING DOWN,,No active BUY transition
+RDW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Industrials,Aerospace & Defense,UPTREND,MOVING DOWN,,No active BUY transition
+RDY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Health Care,Drug Manufacturers - Specialty & Generic,DOWNTREND,MOVING UP,,No active BUY transition
+REAL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Consumer Discretionary,Luxury Goods,DOWNTREND,MOVING UP,,No active BUY transition
+REG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+RELX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Industrials,Specialty Business Services,UPTREND,MOVING DOWN,,No active BUY transition
+RELY,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+REPL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+REXR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Real Estate,REIT - Industrial,UPTREND,MOVING DOWN,,No active BUY transition
+REYN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Discretionary,Packaging & Containers,NEUTRAL,MOVING DOWN,,No active BUY transition
+REZI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Industrials,Industrial Distribution,DOWNTREND,MOVING UP,,No active BUY transition
+RF,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+RGEN,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RGNX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+RGTI,UNCHANGED,UNCHANGED,,,,Information Technology,Computer Hardware,UPTREND,,,No active BUY transition
+RHI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Industrials,Staffing & Employment Services,UPTREND,MOVING DOWN,,No active BUY transition
+RIO,LEADER,🚀 LEADER,BUY,BUY,"Aug 03, 2026",Materials,Other Industrial Metals & Mining,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RITM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Real Estate,REIT - Mortgage,UPTREND,MOVING DOWN,,No active BUY transition
+RIVN,UNCHANGED,UNCHANGED,,,,Consumer Discretionary,Auto Manufacturers,NEUTRAL,,,No active BUY transition
+RJF,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+RKLB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+RKT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Financials,Mortgage Finance,NEUTRAL,MOVING DOWN,,No active BUY transition
+RLAY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+RLJ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Real Estate,REIT - Hotel & Motel,NEUTRAL,MOVING UP,,No active BUY transition
+RMD,LEADER,🚀 LEADER,BUY,BUY,"Jul 30, 2026",Health Care,Medical Instruments & Supplies,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RNG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+ROAD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Engineering & Construction,UPTREND,MOVING DOWN,,No active BUY transition
+ROIV,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 10, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+ROKU,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Communication Services,Entertainment,UPTREND,MOVING DOWN,,No active BUY transition
+ROST,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Consumer Discretionary,Apparel Retail,NEUTRAL,MOVING DOWN,,No active BUY transition
+RPD,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RPM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Materials,Specialty Chemicals,NEUTRAL,MOVING DOWN,,No active BUY transition
+RPRX,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RRC,LEADER,🚀 LEADER,BUY,BUY,"Jul 24, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RRX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+RSG,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Industrials,Waste Management,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RSI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Consumer Discretionary,Gambling,DOWNTREND,MOVING UP,,No active BUY transition
+RTO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Industrials,Specialty Business Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+RTX,UNCHANGED,UNCHANGED,SELL,,"Aug 24, 2026",Industrials,Aerospace & Defense,UPTREND,MOVING DOWN,,No active BUY transition
+RVMD,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 10, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+RVTY,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+RXO,UNCHANGED,UNCHANGED,,,,Industrials,Trucking,DOWNTREND,,,No active BUY transition
+RY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Financials,Banks - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+RYAAY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Industrials,Airlines,DOWNTREND,MOVING DOWN,,No active BUY transition
+RYAN,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Financials,Insurance - Specialty,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+RYN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Real Estate,REIT - Specialty,DOWNTREND,MOVING DOWN,,No active BUY transition
+S,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,UPTREND,,,No active BUY transition
+SAIL,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Infrastructure,UPTREND,,,No active BUY transition
+SAN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,No active BUY transition
+SAP,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SARO,UNCHANGED,UNCHANGED,,,,Industrials,Aerospace & Defense,DOWNTREND,,,No active BUY transition
+SBH,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Consumer Discretionary,Specialty Retail,UPTREND,MOVING DOWN,,No active BUY transition
+SBLK,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Industrials,Marine Shipping,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+SBRA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Real Estate,REIT - Healthcare Facilities,DOWNTREND,MOVING DOWN,,No active BUY transition
+SBSW,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Materials,Other Precious Metals & Mining,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SBUX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Consumer Discretionary,Restaurants,UPTREND,MOVING DOWN,,No active BUY transition
+SCCO,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Materials,Copper,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SCHW,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Financials,Capital Markets,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+SCI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Discretionary,Personal Services,UPTREND,MOVING DOWN,,No active BUY transition
+SDGR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Health Care,Health Information Services,UPTREND,MOVING UP,,No active BUY transition
+SDOT,UNCHANGED,UNCHANGED,,,,Consumer Staples,Farm Products,DOWNTREND,,,No active BUY transition
+SE,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 05, 2026",Consumer Discretionary,Internet Retail,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+SEI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Energy,Oil & Gas Equipment & Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+SF,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Capital Markets,UPTREND,MOVING DOWN,,No active BUY transition
+SFD,UNCHANGED,UNCHANGED,,,,Consumer Staples,Packaged Foods,DOWNTREND,,,No active BUY transition
+SFL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Industrials,Marine Shipping,UPTREND,MOVING UP,,No active BUY transition
+SFM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Staples,Grocery Stores,DOWNTREND,MOVING DOWN,,No active BUY transition
+SFNC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Financials,Banks - Regional,NEUTRAL,MOVING DOWN,,No active BUY transition
+SGHC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Consumer Discretionary,Gambling,DOWNTREND,MOVING UP,,No active BUY transition
+SGI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 09, 2026",Consumer Discretionary,Furnishings Fixtures & Appliances,DOWNTREND,MOVING UP,,No active BUY transition
+SGMT,UNCHANGED,UNCHANGED,,,,Health Care,Biotechnology,UPTREND,,,No active BUY transition
+SGRY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Health Care,Medical Care Facilities,DOWNTREND,MOVING DOWN,,No active BUY transition
+SHAK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Consumer Discretionary,Restaurants,UPTREND,MOVING DOWN,,No active BUY transition
+SHC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,No active BUY transition
+SHEL,LEADER,🚀 LEADER,BUY,BUY,"Jul 15, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SHO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Real Estate,REIT - Hotel & Motel,NEUTRAL,MOVING UP,,No active BUY transition
+SHOO,UNCHANGED,UNCHANGED,,SELL,"Aug 19, 2026",Consumer Discretionary,Footwear & Accessories,,,,Previously inactive symbol is absent
+SHOP,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+SHW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Materials,Specialty Chemicals,UPTREND,MOVING DOWN,,No active BUY transition
+SIMO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING UP,,No active BUY transition
+SIRI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Communication Services,Entertainment,DOWNTREND,MOVING DOWN,,No active BUY transition
+SJM,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SKM,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Communication Services,Telecom Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SLB,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SLG,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Real Estate,REIT - Office,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SLGN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 13, 2026",Consumer Discretionary,Packaging & Containers,DOWNTREND,MOVING UP,,No active BUY transition
+SLM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Credit Services,UPTREND,MOVING DOWN,,No active BUY transition
+SLS,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+SM,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SMCI,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Information Technology,Computer Hardware,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SMFG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Diversified,NEUTRAL,MOVING DOWN,,No active BUY transition
+SMG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Materials,Agricultural Inputs,DOWNTREND,MOVING DOWN,,No active BUY transition
+SMMT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Health Care,Biotechnology,DOWNTREND,MOVING DOWN,,No active BUY transition
+SMPL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Consumer Staples,Packaged Foods,DOWNTREND,MOVING DOWN,,No active BUY transition
+SMTC,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING UP,,Prior BUY is missing or no longer rated BUY
+SN,UNCHANGED,UNCHANGED,,,,Consumer Discretionary,Furnishings Fixtures & Appliances,UPTREND,,,No active BUY transition
+SNDK,UNCHANGED,UNCHANGED,,,,Information Technology,Computer Hardware,UPTREND,,,No active BUY transition
+SNDX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+SNEX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 01, 2026",Financials,Capital Markets,DOWNTREND,MOVING UP,,No active BUY transition
+SNN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Health Care,Medical Devices,DOWNTREND,MOVING DOWN,,No active BUY transition
+SNOW,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,No active BUY transition
+SNPS,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Information Technology,Software - Infrastructure,DOWNTREND,MOVING UP,,Prior BUY is missing or no longer rated BUY
+SNY,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Health Care,Drug Manufacturers - General,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+SOFI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Financials,Credit Services,UPTREND,MOVING UP,,No active BUY transition
+SOLV,UNCHANGED,UNCHANGED,,,,Health Care,Medical Instruments & Supplies,UPTREND,,,No active BUY transition
+SON,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Discretionary,Packaging & Containers,UPTREND,MOVING UP,,No active BUY transition
+SONO,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Information Technology,Consumer Electronics,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SONY,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Jul 10, 2026",Information Technology,Consumer Electronics,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+SPCX,UNCHANGED,UNCHANGED,,,,Industrials,Aerospace & Defense,UPTREND,,,No active BUY transition
+SPG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Real Estate,REIT - Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+SPGI,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Financials,Financial Data & Stock Exchanges,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+SPOT,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Communication Services,Internet Content & Information,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SPT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+SRAD,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 14, 2026",Information Technology,Software - Application,DOWNTREND,MOVING DOWN,,No active BUY transition
+SRE,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Utilities,Utilities - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+SRPT,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SRRK,LEADER,🚀 LEADER,BUY,BUY,"Aug 12, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SSL,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Materials,Specialty Chemicals,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SSNC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+SSRM,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ST,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Scientific & Technical Instruments,DOWNTREND,MOVING DOWN,,No active BUY transition
+STAA,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 01, 2026",Health Care,Medical Instruments & Supplies,DOWNTREND,MOVING DOWN,,No active BUY transition
+STAG,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Real Estate,REIT - Industrial,DOWNTREND,MOVING DOWN,,No active BUY transition
+STEP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+STLD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Materials,Steel,DOWNTREND,MOVING DOWN,,No active BUY transition
+STRC,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Application,UPTREND,,,No active BUY transition
+STT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+STWD,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Real Estate,REIT - Mortgage,DOWNTREND,MOVING UP,,No active BUY transition
+STX,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 14, 2026",Information Technology,Computer Hardware,NEUTRAL,MOVING DOWN,,Existing BUY momentum is weakening
+STZ,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 14, 2026",Consumer Staples,Beverages - Brewers,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+SU,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,No active BUY transition
+SUI,NEW_BUY,NEW BUY,BUY,SELL,"Aug 24, 2026",Real Estate,REIT - Residential,NEUTRAL,MOVING UP,,BUY triggered since the previous file
+SVV,UNCHANGED,UNCHANGED,,,,Consumer Discretionary,Specialty Retail,UPTREND,,,No active BUY transition
+SWK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Tools & Accessories,UPTREND,MOVING DOWN,,No active BUY transition
+SWKS,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Information Technology,Semiconductors,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+SYF,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Financials,Credit Services,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+SYK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Health Care,Medical Devices,UPTREND,MOVING DOWN,,No active BUY transition
+SYM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING UP,,No active BUY transition
+SYY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Consumer Staples,Food Distribution,NEUTRAL,MOVING DOWN,,No active BUY transition
+T,LEADER,🚀 LEADER,BUY,BUY,"Jul 23, 2026",Communication Services,Telecom Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TAC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Utilities,Utilities - Independent Power Producers,DOWNTREND,MOVING DOWN,,No active BUY transition
+TAK,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Health Care,Drug Manufacturers - Specialty & Generic,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TAL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Consumer Staples,Education & Training Services,UPTREND,MOVING DOWN,,No active BUY transition
+TALO,UNCHANGED,UNCHANGED,,,,Energy,Oil & Gas E&P,UPTREND,,,No active BUY transition
+TAP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Consumer Staples,Beverages - Brewers,UPTREND,MOVING UP,,No active BUY transition
+TCOM,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Consumer Discretionary,Travel Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+TDC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Information Technology,Software - Infrastructure,DOWNTREND,MOVING UP,,No active BUY transition
+TEAM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+TECH,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+TECK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Materials,Other Industrial Metals & Mining,UPTREND,MOVING DOWN,,No active BUY transition
+TEL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Electronic Components,DOWNTREND,MOVING DOWN,,No active BUY transition
+TEM,UNCHANGED,UNCHANGED,,,,Health Care,Health Information Services,UPTREND,,,No active BUY transition
+TENB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+TER,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 06, 2026",Information Technology,Semiconductor Equipment & Materials,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+TEVA,LEADER,🚀 LEADER,BUY,BUY,"Jul 31, 2026",Health Care,Drug Manufacturers - Specialty & Generic,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TEX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Farm & Heavy Construction Machinery,NEUTRAL,MOVING UP,,No active BUY transition
+TFC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+TGT,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Consumer Staples,Discount Stores,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+TGTX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Health Care,Biotechnology,NEUTRAL,MOVING UP,,No active BUY transition
+THC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Health Care,Medical Care Facilities,UPTREND,MOVING DOWN,,No active BUY transition
+TJX,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Consumer Discretionary,Apparel Retail,DOWNTREND,MOVING DOWN,,No active BUY transition
+TKO,UNCHANGED,UNCHANGED,,,,Communication Services,Entertainment,UPTREND,,,No active BUY transition
+TMO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,No active BUY transition
+TMUS,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Communication Services,Telecom Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TNDM,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Health Care,Medical Devices,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+TNGX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Health Care,Biotechnology,DOWNTREND,MOVING DOWN,,No active BUY transition
+TOST,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+TPG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+TPR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Consumer Discretionary,Luxury Goods,DOWNTREND,MOVING DOWN,,No active BUY transition
+TREX,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 06, 2026",Industrials,Building Products & Equipment,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+TRGP,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TRI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Industrials,Specialty Business Services,UPTREND,MOVING UP,,No active BUY transition
+TRIN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Financials,Asset Management,UPTREND,MOVING DOWN,,No active BUY transition
+TRIP,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Consumer Discretionary,Travel Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+TRMB,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Information Technology,Scientific & Technical Instruments,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TROW,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Financials,Asset Management,DOWNTREND,MOVING DOWN,,No active BUY transition
+TRP,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Energy,Oil & Gas Midstream,DOWNTREND,MOVING DOWN,,No active BUY transition
+TRU,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Financials,Financial Data & Stock Exchanges,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TRV,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Financials,Insurance - Property & Casualty,NEUTRAL,MOVING DOWN,,No active BUY transition
+TRVI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Health Care,Biotechnology,UPTREND,MOVING DOWN,,No active BUY transition
+TS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Energy,Oil & Gas Equipment & Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+TSCO,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 04, 2026",Consumer Discretionary,Specialty Retail,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+TSEM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+TSLA,EMERGING,🔥 EMERGING,BUY,SELL,"Aug 24, 2026",Consumer Discretionary,Auto Manufacturers,UPTREND,MOVING UP,,New BUY with rising trend and accelerating momentum
+TSM,LEADER,🚀 LEADER,BUY,BUY,"Aug 13, 2026",Information Technology,Semiconductors,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TSN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Consumer Staples,Farm Products,DOWNTREND,MOVING DOWN,,No active BUY transition
+TT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Building Products & Equipment,DOWNTREND,MOVING DOWN,,No active BUY transition
+TTAN,UNCHANGED,UNCHANGED,,,,Information Technology,Software - Application,UPTREND,,,No active BUY transition
+TTE,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 21, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+TTEK,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Industrials,Engineering & Construction,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+TTMI,UNCHANGED,UNCHANGED,SELL,SELL,"Jun 29, 2026",Information Technology,Electronic Components,DOWNTREND,MOVING DOWN,,No active BUY transition
+TTWO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Communication Services,Electronic Gaming & Multimedia,NEUTRAL,MOVING DOWN,,No active BUY transition
+TVTX,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TW,LEADER,🚀 LEADER,BUY,BUY,"Jul 29, 2026",Financials,Capital Markets,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TWLO,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 10, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+TWO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Real Estate,REIT - Mortgage,DOWNTREND,MOVING DOWN,,No active BUY transition
+TWST,LEADER,🚀 LEADER,BUY,BUY,"Aug 06, 2026",Health Care,Diagnostics & Research,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TXG,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Health Care,Health Information Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+TXN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING DOWN,,No active BUY transition
+TXT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Industrials,Aerospace & Defense,DOWNTREND,MOVING DOWN,,No active BUY transition
+U,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+UAL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Industrials,Airlines,DOWNTREND,MOVING DOWN,,No active BUY transition
+UBER,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+UBS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Financials,Banks - Diversified,UPTREND,MOVING DOWN,,No active BUY transition
+UCTT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Information Technology,Semiconductor Equipment & Materials,DOWNTREND,MOVING DOWN,,No active BUY transition
+UDR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Real Estate,REIT - Residential,DOWNTREND,MOVING DOWN,,No active BUY transition
+UEC,LEADER,🚀 LEADER,BUY,BUY,"Aug 07, 2026",Energy,Uranium,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+UGI,LEADER,🚀 LEADER,BUY,BUY,"Aug 20, 2026",Utilities,Utilities - Regulated Gas,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+UL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Consumer Staples,Household & Personal Products,UPTREND,MOVING UP,,No active BUY transition
+UMAC,UNCHANGED,UNCHANGED,,,,Information Technology,Computer Hardware,UPTREND,,,No active BUY transition
+UMC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Information Technology,Semiconductors,DOWNTREND,MOVING UP,,No active BUY transition
+UNH,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Health Care,Healthcare Plans,DOWNTREND,MOVING DOWN,,No active BUY transition
+UNM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Insurance - Life,DOWNTREND,MOVING DOWN,,No active BUY transition
+UNP,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Industrials,Railroads,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+UPBD,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Information Technology,Software - Application,DOWNTREND,MOVING DOWN,,No active BUY transition
+UPS,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 28, 2026",Industrials,Integrated Freight & Logistics,DOWNTREND,MOVING DOWN,,No active BUY transition
+UPST,UNCHANGED,UNCHANGED,,,,Financials,Credit Services,UPTREND,,,No active BUY transition
+URBN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Consumer Discretionary,Apparel Retail,NEUTRAL,MOVING DOWN,,No active BUY transition
+USAR,UNCHANGED,UNCHANGED,,,,Materials,Other Industrial Metals & Mining,UPTREND,,,No active BUY transition
+USB,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Financials,Banks - Regional,NEUTRAL,MOVING DOWN,,No active BUY transition
+USFD,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Jul 30, 2026",Consumer Staples,Food Distribution,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+UTI,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Consumer Staples,Education & Training Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+UTZ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Consumer Staples,Packaged Foods,UPTREND,MOVING UP,,No active BUY transition
+UUUU,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Energy,Uranium,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+V,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Financials,Credit Services,UPTREND,MOVING DOWN,,No active BUY transition
+VALE,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Materials,Other Industrial Metals & Mining,DOWNTREND,MOVING UP,,No active BUY transition
+VCYT,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Health Care,Diagnostics & Research,DOWNTREND,MOVING UP,,No active BUY transition
+VEEE,UNCHANGED,UNCHANGED,SELL,,"Jul 22, 2026",Consumer Discretionary,Recreational Vehicles,DOWNTREND,MOVING UP,,No active BUY transition
+VEEV,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 07, 2026",Health Care,Health Information Services,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+VERA,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+VERX,LEADER,🚀 LEADER,BUY,BUY,"Aug 14, 2026",Information Technology,Software - Application,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+VET,LEADER,🚀 LEADER,BUY,BUY,"Aug 18, 2026",Energy,Oil & Gas E&P,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+VFC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 30, 2026",Consumer Discretionary,Apparel Manufacturing,DOWNTREND,MOVING DOWN,,No active BUY transition
+VG,UNCHANGED,UNCHANGED,,,,Energy,Oil & Gas Midstream,UPTREND,,,No active BUY transition
+VIAV,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 14, 2026",Information Technology,Communication Equipment,DOWNTREND,MOVING DOWN,,Existing BUY momentum is weakening
+VICI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Real Estate,REIT - Diversified,DOWNTREND,MOVING UP,,No active BUY transition
+VIPS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Consumer Discretionary,Internet Retail,NEUTRAL,MOVING DOWN,,No active BUY transition
+VIRT,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Financials,Capital Markets,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+VITL,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Consumer Staples,Farm Products,DOWNTREND,MOVING DOWN,,No active BUY transition
+VIV,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Communication Services,Telecom Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+VKTX,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Health Care,Biotechnology,DOWNTREND,MOVING UP,,No active BUY transition
+VLO,LEADER,🚀 LEADER,BUY,BUY,"Aug 17, 2026",Energy,Oil & Gas Refining & Marketing,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+VLTO,UNCHANGED,UNCHANGED,,,,Industrials,Pollution & Treatment Controls,UPTREND,,,No active BUY transition
+VLY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+VNO,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Real Estate,REIT - Office,DOWNTREND,MOVING DOWN,,No active BUY transition
+VNOM,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Energy,Oil & Gas Midstream,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+VNT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Information Technology,Scientific & Technical Instruments,UPTREND,MOVING UP,,No active BUY transition
+VOD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 11, 2026",Communication Services,Telecom Services,UPTREND,MOVING DOWN,,No active BUY transition
+VOYG,UNCHANGED,UNCHANGED,,,,Industrials,Aerospace & Defense,UPTREND,,,No active BUY transition
+VRDN,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+VREX,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Health Care,Medical Devices,UPTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+VRNS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Infrastructure,NEUTRAL,MOVING DOWN,,No active BUY transition
+VRSK,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Industrials,Consulting Services,DOWNTREND,MOVING DOWN,,No active BUY transition
+VRT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Industrials,Electrical Equipment & Parts,DOWNTREND,MOVING DOWN,,No active BUY transition
+VRTX,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+VSAT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Information Technology,Communication Equipment,DOWNTREND,MOVING DOWN,,No active BUY transition
+VST,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Utilities,Utilities - Independent Power Producers,DOWNTREND,MOVING DOWN,,No active BUY transition
+VSTS,UNCHANGED,UNCHANGED,,,,Industrials,Rental & Leasing Services,DOWNTREND,,,No active BUY transition
+VSXY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Consumer Discretionary,Apparel Retail,NEUTRAL,MOVING DOWN,,No active BUY transition
+VTR,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Real Estate,REIT - Healthcare Facilities,NEUTRAL,MOVING DOWN,,No active BUY transition
+VTRS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Health Care,Drug Manufacturers - Specialty & Generic,DOWNTREND,MOVING UP,,No active BUY transition
+VVV,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 03, 2026",Consumer Discretionary,Auto & Truck Dealerships,DOWNTREND,MOVING UP,,No active BUY transition
+VZ,LEADER,🚀 LEADER,BUY,BUY,"Jul 27, 2026",Communication Services,Telecom Services,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+W,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 05, 2026",Consumer Discretionary,Internet Retail,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+WAB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Industrials,Railroads,UPTREND,MOVING DOWN,,No active BUY transition
+WAY,UNCHANGED,UNCHANGED,,,,Health Care,Health Information Services,UPTREND,,,No active BUY transition
+WBD,LEADER,🚀 LEADER,BUY,BUY,"Aug 11, 2026",Communication Services,Entertainment,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+WBS,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Financials,Banks - Regional,UPTREND,,,No active BUY transition
+WCN,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Industrials,Waste Management,UPTREND,MOVING UP,,No active BUY transition
+WDAY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+WDC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Information Technology,Computer Hardware,DOWNTREND,MOVING UP,,No active BUY transition
+WEC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 15, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+WFC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Financials,Banks - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+WFRD,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING DOWN,,No active BUY transition
+WH,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 06, 2026",Consumer Discretionary,Lodging,DOWNTREND,MOVING UP,,No active BUY transition
+WHR,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 19, 2026",Consumer Discretionary,Furnishings Fixtures & Appliances,NEUTRAL,MOVING DOWN,,No active BUY transition
+WING,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 08, 2026",Consumer Discretionary,Restaurants,DOWNTREND,MOVING UP,,No active BUY transition
+WIX,LEADER,🚀 LEADER,BUY,BUY,"Jul 28, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+WKC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Energy,Oil & Gas Refining & Marketing,NEUTRAL,MOVING DOWN,,No active BUY transition
+WLK,ACTIVE_BUY,ACTIVE BUY,BUY,BUY,"Aug 10, 2026",Materials,Specialty Chemicals,NEUTRAL,MOVING UP,,BUY remains active without a higher-priority setup
+WM,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 31, 2026",Industrials,Waste Management,DOWNTREND,MOVING DOWN,,No active BUY transition
+WMB,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Energy,Oil & Gas Midstream,DOWNTREND,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+WMT,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 21, 2026",Consumer Staples,Discount Stores,DOWNTREND,MOVING DOWN,,No active BUY transition
+WNC,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 17, 2026",Industrials,Farm & Heavy Construction Machinery,NEUTRAL,MOVING DOWN,,No active BUY transition
+WOLF,UNCHANGED,UNCHANGED,,,,Information Technology,Semiconductors,DOWNTREND,,,No active BUY transition
+WPC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 05, 2026",Real Estate,REIT - Diversified,DOWNTREND,MOVING DOWN,,No active BUY transition
+WPM,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Materials,Gold,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+WRB,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Financials,Insurance - Property & Casualty,DOWNTREND,MOVING DOWN,,No active BUY transition
+WRBY,UNCHANGED,UNCHANGED,,,,Health Care,Medical Instruments & Supplies,UPTREND,,,No active BUY transition
+WT,LEADER,🚀 LEADER,BUY,BUY,"Aug 04, 2026",Financials,Asset Management,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+WTRG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 04, 2026",Utilities,Utilities - Regulated Water,UPTREND,MOVING DOWN,,No active BUY transition
+WTTR,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 10, 2026",Energy,Oil & Gas Equipment & Services,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+WY,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 18, 2026",Real Estate,REIT - Specialty,NEUTRAL,MOVING DOWN,,No active BUY transition
+WYFI,UNCHANGED,UNCHANGED,,,,Information Technology,Information Technology Services,DOWNTREND,,,No active BUY transition
+WYNN,REMOVED,❌ REMOVED,SELL,BUY,"Aug 24, 2026",Consumer Discretionary,Resorts & Casinos,NEUTRAL,MOVING DOWN,,Prior BUY is missing or no longer rated BUY
+XEL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 10, 2026",Utilities,Utilities - Regulated Electric,DOWNTREND,MOVING DOWN,,No active BUY transition
+XNCR,LEADER,🚀 LEADER,BUY,BUY,"Aug 19, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+XOM,LEADER,🚀 LEADER,BUY,BUY,"Jul 17, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+XP,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 27, 2026",Financials,Capital Markets,NEUTRAL,MOVING UP,,No active BUY transition
+XRAY,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 29, 2026",Health Care,Medical Instruments & Supplies,DOWNTREND,MOVING DOWN,,No active BUY transition
+XYL,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Industrials,Specialty Industrial Machinery,DOWNTREND,MOVING DOWN,,No active BUY transition
+XYZ,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING UP,,No active BUY transition
+YELP,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Communication Services,Internet Content & Information,DOWNTREND,MOVING DOWN,,No active BUY transition
+YETI,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 12, 2026",Consumer Discretionary,Leisure,DOWNTREND,MOVING DOWN,,No active BUY transition
+YOU,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 10, 2026",Information Technology,Software - Application,DOWNTREND,MOVING UP,,No active BUY transition
+YPF,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 06, 2026",Energy,Oil & Gas Integrated,UPTREND,MOVING UP,,No active BUY transition
+YUM,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 16, 2026",Consumer Discretionary,Restaurants,NEUTRAL,MOVING UP,,No active BUY transition
+YUMC,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 14, 2026",Consumer Discretionary,Restaurants,UPTREND,MOVING UP,,No active BUY transition
+Z,LEADER,🚀 LEADER,BUY,BUY,"Aug 04, 2026",Communication Services,Internet Content & Information,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ZBH,LEADER,🚀 LEADER,BUY,BUY,"Jul 14, 2026",Health Care,Medical Devices,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ZETA,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 17, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,No active BUY transition
+ZG,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 13, 2026",Communication Services,Internet Content & Information,UPTREND,MOVING UP,,No active BUY transition
+ZGN,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 07, 2026",Consumer Discretionary,Apparel Manufacturing,DOWNTREND,MOVING UP,,No active BUY transition
+ZIM,LEADER,🚀 LEADER,BUY,BUY,"Aug 05, 2026",Industrials,Marine Shipping,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ZION,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 22, 2026",Financials,Banks - Regional,DOWNTREND,MOVING DOWN,,No active BUY transition
+ZLAB,LEADER,🚀 LEADER,BUY,BUY,"Aug 10, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
+ZM,UNCHANGED,UNCHANGED,SELL,SELL,"Aug 20, 2026",Information Technology,Software - Application,UPTREND,MOVING DOWN,,No active BUY transition
+ZS,DETERIORATING,⚠️ DETERIORATING,BUY,BUY,"Aug 04, 2026",Information Technology,Software - Infrastructure,UPTREND,MOVING DOWN,,Existing BUY momentum is weakening
+ZTO,UNCHANGED,UNCHANGED,SELL,SELL,"Jul 23, 2026",Industrials,Integrated Freight & Logistics,DOWNTREND,MOVING DOWN,,No active BUY transition
+ZTS,NEW_BUY,NEW BUY,BUY,SELL,"Aug 24, 2026",Health Care,Drug Manufacturers - Specialty & Generic,DOWNTREND,MOVING UP,,BUY triggered since the previous file
+ZVRA,LEADER,🚀 LEADER,BUY,BUY,"Aug 21, 2026",Health Care,Biotechnology,UPTREND,MOVING UP,,Sustained BUY with confirmed trend and momentum
