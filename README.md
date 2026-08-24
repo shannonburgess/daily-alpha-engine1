@@ -1,36 +1,48 @@
 # Daily Alpha Engine
 
-Auditable research and paper-trading engine for the Daily Alpha workflow.
+Auditable quantitative research, staging, and PAPER-trading platform for the Daily Alpha workflow.
 
-> **Current stage:** research and paper trading only. No live brokerage execution.
+> **Current authority:** research / staging / PAPER only. No live brokerage execution. `trading_authorized=false` and `live_trading_enabled=false` remain the governing safety state.
 
-## Decision flow
+## Engineering takeover / onboarding
 
-1. Ingest the daily OVTLYR master-universe CSV.
-2. Evaluate the approved Pine/Turtle entry or exit signal.
-3. Apply the portfolio risk gate.
-4. Validate ORATS option data freshness and availability.
-5. Select a qualified option when DTE, spread, bid, open interest, and volume pass.
-6. If valid option data contains no qualified contract, allow an independently eligible liquid stock paper trade.
-7. If ORATS/API data is stale or unavailable, return `DATA_ERROR` and never substitute stock.
-8. Store `instrument_selected`, `fallback_reason`, and the full decision for audit.
+**Start here:** [`docs/engineering_handoff/README.md`](docs/engineering_handoff/README.md)
 
-The enforced hierarchy is:
+The handoff pack contains the current-state matrix, architecture, operations runbook, point-in-time data/model lineage rules, manual gates, contribution standards, and prioritized open work. New engineers should use that folder as the concise system-of-record entry point rather than relying on historical chat context.
 
-```text
-qualified option -> eligible liquid stock -> no trade
-```
+## Current merged capability areas
 
-## Included in the initial build
+The repository includes substantial tested/traceable capability for:
 
-- typed option and stock decision models
-- configurable option-quality and stock-liquidity rules
-- OPTION → STOCK fallback engine
-- explicit stale-data safety behavior
-- append-only JSON Lines audit writer
-- OVTLYR-style CSV normalization and validation
-- command-line CSV validation
-- automated unit tests and GitHub Actions
+- OVTLYR-style universe normalization, comparison, ranking, and opportunity workflows;
+- deterministic risk and decision contracts;
+- option/stock research and PAPER decision paths with explicit stale-data behavior;
+- audited TradingView/Pine SH24 CONTROL and SH25 CHALLENGER source/parity contracts;
+- paired SH24/SH25 evidence and proof gates;
+- PAPER ledgers, shadow monitoring, diagnostics, and staging workflows;
+- prospect V1 canonical opportunity-board presentation across Newsletter/Dashboard/API with real staging proof;
+- leak-proof point-in-time training dataset assembly;
+- deterministic ridge and logistic research baselines using TRAIN only, VALIDATION-only selection, and untouched TEST evaluation;
+- post-TEST comparison against frozen SH24/SH25 controls;
+- isolated Massive/Tiingo/FRED staging ingestion infrastructure;
+- bounded manual historical feed capture that explicitly forbids historical `known_at` backdating;
+- deterministic feed receipt/raw-byte lineage into point-in-time model feature evidence;
+- GitHub Actions CI, deployment, diagnostics, backtests, proof, and monitoring workflows.
+
+Code capability and empirical proof are intentionally separated. Fixture/synthetic regression success is not a predictive-alpha claim, and a historical payload captured today is not automatically historically point-in-time eligible.
+
+## Repository layout
+
+- `src/daily_alpha/` — core deterministic domain logic.
+- `tests/` — regression/contract test suite.
+- `lambda_handlers/` — main staging Lambda handlers.
+- `staging_lambda_handlers/` — physically isolated staging-only services such as data-feed ingestion.
+- `tradingview/` — frozen/audited Pine source and parity artifacts.
+- `infra/` — AWS infrastructure, IAM, and bootstrap material.
+- `scripts/` — build/render/validation utilities.
+- `.github/workflows/` — CI, staging deployment/proof, PAPER monitoring, diagnostics, backtests, and manual evidence workflows.
+- `docs/` — detailed subsystem documentation.
+- `docs/engineering_handoff/` — concise takeover and operating documentation.
 
 ## Local setup
 
@@ -39,7 +51,9 @@ Requires Python 3.11 or newer.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -e ".[dev]"
+ruff check .
 pytest -q
 ```
 
@@ -53,20 +67,19 @@ daily-alpha path/to/ovtlyr.csv
 
 - Put local daily files in `data/incoming/`; contents are ignored by Git.
 - Generated research outputs belong in `data/output/`; contents are ignored by Git.
-- Never commit ORATS tokens, brokerage credentials, account numbers, or `.env` files.
-- API credentials will be supplied through environment variables or a managed secrets store.
+- Never commit provider tokens, brokerage/custodian credentials, account numbers, or private `.env` contents.
+- Use environment variables or managed secret stores according to the relevant deployment/runbook contract.
 
-## Next milestones
+## Current major evidence gates
 
-1. ORATS client with freshness checks and contract normalization
-2. Pine/TradingView signal ingestion
-3. portfolio sizing and risk-budget service
-4. option and stock paper-trade ledgers tracked separately
-5. shared Pine/Turtle exit handling
-6. daily comparison against the prior OVTLYR universe
-7. readable Daily Alpha newsletter and PDF generation
-8. scheduling, monitoring, and failure alerts
+1. Capture and ingest the unchanged external TradingView SH24/SH25 paired evidence required to complete parity classification.
+2. Deploy/prove the isolated Phase 1 Massive/Tiingo/FRED staging ingestion stack if newer workflow evidence has not already cleared that gate.
+3. Build a genuine historical point-in-time feature/label corpus with trustworthy historical availability/revision lineage.
+4. Run the first genuine walk-forward ridge/logistic empirical evaluation and only then compare the untouched TEST result against frozen SH24/SH25.
+5. Continue PAPER soak/reliability before any separate future live-capital governance discussion.
+
+See [`docs/engineering_handoff/OPEN_WORK.md`](docs/engineering_handoff/OPEN_WORK.md) for the prioritized backlog.
 
 ## Disclaimer
 
-This software is for research and paper trading. It does not provide investment advice and does not place live trades.
+This software is for research, staging, and PAPER trading. It does not itself provide authorization to place live trades or deploy capital.
