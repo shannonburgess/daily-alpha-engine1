@@ -34,7 +34,6 @@ CAPTURE_MODES = frozenset({CAPTURE_MODE_CURRENT, CAPTURE_MODE_HISTORICAL})
 MAX_HISTORICAL_BACKFILL_DAYS = 31
 KNOWN_AT_BASIS = "CAPTURED_AT_ONLY"
 FRED_INITIAL_RELEASE_OUTPUT_TYPE = 4
-FRED_REALTIME_EARLIEST = "1776-07-04"
 _TARGET_RE = re.compile(r"^[A-Z0-9.^_-]{1,32}$")
 
 
@@ -190,14 +189,15 @@ def _request_spec(
     }
     if mode == CAPTURE_MODE_HISTORICAL:
         # FRED output_type=4 is the provider-defined "initial release only" view.
-        # Widen the real-time period through capture date so the immutable response
-        # contains the historical initial-release rows for the bounded observation
-        # window rather than today's revision masquerading as historical knowledge.
+        # Bound the real-time period to the requested observation window through
+        # capture date. This preserves the initial-release rows that could become
+        # known for those observations while avoiding FRED's finite vintage-date
+        # cap on centuries-wide real-time queries.
         params.update(
             {
                 "observation_start": start_date.isoformat(),
                 "observation_end": end_date.isoformat(),
-                "realtime_start": FRED_REALTIME_EARLIEST,
+                "realtime_start": start_date.isoformat(),
                 "realtime_end": as_of.date().isoformat(),
                 "output_type": FRED_INITIAL_RELEASE_OUTPUT_TYPE,
                 "sort_order": "asc",
