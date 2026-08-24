@@ -67,11 +67,17 @@ def event(
     receipt=None,
     paper_account_id=None,
 ):
+    strategy_version = "2.4" if account == "PAPER_SHADOW_V24" else "2.5"
     return {
         "signal_id": signal_id or f"sig-{account}",
         "symbol": symbol,
         "action": "ENTRY_LONG",
         "model_id": account,
+        "source": "TRADINGVIEW_PINE",
+        "strategy": "DA_TURTLE_ADAPTIVE_TREND",
+        "strategy_version": strategy_version,
+        "timeframe": "1D",
+        "bar_time": "2026-08-19T19:54:00+00:00",
         "forward_test_start": "2026-08-19",
         "replay_max_price": 230.0,
         "received_at": "2026-08-19T19:55:00+00:00",
@@ -142,7 +148,7 @@ def test_e2e_proof_is_excluded_from_genuine_trade_diagnosis():
     assert "excluded from the trade diagnosis" in render_markdown(summary)
 
 
-def test_strategy_event_without_fill_surfaces_exact_reason():
+def test_strategy_event_without_fill_surfaces_exact_reason_and_lineage():
     summary = summarize(
         monitor_state(v24=[event("PAPER_SHADOW_V24")]),
         now=NOW,
@@ -154,7 +160,71 @@ def test_strategy_event_without_fill_surfaces_exact_reason():
     assert summary["accounts"]["PAPER_SHADOW_V24"]["reason_counts"] == {
         "PORTFOLIO_RISK_REJECTED": 1
     }
+    assert summary["accounts"]["PAPER_SHADOW_V24"]["strategy_lineage_violations"] == []
     assert summary["blocker_counts"] == {"PORTFOLIO_RISK_REJECTED": 1}
+    rendered = render_markdown(summary)
+    assert "source=`TRADINGVIEW_PINE`" in rendered
+    assert "v=`2.4`" in rendered
+    assert "bar=`2026-08-19T19:54:00+00:00`" in rendered
+
+
+def test_current_session_strategy_source_drift_fails_closed():
+    bad = event("PAPER_SHADOW_V24")
+    bad["source"] = "UNKNOWN_SOURCE"
+
+    summary = summarize(monitor_state(v24=[bad]), now=NOW)
+
+    assert summary["ok"] is False
+    assert summary["diagnosis"] == "SAFETY_OR_EVIDENCE_VIOLATION"
+    assert (
+        "PAPER_SHADOW_V24:STRATEGY_EVENT_SOURCE_MISSING_OR_MISMATCH"
+        in summary["safety"]["violations"]
+    )
+
+
+def test_current_session_strategy_version_drift_fails_closed_per_book():
+    bad = event("PAPER_SHADOW_V25")
+    bad["strategy_version"] = "2.4"
+
+    summary = summarize(monitor_state(v25=[bad]), now=NOW)
+
+    assert summary["ok"] is False
+    assert summary["diagnosis"] == "SAFETY_OR_EVIDENCE_VIOLATION"
+    assert (
+        "PAPER_SHADOW_V25:STRATEGY_EVENT_VERSION_MISSING_OR_MISMATCH"
+        in summary["safety"]["violations"]
+    )
+
+
+def test_current_session_strategy_bar_time_after_receipt_fails_closed():
+    bad = event("PAPER_SHADOW_V24")
+    bad["bar_time"] = "2026-08-19T19:56:00+00:00"
+
+    summary = summarize(monitor_state(v24=[bad]), now=NOW)
+
+    assert summary["ok"] is False
+    assert summary["diagnosis"] == "SAFETY_OR_EVIDENCE_VIOLATION"
+    assert (
+        "PAPER_SHADOW_V24:STRATEGY_EVENT_BAR_TIME_AFTER_RECEIPT"
+        in summary["safety"]["violations"]
+    )
+
+
+def test_proof_event_lineage_is_not_misrepresented_as_strategy_evidence():
+    proof = event(
+        "PAPER_SHADOW_V25",
+        signal_id="TV-SHADOW-E2E-LINEAGE-01",
+        symbol="MU",
+    )
+    proof.pop("strategy_version")
+    proof.pop("bar_time")
+
+    summary = summarize(monitor_state(v25=[proof]), now=NOW)
+
+    assert summary["ok"] is True
+    assert summary["total_strategy_events"] == 0
+    assert summary["total_test_events"] == 1
+    assert summary["accounts"]["PAPER_SHADOW_V25"]["strategy_lineage_violations"] == []
 
 
 def test_armed_state_is_visible_without_manufacturing_fill():
