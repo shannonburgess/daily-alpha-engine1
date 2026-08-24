@@ -41,6 +41,12 @@
       "Resource": "arn:aws:lambda:us-east-2:490809405132:function:daily-alpha-staging-data-feed-ingestion"
     },
     {
+      "Sid": "ReadOnlyCapturedFredProofEvidence",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::daily-alpha-staging-raw-490809405132-us-east-2/data-feeds/staging/fred/*"
+    },
+    {
       "Sid": "ReadOnlyDataFeedValidationLogs",
       "Effect": "Allow",
       "Action": ["logs:FilterLogEvents", "logs:DescribeLogStreams"],
