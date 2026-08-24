@@ -88,7 +88,6 @@
         "Role": {"Fn::GetAtt": ["DataFeedIngestionRole", "Arn"]},
         "Timeout": 60,
         "MemorySize": 256,
-        "ReservedConcurrentExecutions": 2,
         "Environment": {
           "Variables": {
             "RAW_EVIDENCE_BUCKET": {"Ref": "RawEvidenceBucketName"},
@@ -248,7 +247,7 @@
       "Type": "AWS::CloudWatch::Alarm",
       "Properties": {
         "AlarmName": "DailyAlphaStagingDataFeedLambdaThrottles",
-        "AlarmDescription": "Reserved-concurrency throttles for Phase 1 staging feed ingestion.",
+        "AlarmDescription": "Lambda throttles for Phase 1 staging feed ingestion.",
         "Namespace": "AWS/Lambda",
         "MetricName": "Throttles",
         "Dimensions": [
