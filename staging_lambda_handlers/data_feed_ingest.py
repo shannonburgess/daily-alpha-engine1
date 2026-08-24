@@ -28,6 +28,9 @@ CAPTURE_MODE_HISTORICAL = "HISTORICAL_BACKFILL"
 CAPTURE_MODES = frozenset({CAPTURE_MODE_CURRENT, CAPTURE_MODE_HISTORICAL})
 MAX_HISTORICAL_BACKFILL_DAYS = 31
 KNOWN_AT_BASIS = "CAPTURED_AT_ONLY"
+FRED_INITIAL_RELEASE_OUTPUT_TYPE = 4
+FRED_INITIAL_RELEASE_CONTRACT = "FRED_OUTPUT_TYPE_4_INITIAL_RELEASE_V1"
+FRED_INITIAL_RELEASE_KNOWN_AT_POLICY = "NEXT_UTC_DAY_AFTER_REALTIME_START"
 _TARGET_RE = re.compile(r"^[A-Z0-9.^_-]{1,32}$")
 
 
@@ -182,6 +185,7 @@ def _request_spec(
                 "observation_end": end_date.isoformat(),
                 "sort_order": "asc",
                 "limit": 1000,
+                "output_type": FRED_INITIAL_RELEASE_OUTPUT_TYPE,
             }
         )
     else:
@@ -262,6 +266,9 @@ def _smoke_result() -> dict[str, Any]:
         "capture_modes": sorted(CAPTURE_MODES),
         "max_historical_backfill_days": MAX_HISTORICAL_BACKFILL_DAYS,
         "known_at_basis": KNOWN_AT_BASIS,
+        "fred_historical_output_type": FRED_INITIAL_RELEASE_OUTPUT_TYPE,
+        "fred_initial_release_contract": FRED_INITIAL_RELEASE_CONTRACT,
+        "fred_initial_release_known_at_policy": FRED_INITIAL_RELEASE_KNOWN_AT_POLICY,
         "historical_known_at_backdating_authorized": False,
         "trading_authorized": False,
         "live_trading_enabled": False,
@@ -304,6 +311,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             stem = f"{request_id}-{ordinal:02d}-{safe_target}"
             raw_key = f"data-feeds/staging/{provider}/raw/{date_path}/{stem}.json"
             receipt_key = f"data-feeds/staging/{provider}/receipts/{date_path}/{stem}.json"
+            fred_initial_release = (
+                provider == "fred" and capture_mode == CAPTURE_MODE_HISTORICAL
+            )
             metadata = {
                 "provider": provider,
                 "target": target,
@@ -314,6 +324,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "trading-authorized": "false",
                 "live-trading-enabled": "false",
             }
+            if fred_initial_release:
+                metadata.update(
+                    {
+                        "provider-request-contract": FRED_INITIAL_RELEASE_CONTRACT,
+                        "provider-output-type": str(FRED_INITIAL_RELEASE_OUTPUT_TYPE),
+                        "provider-known-at-policy": FRED_INITIAL_RELEASE_KNOWN_AT_POLICY,
+                    }
+                )
             _put_immutable(
                 bucket=bucket,
                 key=raw_key,
@@ -337,6 +355,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "trading_authorized": False,
                 "live_trading_enabled": False,
             }
+            if fred_initial_release:
+                receipt.update(
+                    {
+                        "provider_request_contract": FRED_INITIAL_RELEASE_CONTRACT,
+                        "provider_output_type": FRED_INITIAL_RELEASE_OUTPUT_TYPE,
+                        "provider_known_at_policy": FRED_INITIAL_RELEASE_KNOWN_AT_POLICY,
+                    }
+                )
             receipt_body = (json.dumps(receipt, sort_keys=True) + "\n").encode()
             _put_immutable(
                 bucket=bucket,
