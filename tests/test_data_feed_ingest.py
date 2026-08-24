@@ -51,6 +51,7 @@ def test_request_specs_keep_massive_and_tiingo_keys_out_of_url():
     assert tiingo_headers["Authorization"] == "Token secret"
     fred_url, _ = ingest._request_spec("fred", "DGS10", "secret", now)
     assert "api_key=secret" in fred_url
+    assert "output_type" not in parse_qs(urlparse(fred_url).query)
 
 
 def test_current_window_remains_default_and_rejects_hidden_date_overrides():
@@ -176,6 +177,7 @@ def test_historical_request_specs_use_only_requested_bounded_window():
     assert fred_query["observation_start"] == ["2026-08-01"]
     assert fred_query["observation_end"] == ["2026-08-20"]
     assert fred_query["sort_order"] == ["asc"]
+    assert fred_query["output_type"] == ["4"]
 
 
 def test_lambda_archives_raw_and_receipt_without_execution_authority(monkeypatch):
@@ -261,6 +263,73 @@ def test_lambda_historical_backfill_receipt_cannot_claim_historical_known_at(mon
     assert receipt["requested_end_date"] == "2026-08-20"
     assert receipt["known_at_basis"] == "CAPTURED_AT_ONLY"
     assert receipt["historical_known_at_backdating_authorized"] is False
+    assert receipt["trading_authorized"] is False
+    assert receipt["live_trading_enabled"] is False
+
+
+def test_fred_historical_backfill_archives_initial_release_contract_without_generic_backdating(
+    monkeypatch,
+):
+    s3 = _S3()
+    seen_urls: list[str] = []
+    monkeypatch.setenv("RAW_EVIDENCE_BUCKET", "unit-bucket")
+    monkeypatch.setattr(ingest, "_now", lambda: datetime(2026, 8, 23, 23, 0, tzinfo=UTC))
+    monkeypatch.setattr(ingest, "_load_secret", lambda provider: "secret")
+
+    payload = {
+        "output_type": 4,
+        "observations": [
+            {
+                "realtime_start": "2026-08-03",
+                "realtime_end": "2026-08-03",
+                "date": "2026-08-01",
+                "value": "4.25",
+            }
+        ],
+    }
+
+    def _fake_http(url, headers, timeout_seconds=15):
+        del headers, timeout_seconds
+        seen_urls.append(url)
+        return json.dumps(payload).encode(), "application/json"
+
+    monkeypatch.setattr(ingest, "_http_get", _fake_http)
+    monkeypatch.setattr(ingest, "_aws_client", lambda service: s3 if service == "s3" else None)
+
+    result = ingest.lambda_handler(
+        {
+            "provider": "fred",
+            "targets": ["DGS10"],
+            "capture_mode": "HISTORICAL_BACKFILL",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-20",
+        },
+        SimpleNamespace(aws_request_id="fred-backfill-1"),
+    )
+
+    assert result["known_at_basis"] == "CAPTURED_AT_ONLY"
+    assert result["historical_known_at_backdating_authorized"] is False
+    assert result["trading_authorized"] is False
+    assert result["live_trading_enabled"] is False
+    assert len(seen_urls) == 1
+    fred_query = parse_qs(urlparse(seen_urls[0]).query)
+    assert fred_query["output_type"] == ["4"]
+
+    raw_key = next(key for key in s3.objects if "/raw/" in key)
+    raw_metadata = s3.objects[raw_key]["Metadata"]
+    assert raw_metadata["known-at-basis"] == "CAPTURED_AT_ONLY"
+    assert raw_metadata["historical-known-at-backdating-authorized"] == "false"
+    assert raw_metadata["provider-request-contract"] == ingest.FRED_INITIAL_RELEASE_CONTRACT
+    assert raw_metadata["provider-output-type"] == "4"
+    assert raw_metadata["provider-known-at-policy"] == ingest.FRED_INITIAL_RELEASE_KNOWN_AT_POLICY
+
+    receipt_key = next(key for key in s3.objects if "/receipts/" in key)
+    receipt = json.loads(s3.objects[receipt_key]["Body"])
+    assert receipt["known_at_basis"] == "CAPTURED_AT_ONLY"
+    assert receipt["historical_known_at_backdating_authorized"] is False
+    assert receipt["provider_request_contract"] == ingest.FRED_INITIAL_RELEASE_CONTRACT
+    assert receipt["provider_output_type"] == 4
+    assert receipt["provider_known_at_policy"] == ingest.FRED_INITIAL_RELEASE_KNOWN_AT_POLICY
     assert receipt["trading_authorized"] is False
     assert receipt["live_trading_enabled"] is False
 
