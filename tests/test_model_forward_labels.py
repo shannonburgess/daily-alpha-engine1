@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from daily_alpha.model_forward_labels import (
     ProspectiveRealizedRInputs,
+    ProspectiveRealizedRLabelPacket,
     build_prospective_realized_r_label,
 )
 from daily_alpha.model_training import ModelTrainingError
@@ -78,6 +80,15 @@ def _build(
         outcome_receipt=outcome_receipt
         or _receipt(raw=OUTCOME_RAW, captured_at=OUTCOME_CAPTURED_AT),
         inputs=inputs or _inputs(),
+    )
+
+
+def _repack(packet, *, label):
+    return ProspectiveRealizedRLabelPacket(
+        label=label,
+        inputs=packet.inputs,
+        entry_evidence=packet.entry_evidence,
+        outcome_evidence=packet.outcome_evidence,
     )
 
 
@@ -196,3 +207,74 @@ def test_input_contract_rejects_label_values_that_mature_too_early() -> None:
         match="FORWARD_LABEL_EXIT_SOURCE_BEFORE_HORIZON_MATURITY",
     ):
         _inputs(exit_source_as_of=DECISION_AT + timedelta(days=4))
+
+
+def test_packet_rejects_manually_rewritten_realized_r() -> None:
+    packet = _build()
+    tampered_label = replace(packet.label, realized_r=999.0)
+
+    with pytest.raises(
+        ModelTrainingError,
+        match="FORWARD_LABEL_PACKET_REALIZED_R_MISMATCH",
+    ):
+        _repack(packet, label=tampered_label)
+
+
+def test_packet_rejects_manually_rewritten_known_at() -> None:
+    packet = _build()
+    tampered_label = replace(
+        packet.label,
+        known_at=packet.outcome_evidence.captured_at + timedelta(seconds=1),
+    )
+
+    with pytest.raises(
+        ModelTrainingError,
+        match="FORWARD_LABEL_PACKET_KNOWN_AT_MISMATCH",
+    ):
+        _repack(packet, label=tampered_label)
+
+
+def test_packet_rejects_manually_rewritten_evidence_ids() -> None:
+    packet = _build()
+    tampered_label = replace(packet.label, evidence_ids=("f" * 64,))
+
+    with pytest.raises(
+        ModelTrainingError,
+        match="FORWARD_LABEL_PACKET_EVIDENCE_IDS_MISMATCH",
+    ):
+        _repack(packet, label=tampered_label)
+
+
+def test_packet_rejects_manually_rewritten_source_revision() -> None:
+    packet = _build()
+    tampered_label = replace(packet.label, source_revision="forged-label-source")
+
+    with pytest.raises(
+        ModelTrainingError,
+        match="FORWARD_LABEL_PACKET_SOURCE_REVISION_MISMATCH",
+    ):
+        _repack(packet, label=tampered_label)
+
+
+def test_packet_revalidates_entry_and_outcome_evidence_relationship() -> None:
+    massive_packet = _build()
+    tiingo_packet = _build(
+        entry_receipt=_receipt(
+            raw=ENTRY_RAW,
+            captured_at=ENTRY_CAPTURED_AT,
+            provider="TIINGO",
+        ),
+        outcome_receipt=_receipt(
+            raw=OUTCOME_RAW,
+            captured_at=OUTCOME_CAPTURED_AT,
+            provider="TIINGO",
+        ),
+    )
+
+    with pytest.raises(ModelTrainingError, match="FORWARD_LABEL_PROVIDER_MISMATCH"):
+        ProspectiveRealizedRLabelPacket(
+            label=massive_packet.label,
+            inputs=massive_packet.inputs,
+            entry_evidence=massive_packet.entry_evidence,
+            outcome_evidence=tiingo_packet.outcome_evidence,
+        )
