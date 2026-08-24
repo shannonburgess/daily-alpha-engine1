@@ -223,7 +223,14 @@ def parse_fred_initial_release_history(
             "FRED_INITIAL_RELEASE_REALTIME_END",
         )
         raw_value = raw.get("value")
-        if raw_value in {None, ".", ""}:
+        # FRED uses "." as its documented provider sentinel for an observation
+        # that has no numeric value (for example, some daily series on
+        # non-publishing dates). It is not an observation and must not become a
+        # model feature, but its presence does not invalidate other numeric rows
+        # in the same immutable response.
+        if raw_value == ".":
+            continue
+        if raw_value in {None, ""}:
             raise ModelTrainingError("FRED_INITIAL_RELEASE_VALUE_MISSING")
         try:
             value = float(raw_value)
