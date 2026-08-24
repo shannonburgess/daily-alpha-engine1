@@ -179,11 +179,12 @@ jobs:
           assert result['historical_backfill_supported'] is True
           assert 'HISTORICAL_BACKFILL' in result['capture_modes']
           assert result['max_historical_backfill_days'] == 31
+          assert result['fred_historical_output_type'] == 4
           assert result['known_at_basis'] == 'CAPTURED_AT_ONLY'
           assert result['historical_known_at_backdating_authorized'] is False
           assert result['trading_authorized'] is False
           assert result['live_trading_enabled'] is False
-          print('Deployed ingestion contract supports bounded historical capture without historical known-at backdating.')
+          print('Deployed ingestion contract supports bounded historical capture and FRED initial-release output_type=4.')
           PY
 
       - name: Capture requested historical evidence
@@ -255,9 +256,9 @@ jobs:
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
           ## Historical feed capture complete
 
-          The requested raw provider evidence was captured immutably in staging.
+          The requested raw provider evidence was captured immutably in staging. Historical FRED captures use the provider-defined `output_type=4` initial-release view, while the generic transport receipt still keeps `known_at` at capture time.
 
-          **Evidence boundary:** `known_at` remains the receipt `captured_at` time only. The requested historical date range does **not** authorize historical `known_at` backdating and does not by itself make the capture eligible for historical model decisions.
+          **Evidence boundary:** the requested historical date range does **not** authorize historical `known_at` backdating by itself. Provider-specific FRED initial-release evidence must separately pass the research-only point-in-time adapter before it can support historical model features.
 
           `trading_authorized=false` and `live_trading_enabled=false` remain unchanged.
           EOF
