@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+
 from daily_alpha.model_control_benchmark import (
     SH24_CONTROL_IDENTITY,
     SH25_CHALLENGER_IDENTITY,
