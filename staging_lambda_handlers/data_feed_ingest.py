@@ -25,9 +25,13 @@ DEFAULT_TARGETS = {
 }
 CAPTURE_MODE_CURRENT = "CURRENT_WINDOW"
 CAPTURE_MODE_HISTORICAL = "HISTORICAL_BACKFILL"
-CAPTURE_MODES = frozenset({CAPTURE_MODE_CURRENT, CAPTURE_MODE_HISTORICAL})
+CAPTURE_MODE_FRED_VINTAGE = "FRED_VINTAGE_BACKFILL"
+CAPTURE_MODES = frozenset(
+    {CAPTURE_MODE_CURRENT, CAPTURE_MODE_HISTORICAL, CAPTURE_MODE_FRED_VINTAGE}
+)
 MAX_HISTORICAL_BACKFILL_DAYS = 31
 KNOWN_AT_BASIS = "CAPTURED_AT_ONLY"
+FRED_VINTAGE_SEMANTICS = "FRED_REALTIME_INTERVAL"
 _TARGET_RE = re.compile(r"^[A-Z0-9.^_-]{1,32}$")
 
 
@@ -126,6 +130,29 @@ def _capture_window(event: dict[str, Any], as_of: datetime) -> tuple[str, date, 
     return mode, start_date, end_date
 
 
+def _vintage_as_of_date(
+    *,
+    provider: str,
+    event: dict[str, Any],
+    capture_mode: str,
+    end_date: date,
+    as_of: datetime,
+) -> date | None:
+    raw = event.get("vintage_as_of_date")
+    if capture_mode != CAPTURE_MODE_FRED_VINTAGE:
+        if raw is not None:
+            raise DataFeedIngestionError("VINTAGE_DATE_ONLY_ALLOWED_FOR_FRED_VINTAGE")
+        return None
+    if provider != "fred":
+        raise DataFeedIngestionError("FRED_VINTAGE_MODE_REQUIRES_FRED_PROVIDER")
+    vintage = _parse_iso_date(raw, "FRED_VINTAGE_AS_OF_DATE")
+    if vintage > as_of.date():
+        raise DataFeedIngestionError("FRED_VINTAGE_AS_OF_DATE_IN_FUTURE")
+    if end_date > vintage:
+        raise DataFeedIngestionError("FRED_OBSERVATION_END_AFTER_VINTAGE")
+    return vintage
+
+
 def _request_spec(
     provider: str,
     target: str,
@@ -135,6 +162,7 @@ def _request_spec(
     capture_mode: str = CAPTURE_MODE_CURRENT,
     start_date: date | None = None,
     end_date: date | None = None,
+    vintage_as_of_date: date | None = None,
 ) -> tuple[str, dict[str, str]]:
     mode = str(capture_mode or "").strip().upper()
     if mode not in CAPTURE_MODES:
@@ -143,6 +171,13 @@ def _request_spec(
         _, start_date, end_date = _capture_window({}, as_of)
     elif start_date is None or end_date is None:
         raise DataFeedIngestionError("REQUEST_DATE_RANGE_INCOMPLETE")
+
+    if mode == CAPTURE_MODE_FRED_VINTAGE and provider != "fred":
+        raise DataFeedIngestionError("FRED_VINTAGE_MODE_REQUIRES_FRED_PROVIDER")
+    if mode == CAPTURE_MODE_FRED_VINTAGE and vintage_as_of_date is None:
+        raise DataFeedIngestionError("FRED_VINTAGE_AS_OF_DATE_REQUIRED")
+    if mode != CAPTURE_MODE_FRED_VINTAGE and vintage_as_of_date is not None:
+        raise DataFeedIngestionError("VINTAGE_DATE_ONLY_ALLOWED_FOR_FRED_VINTAGE")
 
     headers = {
         "Accept": "application/json",
@@ -175,7 +210,7 @@ def _request_spec(
         "api_key": api_key,
         "file_type": "json",
     }
-    if mode == CAPTURE_MODE_HISTORICAL:
+    if mode in {CAPTURE_MODE_HISTORICAL, CAPTURE_MODE_FRED_VINTAGE}:
         params.update(
             {
                 "observation_start": start_date.isoformat(),
@@ -186,6 +221,16 @@ def _request_spec(
         )
     else:
         params.update({"sort_order": "desc", "limit": 5})
+    if mode == CAPTURE_MODE_FRED_VINTAGE:
+        assert vintage_as_of_date is not None
+        boundary = vintage_as_of_date.isoformat()
+        params.update(
+            {
+                "realtime_start": boundary,
+                "realtime_end": boundary,
+                "output_type": 1,
+            }
+        )
     return (
         f"https://api.stlouisfed.org/fred/series/observations?{urlencode(params)}",
         headers,
@@ -259,6 +304,7 @@ def _smoke_result() -> dict[str, Any]:
         "ok": True,
         "service": "daily-alpha-staging-data-feed-ingestion",
         "historical_backfill_supported": True,
+        "fred_vintage_backfill_supported": True,
         "capture_modes": sorted(CAPTURE_MODES),
         "max_historical_backfill_days": MAX_HISTORICAL_BACKFILL_DAYS,
         "known_at_basis": KNOWN_AT_BASIS,
@@ -282,6 +328,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     targets = _targets(provider, event)
     as_of = _now()
     capture_mode, start_date, end_date = _capture_window(event, as_of)
+    vintage_as_of_date = _vintage_as_of_date(
+        provider=provider,
+        event=event,
+        capture_mode=capture_mode,
+        end_date=end_date,
+        as_of=as_of,
+    )
     request_id = str(getattr(context, "aws_request_id", "") or "manual").strip()
     secret = _load_secret(provider)
     records: list[dict[str, Any]] = []
@@ -296,6 +349,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     capture_mode=capture_mode,
                     start_date=start_date,
                     end_date=end_date,
+                    vintage_as_of_date=vintage_as_of_date,
                 )
             )
             digest = hashlib.sha256(body).hexdigest()
@@ -314,6 +368,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "trading-authorized": "false",
                 "live-trading-enabled": "false",
             }
+            if vintage_as_of_date is not None:
+                metadata["vintage-as-of-date"] = vintage_as_of_date.isoformat()
+                metadata["provider-vintage-semantics"] = FRED_VINTAGE_SEMANTICS
             _put_immutable(
                 bucket=bucket,
                 key=raw_key,
@@ -329,6 +386,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "capture_mode": capture_mode,
                 "requested_start_date": start_date.isoformat(),
                 "requested_end_date": end_date.isoformat(),
+                "vintage_as_of_date": (
+                    vintage_as_of_date.isoformat() if vintage_as_of_date is not None else None
+                ),
+                "provider_vintage_semantics": (
+                    FRED_VINTAGE_SEMANTICS if vintage_as_of_date is not None else None
+                ),
                 "known_at_basis": KNOWN_AT_BASIS,
                 "historical_known_at_backdating_authorized": False,
                 "raw_s3_key": raw_key,
@@ -353,6 +416,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 capture_mode=capture_mode,
                 requested_start_date=start_date.isoformat(),
                 requested_end_date=end_date.isoformat(),
+                vintage_as_of_date=(
+                    vintage_as_of_date.isoformat() if vintage_as_of_date is not None else None
+                ),
                 raw_s3_key=raw_key,
                 receipt_s3_key=receipt_key,
                 raw_bytes=len(body),
@@ -374,6 +440,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "capture_mode": capture_mode,
         "requested_start_date": start_date.isoformat(),
         "requested_end_date": end_date.isoformat(),
+        "vintage_as_of_date": (
+            vintage_as_of_date.isoformat() if vintage_as_of_date is not None else None
+        ),
+        "provider_vintage_semantics": (
+            FRED_VINTAGE_SEMANTICS if vintage_as_of_date is not None else None
+        ),
         "target_count": len(targets),
         "records": records,
         "known_at_basis": KNOWN_AT_BASIS,
