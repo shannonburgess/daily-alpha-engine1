@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from math import isfinite
-from typing import Any, Mapping
+from typing import Any
 
 from .model_dataset_builder import PointInTimeFeatureObservation
 from .model_feed_observations import ImmutableFeedEvidence, validate_immutable_feed_evidence
