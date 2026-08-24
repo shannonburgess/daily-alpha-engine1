@@ -23,7 +23,7 @@ class _S3:
 def _fred_initial_release_body() -> bytes:
     return json.dumps(
         {
-            "realtime_start": "1776-07-04",
+            "realtime_start": "2026-07-01",
             "realtime_end": "2026-08-24",
             "observation_start": "2026-07-01",
             "observation_end": "2026-07-31",
@@ -70,7 +70,7 @@ def test_fred_historical_request_uses_provider_initial_release_contract() -> Non
     query = parse_qs(urlparse(url).query)
     assert query["observation_start"] == ["2026-07-01"]
     assert query["observation_end"] == ["2026-07-31"]
-    assert query["realtime_start"] == ["1776-07-04"]
+    assert query["realtime_start"] == ["2026-07-01"]
     assert query["realtime_end"] == ["2026-08-24"]
     assert query["output_type"] == ["4"]
     assert query["sort_order"] == ["asc"]
@@ -124,6 +124,7 @@ def test_fred_historical_lambda_capture_is_directly_parseable_as_pit_evidence(mo
 
     query = parse_qs(urlparse(seen_urls[0]).query)
     assert query["output_type"] == ["4"]
+    assert query["realtime_start"] == ["2026-07-01"]
     assert query["realtime_end"] == ["2026-08-24"]
     assert result["known_at_basis"] == "CAPTURED_AT_ONLY"
     assert result["historical_known_at_backdating_authorized"] is False
