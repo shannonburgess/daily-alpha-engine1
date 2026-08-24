@@ -28,6 +28,11 @@ def _receipt(**overrides: object) -> dict[str, object]:
         "provider": "MASSIVE",
         "target": "DINO",
         "captured_at": CAPTURED_AT.isoformat(),
+        "capture_mode": "CURRENT_WINDOW",
+        "requested_start_date": "2026-08-17",
+        "requested_end_date": "2026-08-24",
+        "known_at_basis": "CAPTURED_AT_ONLY",
+        "historical_known_at_backdating_authorized": False,
         "raw_s3_key": "data-feeds/staging/massive/raw/2026/08/24/req-01-DINO.json",
         "raw_sha256": hashlib.sha256(RAW).hexdigest(),
         "raw_bytes": len(RAW),
@@ -71,6 +76,12 @@ def test_exact_receipt_and_raw_bytes_create_deterministic_point_in_time_observat
     assert first.batch_id == second.batch_id
     assert len(first.batch_id) == 64
     assert len(first.evidence.evidence_id) == 64
+    assert first.evidence.capture_mode == "CURRENT_WINDOW"
+    assert first.evidence.requested_start_date.isoformat() == "2026-08-17"
+    assert first.evidence.requested_end_date.isoformat() == "2026-08-24"
+    assert first.evidence.known_at_basis == "CAPTURED_AT_ONLY"
+    assert first.evidence.historical_known_at_backdating_authorized is False
+    assert first.evidence.source_revision.startswith("feed-receipt-pit-v2:")
     observation = first.observations[0]
     assert observation.security_id == "DINO"
     assert observation.feature_name == "close"
@@ -115,6 +126,15 @@ def test_feature_order_does_not_change_batch_identity() -> None:
         ({"target": "SPY"}, RAW, "FEED_RECEIPT_RAW_KEY_TARGET_MISMATCH"),
         ({"schema": "OTHER"}, RAW, "FEED_RECEIPT_SCHEMA_INVALID"),
         ({"provider": "UNKNOWN"}, RAW, "FEED_RECEIPT_PROVIDER_INVALID"),
+        ({"capture_mode": "UNKNOWN"}, RAW, "FEED_RECEIPT_CAPTURE_MODE_INVALID"),
+        ({"requested_start_date": None}, RAW, "FEED_RECEIPT_REQUESTED_START_DATE_REQUIRED"),
+        ({"requested_end_date": "2026-08-25"}, RAW, "FEED_RECEIPT_REQUESTED_END_DATE_AFTER_CAPTURE"),
+        ({"known_at_basis": "SOURCE_TIMESTAMP"}, RAW, "FEED_RECEIPT_KNOWN_AT_BASIS_INVALID"),
+        (
+            {"historical_known_at_backdating_authorized": True},
+            RAW,
+            "FEED_RECEIPT_HISTORICAL_BACKDATING_AUTHORITY_INVALID",
+        ),
         ({"trading_authorized": True}, RAW, "FEED_RECEIPT_TRADING_AUTHORITY_INVALID"),
         ({"live_trading_enabled": True}, RAW, "FEED_RECEIPT_LIVE_AUTHORITY_INVALID"),
     ],
@@ -126,6 +146,65 @@ def test_receipt_integrity_and_authority_drift_fail_closed(
 ) -> None:
     with pytest.raises(ModelTrainingError, match=match):
         validate_immutable_feed_evidence(raw_body=raw, receipt=_receipt(**overrides))
+
+
+def test_historical_capture_range_is_bounded_and_bound_into_evidence_identity() -> None:
+    historical = validate_immutable_feed_evidence(
+        raw_body=RAW,
+        receipt=_receipt(
+            capture_mode="HISTORICAL_BACKFILL",
+            requested_start_date="2026-07-01",
+            requested_end_date="2026-07-31",
+        ),
+    )
+    current = validate_immutable_feed_evidence(raw_body=RAW, receipt=_receipt())
+
+    assert historical.capture_mode == "HISTORICAL_BACKFILL"
+    assert historical.requested_start_date.isoformat() == "2026-07-01"
+    assert historical.requested_end_date.isoformat() == "2026-07-31"
+    assert historical.known_at_basis == "CAPTURED_AT_ONLY"
+    assert historical.historical_known_at_backdating_authorized is False
+    assert historical.evidence_id != current.evidence_id
+    assert historical.source_revision != current.source_revision
+
+    with pytest.raises(ModelTrainingError, match="FEED_RECEIPT_HISTORICAL_DATE_RANGE_TOO_LARGE"):
+        validate_immutable_feed_evidence(
+            raw_body=RAW,
+            receipt=_receipt(
+                capture_mode="HISTORICAL_BACKFILL",
+                requested_start_date="2026-06-30",
+                requested_end_date="2026-07-31",
+            ),
+        )
+
+
+def test_historical_requested_date_cannot_backdate_model_known_at() -> None:
+    receipt = _receipt(
+        capture_mode="HISTORICAL_BACKFILL",
+        requested_start_date="2026-07-01",
+        requested_end_date="2026-07-31",
+    )
+    batch = build_point_in_time_feed_observations(
+        raw_body=RAW,
+        receipt=receipt,
+        facts=[_fact()],
+    )
+
+    assert batch.observations[0].known_at == CAPTURED_AT
+    assert batch.observations[0].known_at.date().isoformat() == "2026-08-24"
+    assert batch.evidence.requested_end_date.isoformat() == "2026-07-31"
+
+    with pytest.raises(ModelTrainingError, match="FEED_FEATURE_CAPTURE_AFTER_DECISION"):
+        build_point_in_time_feed_observations(
+            raw_body=RAW,
+            receipt=receipt,
+            facts=[
+                _fact(
+                    decision_at=datetime(2026, 7, 31, 20, 0, tzinfo=UTC),
+                    source_as_of=datetime(2026, 7, 31, 19, 0, tzinfo=UTC),
+                )
+            ],
+        )
 
 
 def test_raw_body_change_cannot_reuse_receipt_identity() -> None:
@@ -144,11 +223,17 @@ def test_direct_evidence_construction_cannot_fabricate_identity_or_target() -> N
         replace(
             evidence,
             evidence_id=forged_id,
-            source_revision=f"feed-receipt-v1:{forged_id}",
+            source_revision=f"feed-receipt-pit-v2:{forged_id}",
         )
 
     with pytest.raises(ModelTrainingError, match="FEED_RECEIPT_RAW_KEY_TARGET_MISMATCH"):
         replace(evidence, target="SPY")
+
+    with pytest.raises(
+        ModelTrainingError,
+        match="FEED_EVIDENCE_HISTORICAL_BACKDATING_AUTHORITY_INVALID",
+    ):
+        replace(evidence, historical_known_at_backdating_authorized=True)
 
 
 def test_direct_batch_construction_cannot_cross_wire_observation_lineage() -> None:

@@ -12,7 +12,7 @@ import hashlib
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from math import isfinite
 from typing import Any
 
@@ -21,6 +21,12 @@ from .model_training import ModelTrainingError
 
 _RECEIPT_SCHEMA = "DAILY_ALPHA_STAGING_DATA_FEED_RECEIPT_V1"
 _ALLOWED_PROVIDERS = frozenset({"MASSIVE", "TIINGO", "FRED"})
+_CAPTURE_MODE_CURRENT = "CURRENT_WINDOW"
+_CAPTURE_MODE_HISTORICAL = "HISTORICAL_BACKFILL"
+_CAPTURE_MODES = frozenset({_CAPTURE_MODE_CURRENT, _CAPTURE_MODE_HISTORICAL})
+_KNOWN_AT_BASIS = "CAPTURED_AT_ONLY"
+_MAX_HISTORICAL_BACKFILL_DAYS = 31
+_SOURCE_REVISION_PREFIX = "feed-receipt-pit-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +36,11 @@ class ImmutableFeedEvidence:
     provider: str
     target: str
     captured_at: datetime
+    capture_mode: str
+    requested_start_date: date
+    requested_end_date: date
+    known_at_basis: str
+    historical_known_at_backdating_authorized: bool
     raw_s3_key: str
     raw_sha256: str
     raw_bytes: int
@@ -42,6 +53,8 @@ class ImmutableFeedEvidence:
     def __post_init__(self) -> None:
         provider = self.provider.strip().upper()
         target = self.target.strip().upper()
+        capture_mode = self.capture_mode.strip().upper()
+        known_at_basis = self.known_at_basis.strip().upper()
         raw_s3_key = self.raw_s3_key.strip()
         raw_sha256 = self.raw_sha256.strip().lower()
         evidence_id = self.evidence_id.strip().lower()
@@ -52,6 +65,17 @@ class ImmutableFeedEvidence:
         if not target:
             raise ModelTrainingError("FEED_EVIDENCE_TARGET_REQUIRED")
         _require_aware(self.captured_at, "FEED_EVIDENCE_CAPTURED_AT")
+        _validate_capture_lineage(
+            capture_mode=capture_mode,
+            requested_start_date=self.requested_start_date,
+            requested_end_date=self.requested_end_date,
+            captured_at=self.captured_at,
+            known_at_basis=known_at_basis,
+            historical_known_at_backdating_authorized=(
+                self.historical_known_at_backdating_authorized
+            ),
+            prefix="FEED_EVIDENCE",
+        )
         _require_raw_key(provider=provider, target=target, raw_s3_key=raw_s3_key)
         _require_sha256(raw_sha256, "FEED_EVIDENCE_RAW_SHA256")
         if isinstance(self.raw_bytes, bool) or not isinstance(self.raw_bytes, int):
@@ -65,6 +89,13 @@ class ImmutableFeedEvidence:
                 provider=provider,
                 target=target,
                 captured_at=self.captured_at,
+                capture_mode=capture_mode,
+                requested_start_date=self.requested_start_date,
+                requested_end_date=self.requested_end_date,
+                known_at_basis=known_at_basis,
+                historical_known_at_backdating_authorized=(
+                    self.historical_known_at_backdating_authorized
+                ),
                 raw_s3_key=raw_s3_key,
                 raw_sha256=raw_sha256,
                 raw_bytes=self.raw_bytes,
@@ -72,7 +103,7 @@ class ImmutableFeedEvidence:
         )
         if evidence_id != expected_evidence_id:
             raise ModelTrainingError("FEED_EVIDENCE_ID_MISMATCH")
-        if source_revision != f"feed-receipt-v1:{evidence_id}":
+        if source_revision != f"{_SOURCE_REVISION_PREFIX}:{evidence_id}":
             raise ModelTrainingError("FEED_EVIDENCE_SOURCE_REVISION_MISMATCH")
         if not self.research_only:
             raise ModelTrainingError("FEED_EVIDENCE_MUST_REMAIN_RESEARCH_ONLY")
@@ -81,6 +112,8 @@ class ImmutableFeedEvidence:
 
         object.__setattr__(self, "provider", provider)
         object.__setattr__(self, "target", target)
+        object.__setattr__(self, "capture_mode", capture_mode)
+        object.__setattr__(self, "known_at_basis", known_at_basis)
         object.__setattr__(self, "raw_s3_key", raw_s3_key)
         object.__setattr__(self, "raw_sha256", raw_sha256)
         object.__setattr__(self, "evidence_id", evidence_id)
@@ -208,6 +241,30 @@ def validate_immutable_feed_evidence(
     if not target:
         raise ModelTrainingError("FEED_RECEIPT_TARGET_REQUIRED")
     captured_at = _parse_datetime(receipt.get("captured_at"), "FEED_RECEIPT_CAPTURED_AT")
+    capture_mode = str(receipt.get("capture_mode") or "").strip().upper()
+    requested_start_date = _parse_date(
+        receipt.get("requested_start_date"),
+        "FEED_RECEIPT_REQUESTED_START_DATE",
+    )
+    requested_end_date = _parse_date(
+        receipt.get("requested_end_date"),
+        "FEED_RECEIPT_REQUESTED_END_DATE",
+    )
+    known_at_basis = str(receipt.get("known_at_basis") or "").strip().upper()
+    historical_known_at_backdating_authorized = receipt.get(
+        "historical_known_at_backdating_authorized"
+    )
+    _validate_capture_lineage(
+        capture_mode=capture_mode,
+        requested_start_date=requested_start_date,
+        requested_end_date=requested_end_date,
+        captured_at=captured_at,
+        known_at_basis=known_at_basis,
+        historical_known_at_backdating_authorized=(
+            historical_known_at_backdating_authorized
+        ),
+        prefix="FEED_RECEIPT",
+    )
 
     raw_s3_key = str(receipt.get("raw_s3_key") or "").strip()
     _require_raw_key(provider=provider, target=target, raw_s3_key=raw_s3_key)
@@ -233,6 +290,13 @@ def validate_immutable_feed_evidence(
         provider=provider,
         target=target,
         captured_at=captured_at,
+        capture_mode=capture_mode,
+        requested_start_date=requested_start_date,
+        requested_end_date=requested_end_date,
+        known_at_basis=known_at_basis,
+        historical_known_at_backdating_authorized=(
+            historical_known_at_backdating_authorized
+        ),
         raw_s3_key=raw_s3_key,
         raw_sha256=raw_sha256,
         raw_bytes=raw_bytes,
@@ -242,11 +306,18 @@ def validate_immutable_feed_evidence(
         provider=provider,
         target=target,
         captured_at=captured_at,
+        capture_mode=capture_mode,
+        requested_start_date=requested_start_date,
+        requested_end_date=requested_end_date,
+        known_at_basis=known_at_basis,
+        historical_known_at_backdating_authorized=(
+            historical_known_at_backdating_authorized
+        ),
         raw_s3_key=raw_s3_key,
         raw_sha256=raw_sha256,
         raw_bytes=raw_bytes,
         evidence_id=evidence_id,
-        source_revision=f"feed-receipt-v1:{evidence_id}",
+        source_revision=f"{_SOURCE_REVISION_PREFIX}:{evidence_id}",
     )
 
 
@@ -303,6 +374,11 @@ def _evidence_identity_payload(
     provider: str,
     target: str,
     captured_at: datetime,
+    capture_mode: str,
+    requested_start_date: date,
+    requested_end_date: date,
+    known_at_basis: str,
+    historical_known_at_backdating_authorized: bool,
     raw_s3_key: str,
     raw_sha256: str,
     raw_bytes: int,
@@ -312,12 +388,51 @@ def _evidence_identity_payload(
         "provider": provider,
         "target": target,
         "captured_at": captured_at.isoformat(),
+        "capture_mode": capture_mode,
+        "requested_start_date": requested_start_date.isoformat(),
+        "requested_end_date": requested_end_date.isoformat(),
+        "known_at_basis": known_at_basis,
+        "historical_known_at_backdating_authorized": (
+            historical_known_at_backdating_authorized
+        ),
         "raw_s3_key": raw_s3_key,
         "raw_sha256": raw_sha256,
         "raw_bytes": raw_bytes,
         "trading_authorized": False,
         "live_trading_enabled": False,
     }
+
+
+def _validate_capture_lineage(
+    *,
+    capture_mode: str,
+    requested_start_date: date,
+    requested_end_date: date,
+    captured_at: datetime,
+    known_at_basis: str,
+    historical_known_at_backdating_authorized: Any,
+    prefix: str,
+) -> None:
+    if capture_mode not in _CAPTURE_MODES:
+        raise ModelTrainingError(f"{prefix}_CAPTURE_MODE_INVALID")
+    if isinstance(requested_start_date, datetime) or not isinstance(
+        requested_start_date, date
+    ):
+        raise ModelTrainingError(f"{prefix}_REQUESTED_START_DATE_INVALID")
+    if isinstance(requested_end_date, datetime) or not isinstance(requested_end_date, date):
+        raise ModelTrainingError(f"{prefix}_REQUESTED_END_DATE_INVALID")
+    if requested_start_date > requested_end_date:
+        raise ModelTrainingError(f"{prefix}_REQUESTED_DATE_RANGE_INVALID")
+    if requested_end_date > captured_at.date():
+        raise ModelTrainingError(f"{prefix}_REQUESTED_END_DATE_AFTER_CAPTURE")
+    if capture_mode == _CAPTURE_MODE_HISTORICAL:
+        span_days = (requested_end_date - requested_start_date).days + 1
+        if span_days > _MAX_HISTORICAL_BACKFILL_DAYS:
+            raise ModelTrainingError(f"{prefix}_HISTORICAL_DATE_RANGE_TOO_LARGE")
+    if known_at_basis != _KNOWN_AT_BASIS:
+        raise ModelTrainingError(f"{prefix}_KNOWN_AT_BASIS_INVALID")
+    if historical_known_at_backdating_authorized is not False:
+        raise ModelTrainingError(f"{prefix}_HISTORICAL_BACKDATING_AUTHORITY_INVALID")
 
 
 def _require_raw_key(*, provider: str, target: str, raw_s3_key: str) -> None:
@@ -332,6 +447,15 @@ def _require_raw_key(*, provider: str, target: str, raw_s3_key: str) -> None:
 def _require_sha256(value: str, code: str) -> None:
     if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
         raise ModelTrainingError(f"{code}_INVALID")
+
+
+def _parse_date(value: Any, code: str) -> date:
+    if not isinstance(value, str) or not value.strip():
+        raise ModelTrainingError(f"{code}_REQUIRED")
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError as exc:
+        raise ModelTrainingError(f"{code}_INVALID") from exc
 
 
 def _parse_datetime(value: Any, code: str) -> datetime:
