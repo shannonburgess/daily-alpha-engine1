@@ -34,7 +34,7 @@ def test_template_is_research_only_and_has_exact_phase1_schedules():
     assert function["FunctionName"] == "daily-alpha-staging-data-feed-ingestion"
     assert function["Environment"]["Variables"]["TRADING_AUTHORIZED"] == "false"
     assert function["Environment"]["Variables"]["LIVE_TRADING_ENABLED"] == "false"
-    assert function["ReservedConcurrentExecutions"] == 2
+    assert "ReservedConcurrentExecutions" not in function
     assert resources["MassiveSchedule"]["Properties"]["State"] == "ENABLED"
     assert resources["TiingoSchedule"]["Properties"]["State"] == "ENABLED"
     assert resources["FredSchedule"]["Properties"]["State"] == "ENABLED"
