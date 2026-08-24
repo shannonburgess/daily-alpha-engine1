@@ -165,9 +165,23 @@ def test_provider_contract_cannot_be_applied_to_wrong_transport_semantics(
         parse_fred_initial_release_history(raw_body=raw, receipt=receipt)
 
 
+def test_provider_missing_value_sentinel_is_excluded_without_invalidating_batch() -> None:
+    payload = json.loads(_raw())
+    payload["observations"][1]["value"] = "."
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+
+    batch = parse_fred_initial_release_history(raw_body=raw, receipt=_receipt(raw))
+
+    assert tuple(item.value for item in batch.observations) == (4.33, 4.35)
+    assert tuple(item.observation_date.isoformat() for item in batch.observations) == (
+        "2026-07-01",
+        "2026-07-03",
+    )
+
+
 def test_missing_value_or_release_date_fails_closed() -> None:
     payload = json.loads(_raw())
-    payload["observations"][0]["value"] = "."
+    payload["observations"][0]["value"] = None
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     with pytest.raises(ModelTrainingError, match="FRED_INITIAL_RELEASE_VALUE_MISSING"):
         parse_fred_initial_release_history(raw_body=raw, receipt=_receipt(raw))
@@ -176,6 +190,16 @@ def test_missing_value_or_release_date_fails_closed() -> None:
     del payload["observations"][0]["realtime_start"]
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     with pytest.raises(ModelTrainingError, match="FRED_INITIAL_RELEASE_REALTIME_START_REQUIRED"):
+        parse_fred_initial_release_history(raw_body=raw, receipt=_receipt(raw))
+
+
+def test_all_provider_missing_value_sentinels_fail_closed() -> None:
+    payload = json.loads(_raw())
+    for observation in payload["observations"]:
+        observation["value"] = "."
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+
+    with pytest.raises(ModelTrainingError, match="FRED_INITIAL_RELEASE_OBSERVATIONS_REQUIRED"):
         parse_fred_initial_release_history(raw_body=raw, receipt=_receipt(raw))
 
 
