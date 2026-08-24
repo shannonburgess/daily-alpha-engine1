@@ -1,0 +1,3326 @@
+//@version=6
+
+//@strategy_alert_message {{strategy.order.alert_message}}
+
+// DAILY ALPHA v2.5 RESEARCH CHALLENGER
+
+// Persistent armed breakout + structural runner.
+
+// PAPER / RESEARCH ONLY.
+
+strategy(
+
+     "DA Turtle 20/10 + Persistent Armed Breakout v2.5 Shadow Challenger",
+
+     shorttitle="DA-T20/10-SH25",
+
+     overlay=true,
+
+     pyramiding=3,
+
+     initial_capital=1250000,
+
+     process_orders_on_close=true,
+
+     calc_on_every_tick=false,
+
+     calc_on_order_fills=false
+
+)
+
+// ======================================================
+
+// 01 - TURTLE
+
+// ======================================================
+
+groupTurtle = "01 - Turtle 20/10"
+
+entryLen = input.int(
+
+     20,
+
+     "Entry Channel",
+
+     minval=2,
+
+     group=groupTurtle
+
+)
+
+exitLen = input.int(
+
+     10,
+
+     "Legacy Exit Channel",
+
+     minval=2,
+
+     group=groupTurtle
+
+)
+
+breakoutMode = input.string(
+
+     "Close",
+
+     "Breakout Confirmation",
+
+     options=["Close", "High"],
+
+     group=groupTurtle
+
+)
+
+// ======================================================
+
+// 02 - ADAPTIVE TREND
+
+// ======================================================
+
+groupTrend = "02 - Adaptive Trend"
+
+atrLen = input.int(
+
+     10,
+
+     "ATR Length",
+
+     minval=2,
+
+     group=groupTrend
+
+)
+
+minFactor = input.float(
+
+     2.0,
+
+     "Fast Trend Factor",
+
+     minval=0.5,
+
+     step=0.25,
+
+     group=groupTrend
+
+)
+
+maxFactor = input.float(
+
+     4.0,
+
+     "Slow Trend Factor",
+
+     minval=0.5,
+
+     step=0.25,
+
+     group=groupTrend
+
+)
+
+efficiencyLen = input.int(
+
+     20,
+
+     "Trend Efficiency Lookback",
+
+     minval=2,
+
+     group=groupTrend
+
+)
+
+requireFreshBullFlip = input.bool(
+
+     false,
+
+     "Require Recent Bullish Trend Flip",
+
+     group=groupTrend
+
+)
+
+maxBullFlipAge = input.int(
+
+     5,
+
+     "Max Bars Since Bullish Flip",
+
+     minval=0,
+
+     group=groupTrend
+
+)
+
+minPriorBullBars = input.int(
+
+     2,
+
+     "Completed Bull Bars Before Entry",
+
+     minval=1,
+
+     maxval=10,
+
+     group=groupTrend
+
+)
+
+// ======================================================
+
+// 03 - RSI
+
+// ======================================================
+
+groupRSI = "03 - RSI Entry Control"
+
+useRsiCap = input.bool(
+
+     true,
+
+     "Use RSI Entry Cap",
+
+     group=groupRSI
+
+)
+
+rsiLen = input.int(
+
+     14,
+
+     "RSI Length",
+
+     minval=2,
+
+     group=groupRSI
+
+)
+
+maxEntryRsi = input.float(
+
+     80.0,
+
+     "Maximum RSI For Normal Entry",
+
+     minval=50,
+
+     maxval=100,
+
+     step=0.5,
+
+     group=groupRSI
+
+)
+
+// ======================================================
+
+// 04 - FAILED BREAKOUT
+
+// ======================================================
+
+groupFailed = "04 - Failed Breakout Control"
+
+useFailedBreakoutExit = input.bool(
+
+     true,
+
+     "Use Failed Breakout Exit",
+
+     group=groupFailed
+
+)
+
+failedBreakoutBars = input.int(
+
+     3,
+
+     "Bars Allowed After Entry",
+
+     minval=1,
+
+     maxval=10,
+
+     group=groupFailed
+
+)
+
+// ======================================================
+
+// 05 - ADX
+
+// ======================================================
+
+groupADX = "05 - Trendability"
+
+useAdxFilter = input.bool(
+
+     true,
+
+     "Require ADX For Entry / Runner Adds",
+
+     group=groupADX
+
+)
+
+adxDiLen = input.int(
+
+     14,
+
+     "DI Length",
+
+     minval=2,
+
+     group=groupADX
+
+)
+
+adxSmooth = input.int(
+
+     14,
+
+     "ADX Smoothing",
+
+     minval=2,
+
+     group=groupADX
+
+)
+
+// Leave at 25 initially.
+
+// Historical challenger will separately test 17 / 20 / 25.
+
+minAdx = input.float(
+
+     25.0,
+
+     "Minimum ADX",
+
+     minval=0,
+
+     step=0.5,
+
+     group=groupADX
+
+)
+
+// ======================================================
+
+// 06 - TREND EFFICIENCY
+
+// ======================================================
+
+groupEfficiency = "06 - Trend Efficiency"
+
+useEfficiencyGate = input.bool(
+
+     true,
+
+     "Require Minimum Trend Efficiency",
+
+     group=groupEfficiency
+
+)
+
+minTrendEfficiency = input.float(
+
+     0.20,
+
+     "Minimum Trend Efficiency",
+
+     minval=0,
+
+     maxval=1,
+
+     step=0.05,
+
+     group=groupEfficiency
+
+)
+
+// ======================================================
+
+// 07 - PRICE FLOOR
+
+// ======================================================
+
+groupPrice = "07 - Underlying Price Floor"
+
+usePriceFloor = input.bool(
+
+     true,
+
+     "Require Minimum Underlying Price",
+
+     group=groupPrice
+
+)
+
+minUnderlyingPrice = input.float(
+
+     25.0,
+
+     "Minimum Stock / ETF Price",
+
+     minval=1,
+
+     step=1,
+
+     group=groupPrice
+
+)
+
+// ======================================================
+
+// 08 - EARNINGS GAP SLEEVE
+
+// ======================================================
+
+groupEarnings = "08 - Earnings Gap Sleeve"
+
+useEarningsGapSleeve = input.bool(
+
+     true,
+
+     "Enable Earnings Gap & Go Entries",
+
+     group=groupEarnings
+
+)
+
+minEarningsGapPct = input.float(
+
+     5.0,
+
+     "Minimum Earnings Gap %",
+
+     step=0.5,
+
+     group=groupEarnings
+
+)
+
+minEarningsGapAtr = input.float(
+
+     1.5,
+
+     "Minimum Earnings Gap ATR",
+
+     step=0.25,
+
+     group=groupEarnings
+
+)
+
+minGapCloseLocation = input.float(
+
+     0.70,
+
+     "Gap & Go: Minimum Close Location",
+
+     minval=0,
+
+     maxval=1,
+
+     step=0.05,
+
+     group=groupEarnings
+
+)
+
+minEarlyGapCloseLocation = input.float(
+
+     0.60,
+
+     "Early Watch: Minimum Close Location",
+
+     minval=0,
+
+     maxval=1,
+
+     step=0.05,
+
+     group=groupEarnings
+
+)
+
+minGapRetention = input.float(
+
+     0.70,
+
+     "Gap & Go: Minimum Gap Retention",
+
+     minval=0,
+
+     maxval=2,
+
+     step=0.05,
+
+     group=groupEarnings
+
+)
+
+minGapRelativeVolume = input.float(
+
+     1.5,
+
+     "Gap & Go: Minimum Relative Volume",
+
+     step=0.25,
+
+     group=groupEarnings
+
+)
+
+maxEarningsRsi = input.float(
+
+     85,
+
+     "Gap & Go: Maximum RSI",
+
+     minval=50,
+
+     maxval=100,
+
+     step=0.5,
+
+     group=groupEarnings
+
+)
+
+crapCloseLocation = input.float(
+
+     0.50,
+
+     "Gap & Crap: Weak Close Location",
+
+     minval=0,
+
+     maxval=1,
+
+     step=0.05,
+
+     group=groupEarnings
+
+)
+
+crapGapRetention = input.float(
+
+     0.50,
+
+     "Gap & Crap: Minimum Retention Before Reject",
+
+     minval=0,
+
+     maxval=1,
+
+     step=0.05,
+
+     group=groupEarnings
+
+)
+
+// ======================================================
+
+// 09 - PERSISTENT ARMED BREAKOUT
+
+// ======================================================
+
+groupArmed = "09 - Persistent Armed Breakout"
+
+usePersistentArmedEntry = input.bool(
+
+     true,
+
+     "Use Persistent Armed Breakout",
+
+     group=groupArmed
+
+)
+
+// How long a breakout opportunity can remain alive.
+
+armedMaxBars = input.int(
+
+     10,
+
+     "Maximum Bars To Keep Breakout Armed",
+
+     minval=1,
+
+     maxval=30,
+
+     group=groupArmed
+
+)
+
+// Prevent late chasing.
+
+maxChaseAtr = input.float(
+
+     1.0,
+
+     "Maximum Entry Distance Above Breakout (ATR)",
+
+     minval=0.25,
+
+     maxval=5,
+
+     step=0.25,
+
+     group=groupArmed
+
+)
+
+// Give normal breakout retests some room before invalidating.
+
+armInvalidationAtr = input.float(
+
+     0.50,
+
+     "Invalidate Below Breakout By ATR",
+
+     minval=0,
+
+     maxval=3,
+
+     step=0.25,
+
+     group=groupArmed
+
+)
+
+// ======================================================
+
+// 10 - RUNNER MANAGEMENT
+
+// SAME 2.4 ADD STRUCTURE
+
+// ======================================================
+
+groupRunner = "10 - Runner Management"
+
+useRunnerManagement = input.bool(
+
+     true,
+
+     "Use Runner Management",
+
+     group=groupRunner
+
+)
+
+add1Atr = input.float(
+
+     1.0,
+
+     "Add #1 At +ATR",
+
+     minval=0.25,
+
+     step=0.25,
+
+     group=groupRunner
+
+)
+
+add2Atr = input.float(
+
+     2.0,
+
+     "Add #2 At +ATR",
+
+     minval=0.50,
+
+     step=0.25,
+
+     group=groupRunner
+
+)
+
+harvestAtr = input.float(
+
+     3.0,
+
+     "Take 25% Profit At +ATR",
+
+     minval=1,
+
+     step=0.25,
+
+     group=groupRunner
+
+)
+
+// ======================================================
+
+// 11 - STRUCTURAL RUNNER EXIT
+
+// ======================================================
+
+groupStructural = "11 - Structural Runner Exit"
+
+useStructuralRunnerExit = input.bool(
+
+     true,
+
+     "Use Structural Runner Exit",
+
+     group=groupStructural
+
+)
+
+structuralExitLen = input.int(
+
+     20,
+
+     "Structural Exit Lookback",
+
+     minval=5,
+
+     maxval=100,
+
+     group=groupStructural
+
+)
+
+structuralConfirmBars = input.int(
+
+     1,
+
+     "Structural Exit Confirmation Bars",
+
+     minval=1,
+
+     maxval=5,
+
+     group=groupStructural
+
+)
+
+// OFF in challenger because this may be contributing to churn.
+
+useBreakEvenAfterHarvest = input.bool(
+
+     false,
+
+     "Use Break-Even Close Stop After Harvest",
+
+     group=groupStructural
+
+)
+
+// OFF by default in v2.5 challenger.
+
+useLegacyAdaptiveExit = input.bool(
+
+     false,
+
+     "Use Legacy Adaptive Bear-Flip Exit",
+
+     group=groupStructural
+
+)
+
+useLegacyTurtleExit = input.bool(
+
+     false,
+
+     "Use Legacy 10-Bar Turtle Exit",
+
+     group=groupStructural
+
+)
+
+// ======================================================
+
+// 12 - BACKTEST
+
+// ======================================================
+
+groupBacktest = "12 - Backtest"
+
+startDate = input.time(
+
+     timestamp("01 Jan 2024 00:00 -0500"),
+
+     "Backtest Start",
+
+     group=groupBacktest
+
+)
+
+endDate = input.time(
+
+     timestamp("31 Dec 2099 23:59 -0500"),
+
+     "Backtest End",
+
+     group=groupBacktest
+
+)
+
+// ======================================================
+
+// 13 - SHADOW FORWARD TEST
+
+// ======================================================
+
+groupShadow = "13 - Shadow Forward Test"
+
+enableShadowForwardTest = input.bool(
+
+     false,
+
+     "Enable Paper Shadow Forward Test",
+
+     group=groupShadow
+
+)
+
+shadowForwardStart = input.time(
+
+     timestamp("19 Aug 2026 00:00 -0400"),
+
+     "Forward Test Start",
+
+     group=groupShadow
+
+)
+
+shadowForwardStartIso =
+
+     str.format_time(
+
+         shadowForwardStart,
+
+         "yyyy-MM-dd",
+
+         "America/New_York"
+
+     )
+
+// Preserve the audited v2.5 +1 ATR no-chase envelope for delayed ENTRY replay.
+// This controls replay only and does not change same-bar entry eligibility.
+
+inWindow =
+
+     time >= startDate and
+
+     time <= endDate and
+
+     enableShadowForwardTest and
+
+     time >= shadowForwardStart
+
+// ======================================================
+
+// 14 - WEBHOOK
+
+// KEEP OFF FOR NOW
+
+// ======================================================
+
+groupWebhook = "14 - Daily Alpha Webhook"
+
+webhookSecret = input.string(
+
+     "",
+
+     "Webhook Secret",
+
+     group=groupWebhook
+
+)
+
+enableWebhookOrders = input.bool(
+
+     false,
+
+     "Attach v2.5 Shadow Webhook Messages",
+
+     group=groupWebhook
+
+)
+
+// ======================================================
+
+// 15 - DISPLAY
+
+// ======================================================
+
+groupDisplay = "15 - Display"
+
+showChannels = input.bool(
+
+     true,
+
+     "Show Turtle Channels",
+
+     group=groupDisplay
+
+)
+
+showTrendStop = input.bool(
+
+     true,
+
+     "Show Adaptive Trend Stop",
+
+     group=groupDisplay
+
+)
+
+showSignals = input.bool(
+
+     true,
+
+     "Show Entry / Exit Markers",
+
+     group=groupDisplay
+
+)
+
+showArmedStates = input.bool(
+
+     true,
+
+     "Show Armed / Confirming States",
+
+     group=groupDisplay
+
+)
+
+showEarningsClassification = input.bool(
+
+     true,
+
+     "Show Earnings Gap Classification",
+
+     group=groupDisplay
+
+)
+
+showStructuralExit = input.bool(
+
+     true,
+
+     "Show Structural Exit Channel",
+
+     group=groupDisplay
+
+)
+
+// ======================================================
+
+// CHANNELS
+
+// ======================================================
+
+upper20 = ta.highest(high, entryLen)[1]
+
+lower10 = ta.lowest(low, exitLen)[1]
+
+structuralLower =
+
+     ta.lowest(low, structuralExitLen)[1]
+
+breakoutNow =
+
+     breakoutMode == "Close" ?
+
+     close > upper20 :
+
+     high > upper20
+
+breakoutPrev =
+
+     breakoutMode == "Close" ?
+
+     close[1] > upper20[1] :
+
+     high[1] > upper20[1]
+
+freshLongBreakout =
+
+     barstate.isconfirmed and
+
+     not na(upper20) and
+
+     breakoutNow and
+
+     not breakoutPrev
+
+// ======================================================
+
+// ADAPTIVE TREND FACTOR
+
+// ======================================================
+
+atr = ta.atr(atrLen)
+
+absChange = math.abs(
+
+     ta.change(close)
+
+)
+
+pathLength =
+
+     ta.sma(absChange, efficiencyLen) *
+
+     efficiencyLen
+
+direction =
+
+     math.abs(
+
+         close - close[efficiencyLen]
+
+     )
+
+efficiency =
+
+     pathLength > 0 ?
+
+     math.min(direction / pathLength, 1.0) :
+
+     0.0
+
+adaptiveFactor =
+
+     maxFactor -
+
+     efficiency *
+
+     (maxFactor - minFactor)
+
+// ======================================================
+
+// RSI
+
+// ======================================================
+
+rsiValue =
+
+     ta.rsi(close, rsiLen)
+
+rsiEntryOK =
+
+     not useRsiCap or
+
+     rsiValue <= maxEntryRsi
+
+// ======================================================
+
+// ADX
+
+// ======================================================
+
+[plusDIEntry, minusDIEntry, adxEntry] =
+
+     ta.dmi(
+
+         adxDiLen,
+
+         adxSmooth
+
+     )
+
+adxEntryOK =
+
+     not useAdxFilter or
+
+     adxEntry >= minAdx
+
+averageDailyDollarVolume =
+
+     ta.sma(
+
+         close * nz(volume, 0),
+
+         20
+
+     )
+
+averageVolume20Prior =
+
+     ta.sma(
+
+         nz(volume, 0),
+
+         20
+
+     )[1]
+
+// ======================================================
+
+// ADAPTIVE TREND STATE
+
+// ======================================================
+
+basicUpper =
+
+     hl2 +
+
+     atr * adaptiveFactor
+
+basicLower =
+
+     hl2 -
+
+     atr * adaptiveFactor
+
+var float finalUpper = na
+
+var float finalLower = na
+
+var int trendState = 1
+
+finalUpper :=
+
+     na(finalUpper[1]) ?
+
+     basicUpper :
+
+     (
+
+         basicUpper < finalUpper[1] or
+
+         close[1] > finalUpper[1] ?
+
+         basicUpper :
+
+         finalUpper[1]
+
+     )
+
+finalLower :=
+
+     na(finalLower[1]) ?
+
+     basicLower :
+
+     (
+
+         basicLower > finalLower[1] or
+
+         close[1] < finalLower[1] ?
+
+         basicLower :
+
+         finalLower[1]
+
+     )
+
+prevTrend =
+
+     nz(trendState[1], 1)
+
+trendState :=
+
+     prevTrend
+
+if prevTrend == -1 and close > finalUpper[1]
+
+    trendState := 1
+
+else if prevTrend == 1 and close < finalLower[1]
+
+    trendState := -1
+
+trendStop =
+
+     trendState == 1 ?
+
+     finalLower :
+
+     finalUpper
+
+bullFlip =
+
+     trendState == 1 and
+
+     prevTrend == -1
+
+bearFlip =
+
+     trendState == -1 and
+
+     prevTrend == 1
+
+barsSinceBullFlip =
+
+     ta.barssince(bullFlip)
+
+freshTrendOK =
+
+     not requireFreshBullFlip or
+
+     (
+
+         not na(barsSinceBullFlip) and
+
+         barsSinceBullFlip <= maxBullFlipAge
+
+     )
+
+var int bullishTrendBars = 0
+
+bullishTrendBars :=
+
+     trendState == 1 ?
+
+     nz(bullishTrendBars[1]) + 1 :
+
+     0
+
+normalTrendMature =
+
+     nz(bullishTrendBars[1]) >=
+
+     minPriorBullBars
+
+// ======================================================
+
+// EARNINGS GAP CLASSIFICATION
+
+// ======================================================
+
+earningsActual =
+
+     request.earnings(
+
+         syminfo.tickerid,
+
+         earnings.actual,
+
+         gaps=barmerge.gaps_on,
+
+         lookahead=barmerge.lookahead_off,
+
+         ignore_invalid_symbol=true
+
+     )
+
+earningsEventWindow =
+
+     timeframe.isdaily and
+
+     (
+
+         not na(earningsActual) or
+
+         not na(earningsActual[1])
+
+     )
+
+previousClose = close[1]
+
+previousAtr = atr[1]
+
+gapDollars =
+
+     open - previousClose
+
+gapPct =
+
+     previousClose > 0 ?
+
+     gapDollars /
+
+     previousClose *
+
+     100 :
+
+     0.0
+
+gapAtr =
+
+     previousAtr > 0 ?
+
+     gapDollars /
+
+     previousAtr :
+
+     0.0
+
+dayRange =
+
+     high - low
+
+closeLocation =
+
+     dayRange > 0 ?
+
+     (close - low) /
+
+     dayRange :
+
+     0.0
+
+gapRetention =
+
+     gapDollars > 0 ?
+
+     (close - previousClose) /
+
+     gapDollars :
+
+     0.0
+
+relativeVolume =
+
+     averageVolume20Prior > 0 ?
+
+     volume /
+
+     averageVolume20Prior :
+
+     0.0
+
+isEarningsUpsideGap =
+
+     useEarningsGapSleeve and
+
+     earningsEventWindow and
+
+     gapDollars > 0 and
+
+     (
+
+         gapPct >= minEarningsGapPct or
+
+         gapAtr >= minEarningsGapAtr
+
+     )
+
+earningsBreakout =
+
+     not na(upper20) and
+
+     close > upper20
+
+earningsCommonQuality =
+
+     close >= open and
+
+     gapRetention >= minGapRetention and
+
+     relativeVolume >= minGapRelativeVolume and
+
+     rsiValue <= maxEarningsRsi and
+
+     trendState == 1 and
+
+     earningsBreakout
+
+thresholdEpsilon = 0.000001
+
+earningsGapGoQuality =
+
+     earningsCommonQuality and
+
+     closeLocation >=
+
+     minGapCloseLocation -
+
+     thresholdEpsilon
+
+earningsGapEarlyQuality =
+
+     earningsCommonQuality and
+
+     closeLocation >=
+
+     minEarlyGapCloseLocation -
+
+     thresholdEpsilon and
+
+     closeLocation <
+
+     minGapCloseLocation -
+
+     thresholdEpsilon
+
+earningsGapGo =
+
+     barstate.isconfirmed and
+
+     isEarningsUpsideGap and
+
+     earningsGapGoQuality
+
+earningsGapGoEarly =
+
+     barstate.isconfirmed and
+
+     isEarningsUpsideGap and
+
+     earningsGapEarlyQuality
+
+earningsGapCrap =
+
+     barstate.isconfirmed and
+
+     isEarningsUpsideGap and
+
+     not earningsGapGo and
+
+     not earningsGapGoEarly and
+
+     (
+
+         close < previousClose or
+
+         gapRetention < crapGapRetention or
+
+         (
+
+             close < open and
+
+             closeLocation < crapCloseLocation
+
+         )
+
+     )
+
+earningsWait =
+
+     barstate.isconfirmed and
+
+     isEarningsUpsideGap and
+
+     not earningsGapGo and
+
+     not earningsGapGoEarly and
+
+     not earningsGapCrap
+
+// ======================================================
+
+// COMMON ENTRY QUALITY
+
+// ======================================================
+
+priceEntryOK =
+
+     not usePriceFloor or
+
+     close >= minUnderlyingPrice
+
+efficiencyEntryOK =
+
+     not useEfficiencyGate or
+
+     efficiency >= minTrendEfficiency
+
+qualityEntryOK =
+
+     priceEntryOK and
+
+     efficiencyEntryOK and
+
+     rsiEntryOK and
+
+     adxEntryOK
+
+// ======================================================
+
+// PERSISTENT BREAKOUT STATE
+
+// ======================================================
+
+var bool breakoutArmed = false
+
+var float armedBreakoutLevel = na
+
+var float armedAtr = na
+
+var int armedBar = na
+
+var bool newArm = false
+
+var bool armExpiredEvent = false
+
+var bool armInvalidatedEvent = false
+
+newArm := false
+
+armExpiredEvent := false
+
+armInvalidatedEvent := false
+
+// IMPORTANT v2.5 CHANGE:
+
+// The price breakout itself creates the opportunity.
+
+// Trend / ADX / efficiency / RSI may confirm afterward.
+
+normalBreakoutCandidate =
+
+     inWindow and
+
+     strategy.position_size == 0 and
+
+     freshLongBreakout and
+
+     not isEarningsUpsideGap
+
+sameBarNormalEntry =
+
+     normalBreakoutCandidate and
+
+     trendState == 1 and
+
+     freshTrendOK and
+
+     normalTrendMature and
+
+     qualityEntryOK
+
+if usePersistentArmedEntry and
+
+   normalBreakoutCandidate and
+
+   not sameBarNormalEntry
+
+    breakoutArmed := true
+
+    armedBreakoutLevel := upper20
+
+    armedAtr := atr
+
+    armedBar := bar_index
+
+    newArm := true
+
+armedAge =
+
+     breakoutArmed and
+
+     not na(armedBar) ?
+
+     bar_index - armedBar :
+
+     na
+
+armedMaxPrice =
+
+     breakoutArmed and
+
+     not na(armedBreakoutLevel) and
+
+     not na(armedAtr) ?
+
+     armedBreakoutLevel +
+
+     armedAtr * maxChaseAtr :
+
+     na
+
+armedInvalidationLevel =
+
+     breakoutArmed and
+
+     not na(armedBreakoutLevel) and
+
+     not na(armedAtr) ?
+
+     armedBreakoutLevel -
+
+     armedAtr * armInvalidationAtr :
+
+     na
+
+armTimedOut =
+
+     breakoutArmed and
+
+     not na(armedAge) and
+
+     armedAge > armedMaxBars
+
+// Do NOT invalidate merely because ADX/trend state
+
+// is not ready yet. That is what v2.5 is fixing.
+
+armStructurallyInvalid =
+
+     breakoutArmed and
+
+     not na(armedInvalidationLevel) and
+
+     close < armedInvalidationLevel
+
+if strategy.position_size == 0 and armTimedOut
+
+    breakoutArmed := false
+
+    armExpiredEvent := true
+
+if strategy.position_size == 0 and
+
+   breakoutArmed and
+
+   armStructurallyInvalid
+
+    breakoutArmed := false
+
+    armInvalidatedEvent := true
+
+armedActive =
+
+     usePersistentArmedEntry and
+
+     strategy.position_size == 0 and
+
+     breakoutArmed and
+
+     not na(armedAge) and
+
+     armedAge <= armedMaxBars
+
+armedAboveBreakout =
+
+     armedActive and
+
+     not na(armedBreakoutLevel) and
+
+     close >= armedBreakoutLevel
+
+armedWithinChase =
+
+     armedActive and
+
+     not na(armedMaxPrice) and
+
+     close <= armedMaxPrice
+
+armedTrendReady =
+
+     armedActive and
+
+     trendState == 1 and
+
+     normalTrendMature and
+
+     freshTrendOK
+
+armedConfirmedEntry =
+
+     barstate.isconfirmed and
+
+     armedTrendReady and
+
+     armedAboveBreakout and
+
+     armedWithinChase and
+
+     qualityEntryOK
+
+armedExtended =
+
+     armedActive and
+
+     not na(armedMaxPrice) and
+
+     close > armedMaxPrice
+
+armedWaitTrend =
+
+     armedActive and
+
+     (
+
+         trendState != 1 or
+
+         not normalTrendMature
+
+     )
+
+armedWaitPrice =
+
+     armedActive and
+
+     trendState == 1 and
+
+     normalTrendMature and
+
+     not priceEntryOK
+
+armedWaitEfficiency =
+
+     armedActive and
+
+     trendState == 1 and
+
+     normalTrendMature and
+
+     priceEntryOK and
+
+     not efficiencyEntryOK
+
+armedWaitRsi =
+
+     armedActive and
+
+     trendState == 1 and
+
+     normalTrendMature and
+
+     priceEntryOK and
+
+     efficiencyEntryOK and
+
+     not rsiEntryOK
+
+armedWaitAdx =
+
+     armedActive and
+
+     trendState == 1 and
+
+     normalTrendMature and
+
+     priceEntryOK and
+
+     efficiencyEntryOK and
+
+     rsiEntryOK and
+
+     not adxEntryOK
+
+// ======================================================
+
+// POSITION STATE
+
+// ======================================================
+
+var float entryBreakoutLevel = na
+
+var int entrySignalBar = na
+
+var float runnerBaseEntry = na
+
+var float runnerBaseAtr = na
+
+var bool add1Done = false
+
+var bool add2Done = false
+
+var bool harvestDone = false
+
+var int add1Bar = na
+
+var int add2Bar = na
+
+var float breakEvenLevel = na
+
+var string activeEntryType =
+
+     "NONE"
+
+// Earnings Gap-Go stays comparable to v2.4.
+
+earningsGapGoEntry =
+
+     inWindow and
+
+     strategy.position_size == 0 and
+
+     earningsGapGo and
+
+     freshLongBreakout and
+
+     priceEntryOK
+
+normalLongEntry =
+
+     sameBarNormalEntry or
+
+     armedConfirmedEntry
+
+longEntry =
+
+     normalLongEntry or
+
+     earningsGapGoEntry
+
+entryType =
+
+     earningsGapGoEntry ?
+
+     "EARNINGS_GAP_GO" :
+
+     armedConfirmedEntry ?
+
+     "ARMED_BREAKOUT_CONFIRM" :
+
+     sameBarNormalEntry ?
+
+     "NORMAL_BREAKOUT" :
+
+     "NONE"
+
+earningsGapClass =
+
+     earningsGapGo ?
+
+     "EARNINGS_GAP_GO" :
+
+     earningsGapGoEarly ?
+
+     "EARNINGS_GAP_GO_EARLY" :
+
+     earningsGapCrap ?
+
+     "EARNINGS_GAP_CRAP" :
+
+     earningsWait ?
+
+     "EARNINGS_WAIT" :
+
+     "NONE"
+
+selectedBreakoutLevel =
+
+     armedConfirmedEntry ?
+
+     armedBreakoutLevel :
+
+     upper20
+
+selectedArmedAge =
+
+     armedConfirmedEntry and
+
+     not na(armedAge) ?
+
+     armedAge :
+
+     0
+
+selectedReplayAtr =
+
+     armedConfirmedEntry and
+
+     not na(armedAtr) ?
+
+     armedAtr :
+
+     atr
+
+entryReplayMaxPrice =
+
+     math.max(
+
+         close,
+
+         selectedBreakoutLevel +
+
+         selectedReplayAtr * maxChaseAtr
+
+     )
+
+if longEntry
+
+    entryBreakoutLevel := selectedBreakoutLevel
+
+    entrySignalBar := bar_index
+
+    runnerBaseEntry := close
+
+    runnerBaseAtr := atr
+
+    activeEntryType := entryType
+
+    add1Done := false
+
+    add2Done := false
+
+    harvestDone := false
+
+    add1Bar := na
+
+    add2Bar := na
+
+    breakEvenLevel := na
+
+    breakoutArmed := false
+
+    armedBreakoutLevel := na
+
+    armedAtr := na
+
+    armedBar := na
+
+// ======================================================
+
+// RUNNER MANAGEMENT
+
+// SAME SIZE SEQUENCE AS v2.4
+
+// ======================================================
+
+barsSinceEntrySignal =
+
+     not na(entrySignalBar) ?
+
+     bar_index - entrySignalBar :
+
+     na
+
+failedBreakoutExit =
+
+     barstate.isconfirmed and
+
+     strategy.position_size > 0 and
+
+     useFailedBreakoutExit and
+
+     not na(entryBreakoutLevel) and
+
+     not na(barsSinceEntrySignal) and
+
+     barsSinceEntrySignal >= 1 and
+
+     barsSinceEntrySignal <= failedBreakoutBars and
+
+     close < entryBreakoutLevel
+
+runnerTrendOK =
+
+     trendState == 1 and
+
+     (
+
+         not useAdxFilter or
+
+         adxEntry >= minAdx
+
+     )
+
+// +25% AT +1 ATR
+
+add1Signal =
+
+     barstate.isconfirmed and
+
+     useRunnerManagement and
+
+     strategy.position_size > 0 and
+
+     not add1Done and
+
+     not na(runnerBaseEntry) and
+
+     not na(runnerBaseAtr) and
+
+     runnerTrendOK and
+
+     close >=
+
+     runnerBaseEntry +
+
+     runnerBaseAtr * add1Atr
+
+if add1Signal
+
+    add1Done := true
+
+    add1Bar := bar_index
+
+// +25% AT +2 ATR
+
+add2Signal =
+
+     barstate.isconfirmed and
+
+     useRunnerManagement and
+
+     strategy.position_size > 0 and
+
+     add1Done and
+
+     not add2Done and
+
+     not na(add1Bar) and
+
+     bar_index > add1Bar and
+
+     runnerTrendOK and
+
+     close >=
+
+     runnerBaseEntry +
+
+     runnerBaseAtr * add2Atr
+
+if add2Signal
+
+    add2Done := true
+
+    add2Bar := bar_index
+
+// HARVEST 25% AT +3 ATR
+
+harvestSignal =
+
+     barstate.isconfirmed and
+
+     useRunnerManagement and
+
+     strategy.position_size > 0 and
+
+     add2Done and
+
+     not harvestDone and
+
+     not na(add2Bar) and
+
+     bar_index > add2Bar and
+
+     close >=
+
+     runnerBaseEntry +
+
+     runnerBaseAtr * harvestAtr
+
+if harvestSignal
+
+    breakEvenLevel :=
+
+         strategy.position_avg_price
+
+    harvestDone := true
+
+// ======================================================
+
+// STRUCTURAL EXIT
+
+// ======================================================
+
+var int structuralBreakCount = 0
+
+structuralBreakNow =
+
+     strategy.position_size > 0 and
+
+     not na(structuralLower) and
+
+     close < structuralLower
+
+structuralBreakCount :=
+
+     structuralBreakNow ?
+
+     nz(structuralBreakCount[1]) + 1 :
+
+     0
+
+structuralExit =
+
+     barstate.isconfirmed and
+
+     strategy.position_size > 0 and
+
+     useStructuralRunnerExit and
+
+     structuralBreakCount >=
+
+     structuralConfirmBars
+
+breakEvenExit =
+
+     barstate.isconfirmed and
+
+     strategy.position_size > 0 and
+
+     useBreakEvenAfterHarvest and
+
+     harvestDone and
+
+     not na(breakEvenLevel) and
+
+     close <= breakEvenLevel
+
+legacyTurtleExit =
+
+     barstate.isconfirmed and
+
+     strategy.position_size > 0 and
+
+     useLegacyTurtleExit and
+
+     not na(lower10) and
+
+     close < lower10
+
+legacyTrendExit =
+
+     barstate.isconfirmed and
+
+     strategy.position_size > 0 and
+
+     useLegacyAdaptiveExit and
+
+     bearFlip
+
+longExit =
+
+     inWindow and
+
+     (
+
+         failedBreakoutExit or
+
+         structuralExit or
+
+         breakEvenExit or
+
+         legacyTurtleExit or
+
+         legacyTrendExit
+
+     )
+
+exitReason =
+
+     structuralExit ?
+
+     "STRUCTURAL_EXIT" :
+
+     failedBreakoutExit ?
+
+     "FAILED_BREAKOUT_EXIT" :
+
+     breakEvenExit ?
+
+     "BREAK_EVEN_EXIT" :
+
+     legacyTurtleExit ?
+
+     "TURTLE_EXIT" :
+
+     legacyTrendExit ?
+
+     "ADAPTIVE_TREND_EXIT" :
+
+     "NONE"
+
+// ======================================================
+
+// WEBHOOK
+
+// ======================================================
+
+barTimeIso =
+
+     str.format_time(
+
+         time_close,
+
+         "yyyy-MM-dd'T'HH:mm:ss'Z'",
+
+         "UTC"
+
+     )
+
+signalBase =
+
+     syminfo.ticker +
+
+     "-" +
+
+     str.tostring(time_close)
+
+shadowCommon =
+
+     ",\"forward_test_start\":\"" +
+
+     shadowForwardStartIso +
+
+     "\""
+
+entryMessage =
+
+     "{\"webhook_secret\":\"" +
+
+     webhookSecret +
+
+     "\",\"signal_id\":\"" +
+
+     signalBase +
+
+     "-ENTRY_LONG\",\"symbol\":\"" +
+
+     syminfo.ticker +
+
+     "\",\"action\":\"ENTRY_LONG\"" +
+
+     ",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\"" +
+
+     ",\"strategy_version\":\"2.5\"" +
+
+     ",\"model_id\":\"PAPER_SHADOW_V25\"" +
+
+     ",\"timeframe\":\"" +
+
+     timeframe.period +
+
+     "\",\"price\":" +
+
+     str.tostring(close) +
+
+     ",\"bar_time\":\"" +
+
+     barTimeIso +
+
+     "\",\"entry_type\":\"" +
+
+     entryType +
+
+     "\",\"armed_age\":" +
+
+     str.tostring(selectedArmedAge) +
+
+     ",\"breakout_level\":" +
+
+     str.tostring(selectedBreakoutLevel) +
+
+     ",\"earnings_gap_class\":\"" +
+
+     earningsGapClass +
+
+     "\",\"stock_stop_price\":" +
+
+     str.tostring(structuralLower) +
+
+     ",\"average_daily_dollar_volume\":" +
+
+     str.tostring(averageDailyDollarVolume) +
+
+     shadowCommon +
+
+     ",\"replay_max_price\":" +
+
+     str.tostring(entryReplayMaxPrice) +
+
+     "}"
+
+add1Message =
+
+     "{\"webhook_secret\":\"" +
+
+     webhookSecret +
+
+     "\",\"signal_id\":\"" +
+
+     signalBase +
+
+     "-ADD_1_ATR\",\"symbol\":\"" +
+
+     syminfo.ticker +
+
+     "\",\"action\":\"ADD\"" +
+
+     ",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\"" +
+
+     ",\"strategy_version\":\"2.5\"" +
+
+     ",\"model_id\":\"PAPER_SHADOW_V25\"" +
+
+     ",\"timeframe\":\"" +
+
+     timeframe.period +
+
+     "\",\"price\":" +
+
+     str.tostring(close) +
+
+     ",\"bar_time\":\"" +
+
+     barTimeIso +
+
+     "\",\"entry_type\":\"" +
+
+     activeEntryType +
+
+     "\",\"position_fraction\":0.25" +
+
+     ",\"runner_stage\":\"ADD_1_ATR\"" +
+
+     shadowCommon +
+
+     "}"
+
+add2Message =
+
+     "{\"webhook_secret\":\"" +
+
+     webhookSecret +
+
+     "\",\"signal_id\":\"" +
+
+     signalBase +
+
+     "-ADD_2_ATR\",\"symbol\":\"" +
+
+     syminfo.ticker +
+
+     "\",\"action\":\"ADD\"" +
+
+     ",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\"" +
+
+     ",\"strategy_version\":\"2.5\"" +
+
+     ",\"model_id\":\"PAPER_SHADOW_V25\"" +
+
+     ",\"timeframe\":\"" +
+
+     timeframe.period +
+
+     "\",\"price\":" +
+
+     str.tostring(close) +
+
+     ",\"bar_time\":\"" +
+
+     barTimeIso +
+
+     "\",\"entry_type\":\"" +
+
+     activeEntryType +
+
+     "\",\"position_fraction\":0.25" +
+
+     ",\"runner_stage\":\"ADD_2_ATR\"" +
+
+     shadowCommon +
+
+     "}"
+
+partialMessage =
+
+     "{\"webhook_secret\":\"" +
+
+     webhookSecret +
+
+     "\",\"signal_id\":\"" +
+
+     signalBase +
+
+     "-HARVEST_3_ATR\",\"symbol\":\"" +
+
+     syminfo.ticker +
+
+     "\",\"action\":\"PARTIAL\"" +
+
+     ",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\"" +
+
+     ",\"strategy_version\":\"2.5\"" +
+
+     ",\"model_id\":\"PAPER_SHADOW_V25\"" +
+
+     ",\"timeframe\":\"" +
+
+     timeframe.period +
+
+     "\",\"price\":" +
+
+     str.tostring(close) +
+
+     ",\"bar_time\":\"" +
+
+     barTimeIso +
+
+     "\",\"entry_type\":\"" +
+
+     activeEntryType +
+
+     "\",\"position_fraction\":0.25" +
+
+     ",\"runner_stage\":\"HARVEST_3_ATR\"" +
+
+     shadowCommon +
+
+     "}"
+
+exitMessage =
+
+     "{\"webhook_secret\":\"" +
+
+     webhookSecret +
+
+     "\",\"signal_id\":\"" +
+
+     signalBase +
+
+     "-EXIT\",\"symbol\":\"" +
+
+     syminfo.ticker +
+
+     "\",\"action\":\"EXIT\"" +
+
+     ",\"strategy\":\"DA_TURTLE_ADAPTIVE_TREND\"" +
+
+     ",\"strategy_version\":\"2.5\"" +
+
+     ",\"model_id\":\"PAPER_SHADOW_V25\"" +
+
+     ",\"timeframe\":\"" +
+
+     timeframe.period +
+
+     "\",\"price\":" +
+
+     str.tostring(close) +
+
+     ",\"bar_time\":\"" +
+
+     barTimeIso +
+
+     "\",\"entry_type\":\"" +
+
+     activeEntryType +
+
+     "\",\"exit_reason\":\"" +
+
+     exitReason +
+
+     "\"" +
+
+     shadowCommon +
+
+     "}"
+
+// ======================================================
+
+// ORDERS
+
+// ======================================================
+
+// 50% STARTER
+
+if longEntry
+
+    strategy.entry(
+
+         "L",
+
+         strategy.long,
+
+         qty=2,
+
+         comment=entryType,
+
+         alert_message=
+
+             enableWebhookOrders ?
+
+             entryMessage :
+
+             ""
+
+    )
+
+// +25%
+
+if add1Signal
+
+    strategy.entry(
+
+         "L",
+
+         strategy.long,
+
+         qty=1,
+
+         comment=
+
+             activeEntryType +
+
+             " ADD1",
+
+         alert_message=
+
+             enableWebhookOrders ?
+
+             add1Message :
+
+             ""
+
+    )
+
+// +25%
+
+if add2Signal
+
+    strategy.entry(
+
+         "L",
+
+         strategy.long,
+
+         qty=1,
+
+         comment=
+
+             activeEntryType +
+
+             " ADD2",
+
+         alert_message=
+
+             enableWebhookOrders ?
+
+             add2Message :
+
+             ""
+
+    )
+
+// TAKE 25%
+
+if harvestSignal
+
+    strategy.close(
+
+         "L",
+
+         qty=1,
+
+         comment=
+
+             activeEntryType +
+
+             " HARVEST",
+
+         alert_message=
+
+             enableWebhookOrders ?
+
+             partialMessage :
+
+             ""
+
+    )
+
+// EXIT REMAINING RUNNER
+
+if longExit
+
+    strategy.close(
+
+         "L",
+
+         comment=
+
+             activeEntryType +
+
+             " " +
+
+             exitReason,
+
+         alert_message=
+
+             enableWebhookOrders ?
+
+             exitMessage :
+
+             ""
+
+    )
+
+    entryBreakoutLevel := na
+
+    entrySignalBar := na
+
+    runnerBaseEntry := na
+
+    runnerBaseAtr := na
+
+    add1Done := false
+
+    add2Done := false
+
+    harvestDone := false
+
+    add1Bar := na
+
+    add2Bar := na
+
+    breakEvenLevel := na
+
+    activeEntryType := "NONE"
+
+    structuralBreakCount := 0
+
+if time > endDate and
+
+   strategy.position_size > 0
+
+    strategy.close(
+
+         "L",
+
+         comment=
+
+             activeEntryType +
+
+             " END",
+
+         alert_message=
+
+             enableWebhookOrders ?
+
+             exitMessage :
+
+             ""
+
+    )
+
+// ======================================================
+
+// PLOTS
+
+// ======================================================
+
+plot(
+
+     showChannels ?
+
+     upper20 :
+
+     na,
+
+     "Turtle 20-Bar Entry",
+
+     color=color.new(color.green, 0),
+
+     linewidth=2,
+
+     style=plot.style_linebr
+
+)
+
+plot(
+
+     showChannels ?
+
+     lower10 :
+
+     na,
+
+     "Legacy Turtle 10-Bar Exit",
+
+     color=color.new(color.red, 55),
+
+     linewidth=1,
+
+     style=plot.style_linebr
+
+)
+
+plot(
+
+     showStructuralExit ?
+
+     structuralLower :
+
+     na,
+
+     "Structural Runner Exit",
+
+     color=color.new(color.red, 0),
+
+     linewidth=2,
+
+     style=plot.style_linebr
+
+)
+
+plot(
+
+     showTrendStop ?
+
+     trendStop :
+
+     na,
+
+     "Adaptive Trend Stop",
+
+     color=
+
+         trendState == 1 ?
+
+         color.teal :
+
+         color.orange,
+
+     linewidth=2,
+
+     style=plot.style_linebr
+
+)
+
+plot(
+
+     showTrendStop and
+
+     strategy.position_size > 0 and
+
+     useRunnerManagement and
+
+     not na(runnerBaseEntry) and
+
+     not na(runnerBaseAtr) ?
+
+     runnerBaseEntry +
+
+     runnerBaseAtr * add1Atr :
+
+     na,
+
+     "Add #1 Level",
+
+     color=color.new(color.blue, 30),
+
+     linewidth=1,
+
+     style=plot.style_linebr
+
+)
+
+plot(
+
+     showTrendStop and
+
+     strategy.position_size > 0 and
+
+     useRunnerManagement and
+
+     not na(runnerBaseEntry) and
+
+     not na(runnerBaseAtr) ?
+
+     runnerBaseEntry +
+
+     runnerBaseAtr * add2Atr :
+
+     na,
+
+     "Add #2 Level",
+
+     color=color.new(color.blue, 0),
+
+     linewidth=1,
+
+     style=plot.style_linebr
+
+)
+
+plot(
+
+     showTrendStop and
+
+     strategy.position_size > 0 and
+
+     useRunnerManagement and
+
+     not na(runnerBaseEntry) and
+
+     not na(runnerBaseAtr) ?
+
+     runnerBaseEntry +
+
+     runnerBaseAtr * harvestAtr :
+
+     na,
+
+     "Harvest Level",
+
+     color=color.new(color.purple, 0),
+
+     linewidth=1,
+
+     style=plot.style_linebr
+
+)
+
+// ARMED LEVEL
+
+plot(
+
+     showArmedStates and
+
+     breakoutArmed ?
+
+     armedBreakoutLevel :
+
+     na,
+
+     "Armed Breakout Level",
+
+     color=color.new(color.aqua, 0),
+
+     linewidth=2,
+
+     style=plot.style_linebr
+
+)
+
+// NO CHASE
+
+plot(
+
+     showArmedStates and
+
+     breakoutArmed ?
+
+     armedMaxPrice :
+
+     na,
+
+     "No-Chase Ceiling",
+
+     color=color.new(color.yellow, 0),
+
+     linewidth=1,
+
+     style=plot.style_linebr
+
+)
+
+// INVALIDATION
+
+plot(
+
+     showArmedStates and
+
+     breakoutArmed ?
+
+     armedInvalidationLevel :
+
+     na,
+
+     "Armed Invalidation",
+
+     color=color.new(color.fuchsia, 20),
+
+     linewidth=1,
+
+     style=plot.style_linebr
+
+)
+
+// ======================================================
+
+// SIGNAL MARKERS
+
+// ======================================================
+
+plotshape(
+
+     showSignals and
+
+     sameBarNormalEntry,
+
+     title="NORMAL BREAKOUT ENTRY",
+
+     text="ENTRY\nNORMAL",
+
+     style=shape.labelup,
+
+     location=location.belowbar,
+
+     color=color.green,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     armedConfirmedEntry,
+
+     title="ARMED BREAKOUT ENTRY",
+
+     text="ENTRY\nARMED",
+
+     style=shape.labelup,
+
+     location=location.belowbar,
+
+     color=color.lime,
+
+     textcolor=color.black,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     earningsGapGoEntry,
+
+     title="EARNINGS GAP GO ENTRY",
+
+     text="ENTRY\nGAP GO",
+
+     style=shape.labelup,
+
+     location=location.belowbar,
+
+     color=color.aqua,
+
+     textcolor=color.black,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     newArm,
+
+     title="BREAKOUT ARMED",
+
+     text="BREAKOUT\nARMED",
+
+     style=shape.labelup,
+
+     location=location.belowbar,
+
+     color=color.aqua,
+
+     textcolor=color.black,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     armedWaitTrend,
+
+     title="ARMED WAIT TREND",
+
+     text="ARMED\nTREND",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.gray,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     armedWaitPrice,
+
+     title="ARMED WAIT PRICE",
+
+     text="ARMED\nPRICE",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.gray,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     armedWaitEfficiency,
+
+     title="ARMED WAIT EFFICIENCY",
+
+     text="ARMED\nLOW EFF",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.orange,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     armedWaitRsi,
+
+     title="ARMED WAIT RSI",
+
+     text="ARMED\nRSI",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.yellow,
+
+     textcolor=color.black,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     armedWaitAdx,
+
+     title="ARMED WAIT ADX",
+
+     text="ARMED\nADX",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.gray,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     armedExtended,
+
+     title="ARMED EXTENDED",
+
+     text="EXTENDED\nNO CHASE",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.yellow,
+
+     textcolor=color.black,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     armInvalidatedEvent,
+
+     title="ARM INVALIDATED",
+
+     text="ARM\nINVALID",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.red,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showArmedStates and
+
+     armExpiredEvent,
+
+     title="ARM EXPIRED",
+
+     text="ARM\nEXPIRED",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.gray,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     add1Signal,
+
+     title="ADD 1",
+
+     text="+25%\n+1ATR",
+
+     style=shape.labelup,
+
+     location=location.belowbar,
+
+     color=color.blue,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     add2Signal,
+
+     title="ADD 2",
+
+     text="+25%\n+2ATR",
+
+     style=shape.labelup,
+
+     location=location.belowbar,
+
+     color=color.navy,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     harvestSignal,
+
+     title="HARVEST",
+
+     text="TAKE 25%\n+3ATR",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.purple,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     failedBreakoutExit,
+
+     title="FAILED BREAKOUT EXIT",
+
+     text="FB\nEXIT",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.fuchsia,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     structuralExit,
+
+     title="STRUCTURAL EXIT",
+
+     text="STRUCT\nEXIT",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.red,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     breakEvenExit,
+
+     title="BREAK EVEN EXIT",
+
+     text="BE\nEXIT",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.yellow,
+
+     textcolor=color.black,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showEarningsClassification and
+
+     earningsGapGoEarly,
+
+     title="EARNINGS GAP GO EARLY",
+
+     text="WATCH\nGAP EARLY",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.lime,
+
+     textcolor=color.black,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showEarningsClassification and
+
+     earningsGapCrap,
+
+     title="EARNINGS GAP CRAP",
+
+     text="PASS\nGAP CRAP",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.red,
+
+     textcolor=color.white,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showEarningsClassification and
+
+     earningsWait,
+
+     title="EARNINGS WAIT",
+
+     text="WAIT\nEARNINGS",
+
+     style=shape.labeldown,
+
+     location=location.abovebar,
+
+     color=color.yellow,
+
+     textcolor=color.black,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     bullFlip,
+
+     title="BULL TREND FLIP",
+
+     text="BULL",
+
+     style=shape.circle,
+
+     location=location.belowbar,
+
+     color=color.teal,
+
+     size=size.tiny
+
+)
+
+plotshape(
+
+     showSignals and
+
+     bearFlip,
+
+     title="BEAR TREND FLIP",
+
+     text="BEAR",
+
+     style=shape.circle,
+
+     location=location.abovebar,
+
+     color=color.orange,
+
+     size=size.tiny
+
+)
