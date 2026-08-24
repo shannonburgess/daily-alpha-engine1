@@ -33,7 +33,10 @@ def test_proof_requires_real_report_delivery_and_publishes_only_sanitized_receip
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "PUBLISH_STAGING_REPORT" in text
-    assert "PROSPECT_V1_PROOF" in text
+    assert "'session': 'MANUAL'" in text
+    assert "'session': 'PROSPECT_V1_PROOF'" not in text
+    assert "prospect-v1-proof-${{ github.run_id }}-${{ github.run_attempt }}" in text
+    assert "'error_code': result.get('error_code')" in text
     assert "validate_prospect_v1_staging_proof.py" in text
     assert "prospect-v1-staging-proof.md" in text
     assert "gh issue comment 337" in text
