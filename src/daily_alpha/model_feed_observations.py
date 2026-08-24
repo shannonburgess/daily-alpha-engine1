@@ -40,10 +40,51 @@ class ImmutableFeedEvidence:
     live_trading_enabled: bool = False
 
     def __post_init__(self) -> None:
+        provider = self.provider.strip().upper()
+        target = self.target.strip().upper()
+        raw_s3_key = self.raw_s3_key.strip()
+        raw_sha256 = self.raw_sha256.strip().lower()
+        evidence_id = self.evidence_id.strip().lower()
+        source_revision = self.source_revision.strip()
+
+        if provider not in _ALLOWED_PROVIDERS:
+            raise ModelTrainingError("FEED_EVIDENCE_PROVIDER_INVALID")
+        if not target:
+            raise ModelTrainingError("FEED_EVIDENCE_TARGET_REQUIRED")
+        _require_aware(self.captured_at, "FEED_EVIDENCE_CAPTURED_AT")
+        _require_raw_key(provider=provider, target=target, raw_s3_key=raw_s3_key)
+        _require_sha256(raw_sha256, "FEED_EVIDENCE_RAW_SHA256")
+        if isinstance(self.raw_bytes, bool) or not isinstance(self.raw_bytes, int):
+            raise ModelTrainingError("FEED_EVIDENCE_RAW_BYTES_INVALID")
+        if self.raw_bytes < 1:
+            raise ModelTrainingError("FEED_EVIDENCE_RAW_BYTES_INVALID")
+        _require_sha256(evidence_id, "FEED_EVIDENCE_ID")
+
+        expected_evidence_id = _sha(
+            _evidence_identity_payload(
+                provider=provider,
+                target=target,
+                captured_at=self.captured_at,
+                raw_s3_key=raw_s3_key,
+                raw_sha256=raw_sha256,
+                raw_bytes=self.raw_bytes,
+            )
+        )
+        if evidence_id != expected_evidence_id:
+            raise ModelTrainingError("FEED_EVIDENCE_ID_MISMATCH")
+        if source_revision != f"feed-receipt-v1:{evidence_id}":
+            raise ModelTrainingError("FEED_EVIDENCE_SOURCE_REVISION_MISMATCH")
         if not self.research_only:
             raise ModelTrainingError("FEED_EVIDENCE_MUST_REMAIN_RESEARCH_ONLY")
         if self.trading_authorized or self.live_trading_enabled:
             raise ModelTrainingError("FEED_EVIDENCE_CANNOT_AUTHORIZE_TRADING")
+
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "target", target)
+        object.__setattr__(self, "raw_s3_key", raw_s3_key)
+        object.__setattr__(self, "raw_sha256", raw_sha256)
+        object.__setattr__(self, "evidence_id", evidence_id)
+        object.__setattr__(self, "source_revision", source_revision)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,8 +131,36 @@ class FeedObservationBatch:
     live_trading_enabled: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.evidence, ImmutableFeedEvidence):
+            raise ModelTrainingError("FEED_OBSERVATION_EVIDENCE_TYPE_INVALID")
         if not self.observations:
             raise ModelTrainingError("FEED_OBSERVATION_BATCH_EMPTY")
+
+        canonical = tuple(
+            sorted(
+                self.observations,
+                key=lambda item: (
+                    item.security_id,
+                    item.decision_at,
+                    item.feature_name,
+                    item.observation_id,
+                ),
+            )
+        )
+        if self.observations != canonical:
+            raise ModelTrainingError("FEED_OBSERVATION_BATCH_ORDER_INVALID")
+        if len({item.observation_id for item in self.observations}) != len(self.observations):
+            raise ModelTrainingError("FEED_OBSERVATION_BATCH_DUPLICATE")
+        for observation in self.observations:
+            if not isinstance(observation, PointInTimeFeatureObservation):
+                raise ModelTrainingError("FEED_OBSERVATION_TYPE_INVALID")
+            if observation.evidence_id != self.evidence.evidence_id:
+                raise ModelTrainingError("FEED_OBSERVATION_EVIDENCE_ID_MISMATCH")
+            if observation.source_revision != self.evidence.source_revision:
+                raise ModelTrainingError("FEED_OBSERVATION_SOURCE_REVISION_MISMATCH")
+            if observation.known_at != self.evidence.captured_at:
+                raise ModelTrainingError("FEED_OBSERVATION_KNOWN_AT_MISMATCH")
+
         if self.labels_created:
             raise ModelTrainingError("FEED_ADAPTER_CANNOT_CREATE_LABELS")
         if not self.research_only:
@@ -139,13 +208,10 @@ def validate_immutable_feed_evidence(
     captured_at = _parse_datetime(receipt.get("captured_at"), "FEED_RECEIPT_CAPTURED_AT")
 
     raw_s3_key = str(receipt.get("raw_s3_key") or "").strip()
-    expected_prefix = f"data-feeds/staging/{provider.lower()}/raw/"
-    if not raw_s3_key.startswith(expected_prefix):
-        raise ModelTrainingError("FEED_RECEIPT_RAW_KEY_PROVIDER_MISMATCH")
+    _require_raw_key(provider=provider, target=target, raw_s3_key=raw_s3_key)
 
     raw_sha256 = str(receipt.get("raw_sha256") or "").strip().lower()
-    if len(raw_sha256) != 64 or any(char not in "0123456789abcdef" for char in raw_sha256):
-        raise ModelTrainingError("FEED_RECEIPT_RAW_SHA256_INVALID")
+    _require_sha256(raw_sha256, "FEED_RECEIPT_RAW_SHA256")
     observed_sha256 = hashlib.sha256(raw_body).hexdigest()
     if observed_sha256 != raw_sha256:
         raise ModelTrainingError("FEED_RAW_SHA256_MISMATCH")
@@ -161,17 +227,14 @@ def validate_immutable_feed_evidence(
     if receipt.get("live_trading_enabled") is not False:
         raise ModelTrainingError("FEED_RECEIPT_LIVE_AUTHORITY_INVALID")
 
-    identity_payload = {
-        "schema": _RECEIPT_SCHEMA,
-        "provider": provider,
-        "target": target,
-        "captured_at": captured_at.isoformat(),
-        "raw_s3_key": raw_s3_key,
-        "raw_sha256": raw_sha256,
-        "raw_bytes": raw_bytes,
-        "trading_authorized": False,
-        "live_trading_enabled": False,
-    }
+    identity_payload = _evidence_identity_payload(
+        provider=provider,
+        target=target,
+        captured_at=captured_at,
+        raw_s3_key=raw_s3_key,
+        raw_sha256=raw_sha256,
+        raw_bytes=raw_bytes,
+    )
     evidence_id = _sha(identity_payload)
     return ImmutableFeedEvidence(
         provider=provider,
@@ -231,6 +294,42 @@ def build_point_in_time_feed_observations(
         )
     )
     return FeedObservationBatch(evidence=evidence, observations=tuple(observations))
+
+
+def _evidence_identity_payload(
+    *,
+    provider: str,
+    target: str,
+    captured_at: datetime,
+    raw_s3_key: str,
+    raw_sha256: str,
+    raw_bytes: int,
+) -> dict[str, Any]:
+    return {
+        "schema": _RECEIPT_SCHEMA,
+        "provider": provider,
+        "target": target,
+        "captured_at": captured_at.isoformat(),
+        "raw_s3_key": raw_s3_key,
+        "raw_sha256": raw_sha256,
+        "raw_bytes": raw_bytes,
+        "trading_authorized": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _require_raw_key(*, provider: str, target: str, raw_s3_key: str) -> None:
+    expected_prefix = f"data-feeds/staging/{provider.lower()}/raw/"
+    if not raw_s3_key.startswith(expected_prefix):
+        raise ModelTrainingError("FEED_RECEIPT_RAW_KEY_PROVIDER_MISMATCH")
+    safe_target = target.replace(".", "_").replace("^", "_")
+    if not raw_s3_key.endswith(f"-{safe_target}.json"):
+        raise ModelTrainingError("FEED_RECEIPT_RAW_KEY_TARGET_MISMATCH")
+
+
+def _require_sha256(value: str, code: str) -> None:
+    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+        raise ModelTrainingError(f"{code}_INVALID")
 
 
 def _parse_datetime(value: Any, code: str) -> datetime:
