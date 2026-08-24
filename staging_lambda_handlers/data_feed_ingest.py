@@ -254,8 +254,25 @@ def _log(event: str, **fields: Any) -> None:
     print(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str))
 
 
+def _smoke_result() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "service": "daily-alpha-staging-data-feed-ingestion",
+        "historical_backfill_supported": True,
+        "capture_modes": sorted(CAPTURE_MODES),
+        "max_historical_backfill_days": MAX_HISTORICAL_BACKFILL_DAYS,
+        "known_at_basis": KNOWN_AT_BASIS,
+        "historical_known_at_backdating_authorized": False,
+        "trading_authorized": False,
+        "live_trading_enabled": False,
+    }
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Fetch bounded staging research data and archive raw bytes plus a receipt."""
+    if event.get("smoke_test") is True:
+        return _smoke_result()
+
     provider = str(event.get("provider") or "").strip().lower()
     if provider not in PROVIDERS:
         raise DataFeedIngestionError("PROVIDER_UNSUPPORTED")
