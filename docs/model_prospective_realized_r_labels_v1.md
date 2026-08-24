@@ -24,6 +24,23 @@ Entry price, exit price and initial risk must be finite and positive. The entry 
 
 The resulting `RealizedRLabelObservation.known_at` is always the actual outcome receipt `captured_at` timestamp. It is never inferred from the historical observation date and cannot be rewritten earlier.
 
+## Self-validating packet boundary
+
+`ProspectiveRealizedRLabelPacket` is an evidence object, not a convenience container. Its constructor independently revalidates the complete relationship among the label, declared inputs and both immutable evidence records even when a caller bypasses `build_prospective_realized_r_label` and attempts to construct the dataclass directly.
+
+The packet fails closed if any caller attempts to:
+
+- rewrite `realized_r` away from the mechanically derived LONG/SHORT value;
+- rewrite label `known_at` away from the exact outcome receipt capture timestamp;
+- replace or omit either immutable entry/outcome evidence ID;
+- rewrite the deterministic label source revision;
+- pair entry and outcome evidence from different providers;
+- use a target inconsistent with the declared security;
+- move entry evidence after the decision boundary or outcome evidence before horizon maturity; or
+- introduce historical-backfill evidence or any action authority.
+
+This makes the lineage invariant durable at the object boundary rather than depending on every caller using the public builder correctly.
+
 ## Lineage
 
 Each label retains both immutable entry and outcome evidence IDs. Its source revision is deterministically derived from both evidence source revisions plus the declared entry and exit source timestamps. The packet identity additionally binds the security, decision timestamp, horizon, direction, prices and initial risk.
