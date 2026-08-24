@@ -135,6 +135,10 @@ class FeedObservationBatch:
             raise ModelTrainingError("FEED_OBSERVATION_EVIDENCE_TYPE_INVALID")
         if not self.observations:
             raise ModelTrainingError("FEED_OBSERVATION_BATCH_EMPTY")
+        if any(
+            not isinstance(item, PointInTimeFeatureObservation) for item in self.observations
+        ):
+            raise ModelTrainingError("FEED_OBSERVATION_TYPE_INVALID")
 
         canonical = tuple(
             sorted(
@@ -152,8 +156,6 @@ class FeedObservationBatch:
         if len({item.observation_id for item in self.observations}) != len(self.observations):
             raise ModelTrainingError("FEED_OBSERVATION_BATCH_DUPLICATE")
         for observation in self.observations:
-            if not isinstance(observation, PointInTimeFeatureObservation):
-                raise ModelTrainingError("FEED_OBSERVATION_TYPE_INVALID")
             if observation.evidence_id != self.evidence.evidence_id:
                 raise ModelTrainingError("FEED_OBSERVATION_EVIDENCE_ID_MISMATCH")
             if observation.source_revision != self.evidence.source_revision:
