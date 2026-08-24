@@ -80,7 +80,12 @@ class ProspectiveRealizedRInputs:
 
 @dataclass(frozen=True, slots=True)
 class ProspectiveRealizedRLabelPacket:
-    """One deterministic research-only label plus exact entry/outcome evidence."""
+    """One deterministic research-only label plus exact entry/outcome evidence.
+
+    The packet is independently self-validating. A caller cannot safely bypass the public
+    builder by manually constructing a packet with a relabeled outcome, altered realized R,
+    mismatched evidence IDs, or a rewritten source revision.
+    """
 
     label: RealizedRLabelObservation
     inputs: ProspectiveRealizedRInputs
@@ -93,6 +98,14 @@ class ProspectiveRealizedRLabelPacket:
     live_trading_enabled: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.label, RealizedRLabelObservation):
+            raise ModelTrainingError("FORWARD_LABEL_PACKET_LABEL_TYPE_INVALID")
+        if not isinstance(self.inputs, ProspectiveRealizedRInputs):
+            raise ModelTrainingError("FORWARD_LABEL_PACKET_INPUTS_TYPE_INVALID")
+        if not isinstance(self.entry_evidence, ImmutableFeedEvidence):
+            raise ModelTrainingError("FORWARD_LABEL_PACKET_ENTRY_EVIDENCE_TYPE_INVALID")
+        if not isinstance(self.outcome_evidence, ImmutableFeedEvidence):
+            raise ModelTrainingError("FORWARD_LABEL_PACKET_OUTCOME_EVIDENCE_TYPE_INVALID")
         if any(
             (
                 self.retuning_authorized,
@@ -103,12 +116,40 @@ class ProspectiveRealizedRLabelPacket:
             )
         ):
             raise ModelTrainingError("FORWARD_LABEL_PACKET_CANNOT_AUTHORIZE_ACTION")
+
+        _validate_packet_evidence(
+            entry=self.entry_evidence,
+            outcome=self.outcome_evidence,
+            inputs=self.inputs,
+        )
         if self.label.security_id != self.inputs.security_id:
             raise ModelTrainingError("FORWARD_LABEL_PACKET_SECURITY_MISMATCH")
         if self.label.decision_at != self.inputs.decision_at:
             raise ModelTrainingError("FORWARD_LABEL_PACKET_DECISION_MISMATCH")
         if self.label.horizon_days != self.inputs.horizon_days:
             raise ModelTrainingError("FORWARD_LABEL_PACKET_HORIZON_MISMATCH")
+        if self.label.realized_r != self.inputs.realized_r:
+            raise ModelTrainingError("FORWARD_LABEL_PACKET_REALIZED_R_MISMATCH")
+        if self.label.known_at != self.outcome_evidence.captured_at:
+            raise ModelTrainingError("FORWARD_LABEL_PACKET_KNOWN_AT_MISMATCH")
+
+        expected_evidence_ids = tuple(
+            sorted(
+                {
+                    self.entry_evidence.evidence_id,
+                    self.outcome_evidence.evidence_id,
+                }
+            )
+        )
+        if self.label.evidence_ids != expected_evidence_ids:
+            raise ModelTrainingError("FORWARD_LABEL_PACKET_EVIDENCE_IDS_MISMATCH")
+        expected_revision = _label_source_revision(
+            entry=self.entry_evidence,
+            outcome=self.outcome_evidence,
+            inputs=self.inputs,
+        )
+        if self.label.source_revision != expected_revision:
+            raise ModelTrainingError("FORWARD_LABEL_PACKET_SOURCE_REVISION_MISMATCH")
 
     @property
     def packet_id(self) -> str:
@@ -144,6 +185,35 @@ def build_prospective_realized_r_label(
         raw_body=outcome_raw_body,
         receipt=outcome_receipt,
     )
+    _validate_packet_evidence(entry=entry, outcome=outcome, inputs=inputs)
+
+    label = RealizedRLabelObservation(
+        security_id=inputs.security_id,
+        decision_at=inputs.decision_at,
+        horizon_days=inputs.horizon_days,
+        realized_r=inputs.realized_r,
+        known_at=outcome.captured_at,
+        evidence_ids=tuple(sorted({entry.evidence_id, outcome.evidence_id})),
+        source_revision=_label_source_revision(
+            entry=entry,
+            outcome=outcome,
+            inputs=inputs,
+        ),
+    )
+    return ProspectiveRealizedRLabelPacket(
+        label=label,
+        inputs=inputs,
+        entry_evidence=entry,
+        outcome_evidence=outcome,
+    )
+
+
+def _validate_packet_evidence(
+    *,
+    entry: ImmutableFeedEvidence,
+    outcome: ImmutableFeedEvidence,
+    inputs: ProspectiveRealizedRInputs,
+) -> None:
     _require_current_market_evidence(entry, role="ENTRY")
     _require_current_market_evidence(outcome, role="OUTCOME")
 
@@ -164,6 +234,13 @@ def build_prospective_realized_r_label(
     if outcome.captured_at <= inputs.decision_at:
         raise ModelTrainingError("FORWARD_LABEL_OUTCOME_CAPTURE_NOT_AFTER_DECISION")
 
+
+def _label_source_revision(
+    *,
+    entry: ImmutableFeedEvidence,
+    outcome: ImmutableFeedEvidence,
+    inputs: ProspectiveRealizedRInputs,
+) -> str:
     lineage_hash = _sha(
         {
             "schema": _SOURCE_REVISION,
@@ -173,21 +250,7 @@ def build_prospective_realized_r_label(
             "exit_source_as_of": inputs.exit_source_as_of.isoformat(),
         }
     )
-    label = RealizedRLabelObservation(
-        security_id=inputs.security_id,
-        decision_at=inputs.decision_at,
-        horizon_days=inputs.horizon_days,
-        realized_r=inputs.realized_r,
-        known_at=outcome.captured_at,
-        evidence_ids=tuple(sorted({entry.evidence_id, outcome.evidence_id})),
-        source_revision=f"{_SOURCE_REVISION}:{lineage_hash}",
-    )
-    return ProspectiveRealizedRLabelPacket(
-        label=label,
-        inputs=inputs,
-        entry_evidence=entry,
-        outcome_evidence=outcome,
-    )
+    return f"{_SOURCE_REVISION}:{lineage_hash}"
 
 
 def _require_current_market_evidence(evidence: ImmutableFeedEvidence, *, role: str) -> None:
