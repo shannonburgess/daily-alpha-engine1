@@ -20,6 +20,7 @@ from .equity_liquidity import S3ActionableLiquidityStore
 from .sectors import is_verified_sector, resolve_sector
 
 SECTOR_AUTHORITY = "SERVER_ACTIONABLE_SHORTLIST"
+SECTOR_CLASSIFICATION_AUTHORITY = "SERVER_CANONICAL_CLASSIFICATIONS"
 
 
 class ActionableSectorError(RuntimeError):
@@ -70,16 +71,55 @@ class S3ActionableContextStore(S3ActionableLiquidityStore):
             if isinstance(item, Mapping)
             and str(item.get("symbol") or "").strip().upper() == ticker
         ]
-        if len(matches) != 1:
-            raise ActionableSectorError("SECTOR_SYMBOL_EVIDENCE_MISSING_OR_DUPLICATE")
+        if len(matches) > 1:
+            raise ActionableSectorError("SECTOR_SYMBOL_EVIDENCE_DUPLICATE")
 
-        sector = resolve_sector(ticker, str(matches[0].get("sector") or ""))
+        if len(matches) == 1:
+            sector = resolve_sector(ticker, str(matches[0].get("sector") or ""))
+            if is_verified_sector(sector):
+                return ActionableSectorEvidence(
+                    symbol=ticker,
+                    sector=sector,
+                    source_file=source_file,
+                )
+
+        # A newly actionable name can arrive before its sector is populated on the
+        # ranked shortlist. Backfill only from the complete canonical classification
+        # artifact published under the same source prefix. Never infer or guess.
+        fallback_error = (
+            "SECTOR_DATA_UNVERIFIED"
+            if matches
+            else "SECTOR_SYMBOL_EVIDENCE_MISSING"
+        )
+        try:
+            classifications = self._json("classifications.json")
+        except Exception as exc:  # noqa: BLE001 - preserve exact fail-closed reason
+            raise ActionableSectorError(fallback_error) from exc
+        if not isinstance(classifications, list):
+            raise ActionableSectorError("SECTOR_CLASSIFICATIONS_INVALID")
+
+        classification_matches = [
+            item
+            for item in classifications
+            if isinstance(item, Mapping)
+            and str(item.get("symbol") or "").strip().upper() == ticker
+        ]
+        if len(classification_matches) != 1:
+            raise ActionableSectorError(
+                "SECTOR_CLASSIFICATION_MISSING_OR_DUPLICATE"
+            )
+
+        sector = resolve_sector(
+            ticker,
+            str(classification_matches[0].get("sector") or ""),
+        )
         if not is_verified_sector(sector):
             raise ActionableSectorError("SECTOR_DATA_UNVERIFIED")
         return ActionableSectorEvidence(
             symbol=ticker,
             sector=sector,
             source_file=source_file,
+            authority=SECTOR_CLASSIFICATION_AUTHORITY,
         )
 
 
