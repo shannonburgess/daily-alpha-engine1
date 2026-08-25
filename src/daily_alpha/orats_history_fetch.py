@@ -20,6 +20,15 @@ from .orats_history_route import HistoricalRouteResult, request_with_compatibili
 HistoricalRouter = Callable[..., HistoricalRouteResult]
 
 
+def _normalize_orats_ticker(ticker: str) -> str:
+    """Translate canonical slash-delimited class shares to ORATS ticker syntax."""
+
+    normalized = ticker.strip().upper()
+    if not normalized:
+        raise ValueError("ticker is required")
+    return normalized.replace("/", ".")
+
+
 @dataclass(frozen=True)
 class HistoricalDailyEarningsPayloads:
     daily_payload: Any
@@ -62,9 +71,7 @@ def fetch_daily_earnings_payloads(
 ) -> HistoricalDailyEarningsPayloads:
     """Fetch daily bars and earnings through the strict historical route policy."""
 
-    ticker = ticker.strip().upper()
-    if not ticker:
-        raise ValueError("ticker is required")
+    ticker = _normalize_orats_ticker(ticker)
     if warm_start > end:
         raise ValueError("warm_start must not be after end")
     if not token:
