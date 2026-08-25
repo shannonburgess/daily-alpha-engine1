@@ -1,0 +1,152 @@
+name: Build Daily Alpha production Lambda candidate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/daily_alpha/**"
+      - "lambda_handlers/**"
+      - "pyproject.toml"
+      - ".github/workflows/build-production-lambda-candidate.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-alpha-production-lambda-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-candidate:
+    name: Test and package production candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up production-compatible Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install quality-gate dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run repository quality gates
+        run: |
+          ruff check .
+          pytest -q
+
+      - name: Build clean shared Lambda package
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE_DIR="${RUNNER_TEMP}/daily-alpha-lambda-package"
+          PACKAGE_ZIP="${RUNNER_TEMP}/daily-alpha-lambda-candidate.zip"
+          mkdir -p "${PACKAGE_DIR}"
+          python -m pip install .             --target "${PACKAGE_DIR}"             --no-deps             --no-compile
+          cp -R lambda_handlers "${PACKAGE_DIR}/lambda_handlers"
+          find "${PACKAGE_DIR}" -type d -name __pycache__ -prune -exec rm -rf {} +
+          (
+            cd "${PACKAGE_DIR}"
+            zip -X -qr "${PACKAGE_ZIP}" .
+          )
+          echo "PACKAGE_DIR=${PACKAGE_DIR}" >> "${GITHUB_ENV}"
+          echo "PACKAGE_ZIP=${PACKAGE_ZIP}" >> "${GITHUB_ENV}"
+
+      - name: Verify packaged handlers and layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          zipinfo -1 "${PACKAGE_ZIP}" | sort > package-files.txt
+          for handler in             lambda_handlers/engine.py             lambda_handlers/report.py             lambda_handlers/paper_trader.py             lambda_handlers/pine_webhook.py             lambda_handlers/pine_processor.py; do
+            grep -Fxq "${handler}" package-files.txt
+          done
+          if grep -Eq '(^|/)lambda_function\.py$' package-files.txt; then
+            echo "Legacy lambda_function.py must not be packaged."
+            exit 1
+          fi
+          if grep -Eq '^lib/daily_alpha/' package-files.txt; then
+            echo "Duplicate lib/daily_alpha package tree detected."
+            exit 1
+          fi
+          PYTHONPATH="${PACKAGE_DIR}" python - <<'PY'
+          from importlib import import_module
+
+          handlers = (
+              "lambda_handlers.engine",
+              "lambda_handlers.report",
+              "lambda_handlers.paper_trader",
+              "lambda_handlers.pine_webhook",
+              "lambda_handlers.pine_processor",
+          )
+          for module_name in handlers:
+              handler = getattr(import_module(module_name), "lambda_handler")
+              assert callable(handler), module_name
+          print("All packaged Lambda handlers import successfully.")
+          PY
+
+      - name: Create immutable candidate manifest
+        shell: python
+        env:
+          PACKAGE_ZIP: ${{ env.PACKAGE_ZIP }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          import hashlib
+          import json
+          import os
+          import platform
+          from pathlib import Path
+
+          package = Path(os.environ["PACKAGE_ZIP"])
+          payload = {
+              "artifact": package.name,
+              "commit_sha": os.environ["COMMIT_SHA"],
+              "handlers": {
+                  "daily-alpha-engine": "lambda_handlers.engine.lambda_handler",
+                  "daily-alpha-report": "lambda_handlers.report.lambda_handler",
+                  "daily-alpha-paper-trader": "lambda_handlers.paper_trader.lambda_handler",
+                  "daily-alpha-pine-ingress": "lambda_handlers.pine_webhook.lambda_handler",
+                  "daily-alpha-pine-processor": "lambda_handlers.pine_processor.lambda_handler",
+              },
+              "live_trading_enabled": False,
+              "package_sha256": hashlib.sha256(package.read_bytes()).hexdigest(),
+              "package_size_bytes": package.stat().st_size,
+              "python_runtime": platform.python_version(),
+              "scope": "BUILD_CANDIDATE_ONLY",
+              "deployment_authorized": False,
+              "trading_authorized": False,
+          }
+          Path("lambda-candidate-manifest.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True))
+
+      - name: Upload reviewed deployment candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-alpha-lambda-candidate-${{ github.sha }}
+          path: |
+            ${{ env.PACKAGE_ZIP }}
+            lambda-candidate-manifest.json
+            package-files.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Summarize candidate safety boundary
+        run: |
+          {
+            echo "### Daily Alpha Lambda production candidate"
+            echo
+            echo "- Repository tests and lint: passed"
+            echo "- Five handler imports: passed"
+            echo "- Package manifest and SHA-256: published"
+            echo "- AWS credentials requested: no"
+            echo "- AWS deployment performed: no"
+            echo "- Trading authorization: false"
+            echo "- Live trading enabled: false"
+          } >> "${GITHUB_STEP_SUMMARY}"
