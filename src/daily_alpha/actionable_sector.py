@@ -93,7 +93,7 @@ class S3ActionableContextStore(S3ActionableLiquidityStore):
         )
         try:
             classifications = self._json("classifications.json")
-        except Exception as exc:  # noqa: BLE001 - preserve exact fail-closed reason
+        except Exception as exc:
             raise ActionableSectorError(fallback_error) from exc
         if not isinstance(classifications, list):
             raise ActionableSectorError("SECTOR_CLASSIFICATIONS_INVALID")
