@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from daily_alpha.backtest import Bar
+from daily_alpha.orats_historical_transport import HistoricalOratsAuthError
 from daily_alpha.orats_history_fetch import HistoricalDailyEarningsRows
 from scripts.shadow_signal_diagnostics import (
     PINE_SOURCE_PATH,
@@ -314,3 +315,55 @@ def test_partial_target_bar_publication_fails_closed(monkeypatch):
     assert result["source_diagnostic_complete"] is False
     assert result["source_data_status"] == "PARTIAL_PROVIDER_PUBLICATION"
     assert result["interpretation"] == "INCOMPLETE_SH24_SOURCE_DIAGNOSTIC"
+
+
+def test_orats_rejected_slash_class_share_is_explicit_provider_exclusion(monkeypatch):
+    good_bars = [
+        _bar(trade_date=date(2026, 8, 20) - timedelta(days=offset))
+        for offset in range(79, -1, -1)
+    ]
+
+    def provider_limited(symbol, *, start, end, token):
+        del start, end, token
+        if symbol == "BF/B":
+            raise HistoricalOratsAuthError(
+                "ORATS historical authentication/authorization failed (HTTP 403)"
+            )
+        return good_bars, {
+            "ignored_zero_date_earnings_rows": 0,
+            "ignored_zero_date_daily_rows": 0,
+        }
+
+    monkeypatch.setattr(
+        "scripts.shadow_signal_diagnostics._fetch_sh24_history", provider_limited
+    )
+    monkeypatch.setattr(
+        "scripts.shadow_signal_diagnostics.indicators",
+        lambda bars: [_normal_row(fresh_breakout=False) for _ in bars],
+    )
+
+    result = run_orats_diagnostic(
+        ["AAPL", "BF/B"],
+        target_date=date(2026, 8, 20),
+        token="token",
+    )
+
+    assert result["ok"] is True
+    assert result["source_diagnostic_complete"] is True
+    assert result["source_data_status"] == "COMPLETE_WITH_PROVIDER_EXCLUSIONS"
+    assert result["requested_symbol_count"] == 2
+    assert result["symbols_evaluated"] == 1
+    assert result["provider_unsupported_count"] == 1
+    assert result["provider_unsupported_symbols"] == ["BF/B"]
+    assert result["provider_unsupported_details"]["BF/B"] == {
+        "reason": "ORATS_UNSUPPORTED_CLASS_SHARE_SYMBOL",
+        "attempted_provider_symbol": "BF.B",
+        "error": (
+            "HistoricalOratsAuthError:"
+            "ORATS historical authentication/authorization failed (HTTP 403)"
+        ),
+    }
+    assert "fetch_errors" not in result
+    assert result["promotion_authorized"] is False
+    assert result["trading_authorized"] is False
+    assert result["live_trading_enabled"] is False
