@@ -48,6 +48,30 @@ def test_fetch_adapter_prefers_documented_datav2_route_for_current_account():
     assert result.earnings_used_compatibility_fallback is False
 
 
+def test_fetch_adapter_normalizes_slash_delimited_class_share_for_orats():
+    calls = []
+
+    def router(primary_url, fallback_url, **kwargs):
+        calls.append((primary_url, fallback_url))
+        return HistoricalRouteResult(
+            payload={"data": []},
+            source=kwargs["primary_source"],
+            used_compatibility_fallback=False,
+        )
+
+    fetch_daily_earnings_payloads(
+        "BF/B",
+        warm_start=date(2026, 8, 1),
+        end=date(2026, 8, 24),
+        token="secret-token",
+        router=router,
+    )
+
+    assert len(calls) == 2
+    assert all("BF.B" in url for pair in calls for url in pair)
+    assert all("BF%2FB" not in url for pair in calls for url in pair)
+
+
 def test_rate_limit_propagates_without_becoming_compatibility_or_missing_data():
     def router(*args, **kwargs):
         raise HistoricalOratsRateLimitedError("rate limited")
