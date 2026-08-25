@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from daily_alpha.backtest import Bar, indicators
+from daily_alpha.orats_historical_transport import HistoricalOratsAuthError
 from daily_alpha.orats_history_fetch import fetch_daily_earnings_rows
 
 PINE_SOURCE_PATH = "tradingview/da_turtle_20_10_v2_4.pine"
@@ -464,6 +465,7 @@ def run_orats_diagnostic(
     )
     diagnostics: list[Sh24PointDiagnostic] = []
     errors: dict[str, str] = {}
+    provider_unsupported: dict[str, dict[str, str]] = {}
     target_unavailable: dict[str, str | None] = {}
     sentinel_audit: dict[str, dict[str, int]] = {}
     for symbol in requested:
@@ -484,7 +486,17 @@ def run_orats_diagnostic(
                 exc.latest_date.isoformat() if exc.latest_date is not None else None
             )
         except Exception as exc:  # noqa: BLE001 - per-symbol research boundary fails closed
-            errors[symbol] = f"{type(exc).__name__}:{exc}"
+            if "/" in symbol and isinstance(exc, HistoricalOratsAuthError):
+                # ORATS rejects slash-delimited class shares even after the approved
+                # provider-boundary alias normalization. Keep the security ineligible
+                # for an expectation claim and expose the exclusion in the audit output.
+                provider_unsupported[symbol] = {
+                    "reason": "ORATS_UNSUPPORTED_CLASS_SHARE_SYMBOL",
+                    "attempted_provider_symbol": symbol.replace("/", "."),
+                    "error": f"{type(exc).__name__}:{exc}",
+                }
+            else:
+                errors[symbol] = f"{type(exc).__name__}:{exc}"
 
     result = reconcile_universe(
         diagnostics,
@@ -493,6 +505,16 @@ def run_orats_diagnostic(
     )
     result["source_diagnostic_complete"] = True
     result["source_data_status"] = "COMPLETE"
+
+    if provider_unsupported:
+        result["source_data_status"] = "COMPLETE_WITH_PROVIDER_EXCLUSIONS"
+        result["provider_unsupported_count"] = len(provider_unsupported)
+        result["provider_unsupported_symbols"] = sorted(provider_unsupported)
+        result["provider_unsupported_details"] = dict(sorted(provider_unsupported.items()))
+        result["coverage_limitations"].append(
+            "Provider-unsupported securities were excluded from SH24 expectation claims; "
+            "they remain ineligible for promotion or trading authorization."
+        )
 
     if errors:
         result["ok"] = False
@@ -557,6 +579,12 @@ def render_markdown(result: Mapping[str, Any]) -> str:
             "ORATS historical target bars pending: "
             f"{result.get('target_bar_unavailable_count', 0)} symbols; "
             f"latest available trade date(s): `{latest_label}`"
+        )
+    unsupported = result.get("provider_unsupported_symbols") or []
+    if unsupported:
+        lines.append(
+            "ORATS provider-unsupported securities excluded from expectation claims: "
+            + ", ".join(f"`{s}`" for s in unsupported)
         )
     expected = result.get("expected_entry_symbols") or []
     missing = result.get("expected_but_not_received") or []
