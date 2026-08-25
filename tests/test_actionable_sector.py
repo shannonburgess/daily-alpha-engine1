@@ -21,7 +21,16 @@ class Body:
 
 
 class FakeS3:
-    def __init__(self, *, sector="Energy"):
+    def __init__(
+        self,
+        *,
+        sector="Energy",
+        classification_sector=None,
+        include_shortlist=True,
+    ):
+        resolved_classification_sector = (
+            sector if classification_sector is None else classification_sector
+        )
         self.payloads = {
             "company_liquidity_eligibility.json": {
                 "schema_version": "2026-08-19-v1",
@@ -44,10 +53,20 @@ class FakeS3:
                 "trading_authorized": False,
                 "live_trading_enabled": False,
             },
-            "shortlist.json": [
+            "shortlist.json": (
+                [
+                    {
+                        "symbol": "DINO",
+                        "sector": sector,
+                    }
+                ]
+                if include_shortlist
+                else []
+            ),
+            "classifications.json": [
                 {
                     "symbol": "DINO",
-                    "sector": sector,
+                    "sector": resolved_classification_sector,
                 }
             ],
             "summary.json": {
@@ -68,9 +87,18 @@ class AccountPaperLedger(PaperLedger):
         self.account_id = account_id
 
 
-def store(*, sector="Energy"):
+def store(
+    *,
+    sector="Energy",
+    classification_sector=None,
+    include_shortlist=True,
+):
     return S3ActionableContextStore(
-        s3_client=FakeS3(sector=sector),
+        s3_client=FakeS3(
+            sector=sector,
+            classification_sector=classification_sector,
+            include_shortlist=include_shortlist,
+        ),
         bucket="test-bucket",
         prefix="ovtlyr/shortlist/latest",
     )
@@ -119,6 +147,35 @@ def test_server_shortlist_sector_overrides_missing_or_untrusted_ingress_sector()
         "authority": "SERVER_ACTIONABLE_SHORTLIST",
         "status": "VERIFIED",
     }
+
+
+def test_new_symbol_backfills_sector_from_canonical_classifications():
+    canonical = store(
+        sector="",
+        classification_sector="Energy",
+        include_shortlist=False,
+    )
+
+    enriched, evidence = enrich_entry_sector(ingress(), canonical)
+
+    assert enriched["sector"] == "Energy"
+    assert evidence == {
+        "symbol": "DINO",
+        "sector": "Energy",
+        "source_file": "OVTLYR_2026-08-21.csv",
+        "authority": "SERVER_CANONICAL_CLASSIFICATIONS",
+        "status": "VERIFIED",
+    }
+
+
+def test_blank_shortlist_sector_backfills_from_canonical_classifications():
+    canonical = store(sector="", classification_sector="Energy")
+
+    enriched, evidence = enrich_entry_sector(ingress(), canonical)
+
+    assert enriched["sector"] == "Energy"
+    assert evidence["authority"] == "SERVER_CANONICAL_CLASSIFICATIONS"
+    assert evidence["status"] == "VERIFIED"
 
 
 def test_unverified_server_sector_fails_closed_before_portfolio_risk():
