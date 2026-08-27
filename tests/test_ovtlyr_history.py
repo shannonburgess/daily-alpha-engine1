@@ -67,3 +67,26 @@ def test_archive_rejects_non_iso_date(tmp_path):
             sectors=[],
             engine_version="0.1.0",
         )
+
+
+def test_archive_rejects_latest_pointer_rewind(tmp_path):
+    history = tmp_path / "history"
+    history.mkdir()
+    (history / "latest.json").write_text(
+        json.dumps({"run_date": "2026-08-16"}), encoding="utf-8"
+    )
+    source = tmp_path / "current.csv"
+    source.write_text("Ticker,Status\nAAA,Buy\n", encoding="utf-8")
+
+    with pytest.raises(ArchiveExistsError, match="would not advance"):
+        archive_daily_run(
+            history_root=history,
+            run_date="2026-08-15",
+            source_csv=source,
+            classified=[],
+            sectors=[],
+            engine_version="0.1.0",
+        )
+
+    assert not (history / "2026-08-15").exists()
+    assert json.loads((history / "latest.json").read_text())["run_date"] == "2026-08-16"
