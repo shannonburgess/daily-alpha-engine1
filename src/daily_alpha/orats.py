@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,6 +28,10 @@ class OratsRequestError(OratsError):
     """Raised when ORATS cannot return a usable response."""
 
 
+class OratsRateLimitedError(OratsRequestError):
+    """Raised when bounded retries cannot recover from ORATS HTTP 429 responses."""
+
+
 class OratsDataError(OratsError):
     """Raised when ORATS data is empty, malformed, or stale."""
 
@@ -45,6 +50,7 @@ class OratsChain:
 
 
 Transport = Callable[[str, float], Any]
+Sleep = Callable[[float], None]
 
 
 class OratsClient:
@@ -56,9 +62,14 @@ class OratsClient:
 
     The token is read from ORATS_TOKEN and is never accepted in logs or
     serialized objects. A custom transport can be injected for unit tests.
+    The default transport retries only rate limits, transient server failures,
+    and network failures; authentication, malformed responses, and stale data
+    remain fail-closed.
     """
 
     BASE_URL = "https://api.orats.io/datav2"
+    TRANSIENT_HTTP_CODES = frozenset({500, 502, 503, 504})
+    MAX_BACKOFF_SECONDS = 8.0
 
     def __init__(
         self,
@@ -67,6 +78,9 @@ class OratsClient:
         mode: str = "delayed",
         timeout_seconds: float = 20.0,
         max_age_minutes: int | None = None,
+        max_retries: int = 3,
+        retry_base_seconds: float = 0.5,
+        sleep: Sleep | None = None,
         transport: Transport | None = None,
     ) -> None:
         self._token = token or os.getenv("ORATS_TOKEN", "")
@@ -76,6 +90,10 @@ class OratsClient:
             )
         if mode not in {"delayed", "live"}:
             raise OratsConfigurationError("ORATS mode must be 'delayed' or 'live'")
+        if max_retries < 0:
+            raise OratsConfigurationError("ORATS max_retries must be non-negative")
+        if retry_base_seconds < 0:
+            raise OratsConfigurationError("ORATS retry_base_seconds must be non-negative")
         self.mode = mode
         self.timeout_seconds = timeout_seconds
         # The delayed Data API is suitable for scheduled research and the
@@ -83,6 +101,9 @@ class OratsClient:
         # The decision runtime still applies its own stricter execution-time
         # freshness gate before any paper trade can be authorized.
         self.max_age_minutes = max_age_minutes or (120 if mode == "delayed" else 5)
+        self.max_retries = max_retries
+        self.retry_base_seconds = retry_base_seconds
+        self._sleep = sleep or time.sleep
         self._transport = transport or self._request_json
 
     def fetch_chain(
@@ -215,18 +236,59 @@ class OratsClient:
                 )
         return candidates
 
-    @staticmethod
-    def _request_json(url: str, timeout_seconds: float) -> Any:
-        request = Request(url, headers={"Accept": "application/json"})
+    def _request_json(self, url: str, timeout_seconds: float) -> Any:
+        attempts = self.max_retries + 1
+        for attempt in range(attempts):
+            request = Request(url, headers={"Accept": "application/json"})
+            try:
+                with urlopen(request, timeout=timeout_seconds) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                if exc.code == 429:
+                    if attempt < self.max_retries:
+                        self._sleep(self._retry_delay(attempt, exc))
+                        continue
+                    raise OratsRateLimitedError(
+                        f"ORATS rate limited after {attempts} attempts"
+                    ) from exc
+                if exc.code in self.TRANSIENT_HTTP_CODES:
+                    if attempt < self.max_retries:
+                        self._sleep(self._retry_delay(attempt))
+                        continue
+                    raise OratsRequestError(
+                        f"ORATS transient HTTP error {exc.code} after {attempts} attempts"
+                    ) from exc
+                if exc.code in {401, 403}:
+                    raise OratsRequestError(
+                        f"ORATS authentication/authorization failed (HTTP {exc.code})"
+                    ) from exc
+                raise OratsRequestError(f"ORATS HTTP error {exc.code}") from exc
+            except URLError as exc:
+                if attempt < self.max_retries:
+                    self._sleep(self._retry_delay(attempt))
+                    continue
+                raise OratsRequestError(
+                    f"ORATS network error after {attempts} attempts"
+                ) from exc
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise OratsRequestError("ORATS returned invalid JSON") from exc
+        raise OratsRequestError("ORATS request failed unexpectedly")
+
+    def _retry_delay(self, attempt: int, error: HTTPError | None = None) -> float:
+        calculated = min(
+            self.retry_base_seconds * (2**attempt),
+            self.MAX_BACKOFF_SECONDS,
+        )
+        if error is None or error.headers is None:
+            return calculated
+        raw_retry_after = error.headers.get("Retry-After")
+        if raw_retry_after is None:
+            return calculated
         try:
-            with urlopen(request, timeout=timeout_seconds) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            raise OratsRequestError(f"ORATS HTTP error {exc.code}") from exc
-        except URLError as exc:
-            raise OratsRequestError("ORATS request failed") from exc
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise OratsRequestError("ORATS returned invalid JSON") from exc
+            retry_after = max(0.0, float(raw_retry_after))
+        except (TypeError, ValueError):
+            return calculated
+        return min(max(calculated, retry_after), self.MAX_BACKOFF_SECONDS)
 
 
 def _parse_timestamp(value: str) -> datetime:

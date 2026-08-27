@@ -1,12 +1,17 @@
 from datetime import UTC, datetime
+from io import BytesIO
+from urllib.error import HTTPError
 
 import pytest
 
+import daily_alpha.orats as orats_module
 from daily_alpha.orats import (
     OratsClient,
     OratsConfigurationError,
     OratsDataError,
     OratsNoOptionsError,
+    OratsRateLimitedError,
+    OratsRequestError,
 )
 
 
@@ -32,6 +37,31 @@ def payload(updated_at="2026-08-15T16:00:00Z"):
             }
         ]
     }
+
+
+class FakeResponse:
+    def __init__(self, body):
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return self._body
+
+
+def _http_error(code, *, retry_after=None):
+    headers = {} if retry_after is None else {"Retry-After": str(retry_after)}
+    return HTTPError(
+        url="https://api.orats.io/datav2/strikes",
+        code=code,
+        msg="test",
+        hdrs=headers,
+        fp=BytesIO(b""),
+    )
 
 
 def test_token_is_required(monkeypatch):
@@ -113,3 +143,107 @@ def test_live_mode_uses_live_strikes_endpoint():
 
     assert "/live/strikes?" in seen_urls[0]
     assert "one-minute" not in seen_urls[0]
+
+
+def test_rate_limit_retries_then_recovers(monkeypatch):
+    calls = [
+        _http_error(429, retry_after=1.0),
+        FakeResponse(orats_module.json.dumps(payload()).encode("utf-8")),
+    ]
+    sleeps = []
+
+    def fake_urlopen(request, timeout):
+        result = calls.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(orats_module, "urlopen", fake_urlopen)
+    client = OratsClient(
+        token="secret",
+        max_retries=2,
+        retry_base_seconds=0.1,
+        sleep=sleeps.append,
+    )
+
+    chain = client.fetch_chain(
+        "AAPL",
+        as_of=datetime(2026, 8, 15, 17, 30, tzinfo=UTC),
+    )
+
+    assert chain.ticker == "AAPL"
+    assert sleeps == [1.0]
+    assert calls == []
+
+
+def test_rate_limit_is_distinct_after_bounded_retries(monkeypatch):
+    attempts = 0
+    sleeps = []
+
+    def fake_urlopen(request, timeout):
+        nonlocal attempts
+        attempts += 1
+        raise _http_error(429)
+
+    monkeypatch.setattr(orats_module, "urlopen", fake_urlopen)
+    client = OratsClient(
+        token="secret",
+        max_retries=2,
+        retry_base_seconds=0.1,
+        sleep=sleeps.append,
+    )
+
+    with pytest.raises(OratsRateLimitedError, match="3 attempts"):
+        client.fetch_chain("AAPL")
+
+    assert attempts == 3
+    assert sleeps == pytest.approx([0.1, 0.2])
+
+
+def test_transient_server_error_retries_then_recovers(monkeypatch):
+    calls = [
+        _http_error(503),
+        FakeResponse(orats_module.json.dumps(payload()).encode("utf-8")),
+    ]
+    sleeps = []
+
+    def fake_urlopen(request, timeout):
+        result = calls.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(orats_module, "urlopen", fake_urlopen)
+    client = OratsClient(
+        token="secret",
+        max_retries=1,
+        retry_base_seconds=0.25,
+        sleep=sleeps.append,
+    )
+
+    client.fetch_chain(
+        "AAPL",
+        as_of=datetime(2026, 8, 15, 17, 30, tzinfo=UTC),
+    )
+
+    assert sleeps == [0.25]
+    assert calls == []
+
+
+def test_authentication_error_fails_closed_without_retry(monkeypatch):
+    attempts = 0
+    sleeps = []
+
+    def fake_urlopen(request, timeout):
+        nonlocal attempts
+        attempts += 1
+        raise _http_error(401)
+
+    monkeypatch.setattr(orats_module, "urlopen", fake_urlopen)
+    client = OratsClient(token="secret", max_retries=3, sleep=sleeps.append)
+
+    with pytest.raises(OratsRequestError, match="authentication/authorization"):
+        client.fetch_chain("AAPL")
+
+    assert attempts == 1
+    assert sleeps == []
