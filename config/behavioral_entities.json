@@ -1,0 +1,28 @@
+{
+  "version": "2026-08-19-v1",
+  "research_only": true,
+  "entities": [
+    {
+      "entity_id": "NFLX:2026-08-19-v1",
+      "ticker": "NFLX",
+      "company_name": "Netflix",
+      "aliases": ["Netflix"],
+      "brands": ["Netflix"],
+      "products": [],
+      "apps": ["Netflix"],
+      "domains": ["netflix.com"],
+      "technologies": ["streaming video"]
+    },
+    {
+      "entity_id": "NVDA:2026-08-19-v1",
+      "ticker": "NVDA",
+      "company_name": "Nvidia",
+      "aliases": ["NVIDIA"],
+      "brands": ["GeForce"],
+      "products": ["Blackwell", "DGX"],
+      "apps": [],
+      "domains": ["nvidia.com"],
+      "technologies": ["CUDA", "AI GPU"]
+    }
+  ]
+}
