@@ -1,0 +1,38 @@
+name: Cash-secured put challenger
+
+on:
+  pull_request:
+    paths:
+      - "src/daily_alpha/cash_secured_put_backtest.py"
+      - ".github/workflows/backtest-cash-secured-puts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  puts:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run cash-secured put scenarios
+        run: |
+          set -o pipefail
+          test -n "$ORATS_TOKEN"
+          PYTHONPATH=src python -m daily_alpha.cash_secured_put_backtest \
+            --start 2024-01-01 --end 2026-08-14 \
+            --json-out cash-secured-puts.json | tee cash-secured-puts.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cash-secured-put-backtest
+          path: |
+            cash-secured-puts.json
+            cash-secured-puts.txt
+          if-no-files-found: error

@@ -1,0 +1,41 @@
+name: Validate R2 options accelerator
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backtest-portfolio-options.yml"
+      - "src/daily_alpha/backtest_options.py"
+      - "src/daily_alpha/backtest_options_conservative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  executable-options:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Require ORATS secret
+        run: test -n "$ORATS_TOKEN"
+      - name: Run ask-entry bid-exit option validation
+        run: |
+          PYTHONPATH=src python -m daily_alpha.backtest_options_conservative \
+            --thresholds 0.70 --json-out r2-options.json | tee r2-options.txt
+      - name: Publish summary
+        run: |
+          { echo "## R2 executable options accelerator"; echo '```text'; cat r2-options.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r2-executable-options
+          path: |
+            r2-options.json
+            r2-options.txt
+          if-no-files-found: error

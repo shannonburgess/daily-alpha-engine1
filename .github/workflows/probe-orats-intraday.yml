@@ -1,0 +1,42 @@
+name: Probe ORATS intraday access
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/probe-orats-intraday.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - name: Query historical one-minute snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ORATS_TOKEN"
+          url="https://api.orats.io/datav2/hist/live/one-minute/summaries"
+          code=$(curl -sS -L -G -o response.txt -w "%{http_code}" \
+            --data-urlencode "token=$ORATS_TOKEN" \
+            --data-urlencode "ticker=SPY" \
+            --data-urlencode "tradeDate=202608141000,202608141005" \
+            "$url")
+          echo "HTTP $code"
+          head -c 1000 response.txt
+          echo
+          if [ "$code" -ge 400 ]; then exit 1; fi
+          python - <<'PY'
+          from pathlib import Path
+          body = Path("response.txt").read_text(errors="replace")
+          if not body.startswith("ticker,"):
+              raise SystemExit("Intraday access unavailable or response was not CSV data")
+          print("INTRADAY_ACCESS=YES")
+          print("rows=" + str(max(0, len(body.splitlines()) - 1)))
+          PY

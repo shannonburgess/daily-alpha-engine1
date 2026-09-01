@@ -1,0 +1,42 @@
+name: Unified R2 portfolio scenario backtest
+
+on:
+  pull_request:
+    paths:
+      - "src/daily_alpha/scenario_backtest.py"
+      - "tests/test_scenario_backtest.py"
+      - ".github/workflows/backtest-portfolio-scenarios.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ORATS_TOKEN: ${{ secrets.ORATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Require ORATS secret
+        run: test -n "$ORATS_TOKEN"
+      - name: Run unified scenarios
+        run: |
+          PYTHONPATH=src python -m daily_alpha.scenario_backtest \
+            --start 2024-01-01 --end 2026-08-14 \
+            --json-out scenario-backtest.json | tee scenario-backtest.txt
+      - name: Publish summary
+        run: |
+          { echo "## Unified R2 portfolio scenarios"; echo '```text'; cat scenario-backtest.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unified-r2-scenario-backtest
+          path: |
+            scenario-backtest.json
+            scenario-backtest.txt
+          if-no-files-found: error
